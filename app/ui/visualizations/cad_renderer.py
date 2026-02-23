@@ -21,10 +21,12 @@ from app.domain.geometry import RoadNetwork
 # Colour / style constants
 # ---------------------------------------------------------------------------
 
-ASPHALT_COLOUR = [44, 44, 44, 240]        # #2C2C2C near-opaque
-LANE_MARKING_COLOUR = [200, 200, 200, 80]  # faint white dashes
-CONFLICT_COLOUR = [255, 200, 0, 220]       # warning yellow
-BACKGROUND_COLOUR = [24, 26, 30]           # dark canvas
+ASPHALT_COLOUR = [44, 44, 44, 240]           # #2C2C2C near-opaque
+BRIDGE_COLOUR = [80, 82, 88, 255]            # lighter grey for elevated structures
+BRIDGE_SHADOW_COLOUR = [24, 24, 28, 180]     # shadow under bridge
+LANE_MARKING_COLOUR = [200, 200, 200, 80]   # faint white dashes
+CONFLICT_COLOUR = [255, 200, 0, 220]        # warning yellow
+BACKGROUND_COLOUR = [24, 26, 30]            # dark canvas
 
 METRES_TO_PIXELS_SCALE = 1.0  # 1:1 for metre-based coordinate system
 
@@ -44,18 +46,56 @@ def build_asphalt_layer(
 ) -> pdk.Layer:
     """
     Layer 1 — the physical road surface.
-    Each segment is drawn at its full paved width in dark asphalt grey.
+    At-grade: dark asphalt. Bridge segments: lighter grey + optional shadow.
     """
     data = []
     for seg in network.segments:
         coords = seg.generate_centreline(steps)
+        colour = BRIDGE_COLOUR if getattr(seg, "is_bridge", False) else ASPHALT_COLOUR
         data.append(
             {
                 "path": _centreline_to_path(coords),
                 "width": seg.road_width(),
-                "colour": ASPHALT_COLOUR,
+                "colour": colour,
             }
         )
+    return pdk.Layer(
+        "PathLayer",
+        data=data,
+        get_path="path",
+        get_width="width",
+        get_color="colour",
+        width_scale=1,
+        width_min_pixels=4,
+        width_units="'meters'",
+        rounded=True,
+        billboard=False,
+    )
+
+
+def build_bridge_shadow_layer(
+    network: RoadNetwork,
+    steps: int = 200,
+    shadow_offset: float = 2.0,
+) -> pdk.Layer | None:
+    """
+    Optional layer: draw a slightly wider, darker path under bridge segments
+    to suggest elevation. Returns None if no bridge segments.
+    """
+    data = []
+    for seg in network.segments:
+        if not getattr(seg, "is_bridge", False):
+            continue
+        coords = seg.generate_centreline(steps)
+        data.append(
+            {
+                "path": _centreline_to_path(coords),
+                "width": seg.road_width() + shadow_offset,
+                "colour": BRIDGE_SHADOW_COLOUR,
+            }
+        )
+    if not data:
+        return None
     return pdk.Layer(
         "PathLayer",
         data=data,
@@ -165,11 +205,15 @@ def build_engineering_view(
         bearing=0,
     )
 
-    layers = [
+    layers = []
+    shadow = build_bridge_shadow_layer(network, steps)
+    if shadow is not None:
+        layers.append(shadow)
+    layers.extend([
         build_asphalt_layer(network, steps),
         build_traffic_layer(network, traffic, steps),
         build_conflict_layer(network, steps),
-    ]
+    ])
 
     return pdk.Deck(
         layers=layers,

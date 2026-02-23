@@ -16,6 +16,9 @@ from pydantic import BaseModel, Field, model_validator
 from scipy.interpolate import CubicSpline
 from shapely.geometry import LineString, Point
 
+# Coordinate system: generators use scale ~0.0005 "deg"/m, so 1 coord unit ≈ 2000 m.
+METRES_PER_COORD = 2000.0
+
 
 # ---------------------------------------------------------------------------
 # Value objects
@@ -50,6 +53,7 @@ class RoadSegment(BaseModel):
     num_lanes: int = Field(default=2, ge=1, le=8)
     lane_width_meters: float = Field(default=3.5, gt=0, le=10.0)
     speed_limit_kmh: float = Field(default=60.0, ge=5)
+    is_bridge: bool = Field(default=False, description="True if segment is elevated (higher construction cost)")
 
     # -- computed helpers (not serialised) --
     _geometry_cache: LineString | None = None
@@ -104,6 +108,15 @@ class RoadSegment(BaseModel):
     def road_width(self) -> float:
         """Total paved width in metres."""
         return self.num_lanes * self.lane_width_meters
+
+    @property
+    def length_meters(self) -> float:
+        """Centreline length in metres, derived from geometry (assumes METRES_PER_COORD scale)."""
+        return self.as_shapely_line().length * METRES_PER_COORD
+
+    def road_area_sq_meters(self) -> float:
+        """Paved area of this segment in m² (length × width)."""
+        return self.length_meters * self.road_width()
 
     def as_shapely_line(self, steps: int = 200) -> LineString:
         """Shapely LineString of the centreline (cached)."""

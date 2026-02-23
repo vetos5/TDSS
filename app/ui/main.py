@@ -22,12 +22,16 @@ import streamlit as st
 import pandas as pd
 
 from app.application.traffic_engine import TrafficState
+from app.domain.models import InterchangeMetrics
 from app.infrastructure.generators import (
     CloverleafGenerator,
     DDIGenerator,
     RoundaboutGenerator,
+    SPUIGenerator,
+    TurbineGenerator,
 )
 from app.ui.visualizations.cad_renderer import build_engineering_view
+from app.ui.visualizations.radar_chart import build_radar_figure
 
 # ---------------------------------------------------------------------------
 # Page config
@@ -73,7 +77,7 @@ st.sidebar.title("⚙️ Engineering Parameters")
 
 interchange_type = st.sidebar.selectbox(
     "Interchange Type",
-    ["Cloverleaf", "Diverging Diamond (DDI)", "Roundabout"],
+    ["Cloverleaf", "Diverging Diamond (DDI)", "Roundabout", "SPUI", "Turbine"],
     index=0,
 )
 
@@ -93,6 +97,19 @@ elif interchange_type == "Diverging Diamond (DDI)":
     lane_width = st.sidebar.slider("Lane width (m)", 2.5, 5.0, 3.5, 0.1)
     mainline_lanes = st.sidebar.slider("Mainline lanes", 2, 6, 3)
     arterial_lanes = st.sidebar.slider("Arterial lanes", 1, 4, 2)
+
+elif interchange_type == "SPUI":
+    leg_length = st.sidebar.slider("Leg length (m)", 40.0, 150.0, 80.0, 10.0)
+    lane_width = st.sidebar.slider("Lane width (m)", 2.5, 5.0, 3.5, 0.1)
+    mainline_lanes = st.sidebar.slider("Mainline lanes", 2, 6, 3)
+    arterial_lanes = st.sidebar.slider("Arterial lanes", 1, 4, 2)
+
+elif interchange_type == "Turbine":
+    spiral_radius = st.sidebar.slider("Spiral radius (m)", 50.0, 150.0, 80.0, 10.0)
+    turbine_length = st.sidebar.slider("Mainline length (m)", 300.0, 600.0, 400.0, 50.0)
+    lane_width = st.sidebar.slider("Lane width (m)", 2.5, 5.0, 3.5, 0.1)
+    mainline_lanes = st.sidebar.slider("Mainline lanes", 2, 6, 3)
+    ramp_lanes = st.sidebar.slider("Ramp lanes", 1, 2, 1)
 
 else:  # Roundabout
     roundabout_radius = st.sidebar.slider("Roundabout radius (m)", 15.0, 80.0, 30.0, 5.0)
@@ -133,6 +150,21 @@ elif interchange_type == "Diverging Diamond (DDI)":
         mainline_lanes=mainline_lanes,
         arterial_lanes=arterial_lanes,
     )
+elif interchange_type == "SPUI":
+    gen = SPUIGenerator(
+        leg_length=leg_length,
+        lane_width=lane_width,
+        mainline_lanes=mainline_lanes,
+        arterial_lanes=arterial_lanes,
+    )
+elif interchange_type == "Turbine":
+    gen = TurbineGenerator(
+        spiral_radius=spiral_radius,
+        mainline_length=turbine_length,
+        lane_width=lane_width,
+        mainline_lanes=mainline_lanes,
+        ramp_lanes=ramp_lanes,
+    )
 else:
     gen = RoundaboutGenerator(
         radius=roundabout_radius,
@@ -148,59 +180,77 @@ network = gen.generate()
 # Apply uniform traffic volume to all segments
 volumes = {seg.id: float(global_volume) for seg in network.segments}
 traffic = TrafficState.from_network(network, volumes)
+metrics = InterchangeMetrics(network=network)
 
 # ---------------------------------------------------------------------------
-# Main view — title + map
+# Tabs: Engineering View | Analytics (Client View)
 # ---------------------------------------------------------------------------
 
-st.title(f"🛣️ TDSS — {interchange_type} Interchange")
+st.title(f"TDSS — {interchange_type} Interchange")
 
-col_map, col_info = st.columns([7, 3])
+tab_engineering, tab_analytics = st.tabs(["Engineering View", "Analytics (Client View)"])
 
-with col_map:
-    st.subheader("Engineering View")
-    deck = build_engineering_view(
-        network, traffic, steps=spline_steps, zoom=map_zoom,
-    )
-    st.pydeck_chart(deck, use_container_width=True, height=620)
+with tab_engineering:
+    col_map, col_info = st.columns([7, 3])
 
-with col_info:
-    st.subheader("Network Summary")
+    with col_map:
+        st.subheader("Engineering View")
+        deck = build_engineering_view(
+            network, traffic, steps=spline_steps, zoom=map_zoom,
+        )
+        st.pydeck_chart(deck, use_container_width=True, height=620)
 
-    total_capacity = sum(s.capacity_veh_h for s in traffic.segment_states.values())
-    avg_vc = (
-        sum(s.vc_ratio for s in traffic.segment_states.values())
-        / max(len(traffic.segment_states), 1)
-    )
-    total_segments = len(network.segments)
-    conflicts = network.find_intersections(spline_steps)
+    with col_info:
+        st.subheader("Network Summary")
 
-    c1, c2 = st.columns(2)
-    c1.metric("Segments", total_segments)
-    c2.metric("Conflict Points", len(conflicts))
+        total_capacity = sum(s.capacity_veh_h for s in traffic.segment_states.values())
+        avg_vc = (
+            sum(s.vc_ratio for s in traffic.segment_states.values())
+            / max(len(traffic.segment_states), 1)
+        )
+        total_segments = len(network.segments)
+        conflicts = network.find_intersections(spline_steps)
 
-    c3, c4 = st.columns(2)
-    c3.metric("Avg V/C", f"{avg_vc:.2f}")
-    c4.metric("Total Capacity", f"{int(total_capacity):,} veh/h")
+        c1, c2 = st.columns(2)
+        c1.metric("Segments", total_segments)
+        c2.metric("Conflict Points", len(conflicts))
 
-    st.markdown("---")
-    st.subheader("Level of Service (LOS)")
+        c3, c4 = st.columns(2)
+        c3.metric("Avg V/C", f"{avg_vc:.2f}")
+        c4.metric("Total Capacity", f"{int(total_capacity):,} veh/h")
 
-    los_df = pd.DataFrame(traffic.summary_table())
-    if not los_df.empty:
-        def _highlight_los(val):
-            colours = {
-                "A": "background-color: #00C853; color: black",
-                "B": "background-color: #64DD17; color: black",
-                "C": "background-color: #FFD600; color: black",
-                "D": "background-color: #FF6D00; color: white",
-                "E": "background-color: #DD2C00; color: white",
-                "F": "background-color: #6A1B9A; color: white",
-            }
-            return colours.get(val, "")
+        st.metric("Est. construction cost", f"${metrics.cost_usd / 1e6:.2f} M")
+        st.metric("Land footprint", f"{metrics.footprint_hectares:.2f} ha")
 
-        styled = los_df.style.applymap(_highlight_los, subset=["LOS"])
-        st.dataframe(styled, use_container_width=True, hide_index=True)
+        st.markdown("---")
+        st.subheader("Level of Service (LOS)")
+
+        los_df = pd.DataFrame(traffic.summary_table())
+        if not los_df.empty:
+            def _highlight_los(val):
+                colours = {
+                    "A": "background-color: #00C853; color: black",
+                    "B": "background-color: #64DD17; color: black",
+                    "C": "background-color: #FFD600; color: black",
+                    "D": "background-color: #FF6D00; color: white",
+                    "E": "background-color: #DD2C00; color: white",
+                    "F": "background-color: #6A1B9A; color: white",
+                }
+                return colours.get(val, "")
+
+            styled = los_df.style.map(_highlight_los, subset=["LOS"])
+            st.dataframe(styled, use_container_width=True, hide_index=True)
+
+with tab_analytics:
+    st.subheader("Economic & spatial metrics")
+    col_cost, col_land = st.columns(2)
+    col_cost.metric("Estimated construction cost", f"${metrics.cost_usd:,.0f}")
+    col_land.metric("Land footprint", f"{metrics.footprint_hectares:.2f} hectares")
+
+    st.subheader("Radar chart — interchange comparison")
+    st.caption("Axes: Safety, Capacity, Cost (Inverse), Land Use (Inverse), Traffic Flow Speed. Higher is better.")
+    fig = build_radar_figure(interchange_type, metrics, traffic)
+    st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Footer
