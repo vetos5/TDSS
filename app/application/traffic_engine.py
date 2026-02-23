@@ -15,10 +15,6 @@ from pydantic import BaseModel, Field
 from app.domain.geometry import RoadNetwork, RoadSegment
 
 
-# ---------------------------------------------------------------------------
-# BPR function
-# ---------------------------------------------------------------------------
-
 def bpr_travel_time(
     free_flow_time: float,
     volume: float,
@@ -90,12 +86,6 @@ def stress_to_rgba(vc: float) -> Tuple[int, int, int, int]:
         return (r, 0, b, a)
     else:
         return (128, 0, 128, a)
-
-
-# ---------------------------------------------------------------------------
-# Segment-level traffic state
-# ---------------------------------------------------------------------------
-
 class SegmentTrafficState(BaseModel):
     segment_id: str
     volume_veh_h: float = Field(ge=0, description="Demand volume (veh/h)")
@@ -126,12 +116,6 @@ class SegmentTrafficState(BaseModel):
     @property
     def colour_rgba(self) -> Tuple[int, int, int, int]:
         return stress_to_rgba(self.vc_ratio)
-
-
-# ---------------------------------------------------------------------------
-# Network-wide traffic state
-# ---------------------------------------------------------------------------
-
 class TrafficState(BaseModel):
     """Aggregated traffic state for an entire road network."""
 

@@ -17,28 +17,20 @@ from app.application.traffic_engine import TrafficState, stress_to_rgba
 from app.domain.geometry import RoadNetwork
 
 
-# ---------------------------------------------------------------------------
-# Colour / style constants
-# ---------------------------------------------------------------------------
+ASPHALT_COLOUR = [44, 44, 44, 240]
+BRIDGE_COLOUR = [80, 82, 88, 255]
+BRIDGE_SHADOW_COLOUR = [24, 24, 28, 180]
+LANE_MARKING_COLOUR = [200, 200, 200, 80]
+CONFLICT_COLOUR = [255, 200, 0, 220]
+BACKGROUND_COLOUR = [24, 26, 30]
 
-ASPHALT_COLOUR = [44, 44, 44, 240]           # #2C2C2C near-opaque
-BRIDGE_COLOUR = [80, 82, 88, 255]            # lighter grey for elevated structures
-BRIDGE_SHADOW_COLOUR = [24, 24, 28, 180]     # shadow under bridge
-LANE_MARKING_COLOUR = [200, 200, 200, 80]   # faint white dashes
-CONFLICT_COLOUR = [255, 200, 0, 220]        # warning yellow
-BACKGROUND_COLOUR = [24, 26, 30]            # dark canvas
-
-METRES_TO_PIXELS_SCALE = 1.0  # 1:1 for metre-based coordinate system
+METRES_TO_PIXELS_SCALE = 1.0
 
 
 def _centreline_to_path(coords: List[Tuple[float, float]]) -> List[List[float]]:
     """Convert (x, y) tuples to [[x, y]] for pydeck."""
     return [[c[0], c[1]] for c in coords]
 
-
-# ---------------------------------------------------------------------------
-# Layer builders
-# ---------------------------------------------------------------------------
 
 def build_asphalt_layer(
     network: RoadNetwork,
@@ -170,10 +162,6 @@ def build_conflict_layer(
         line_width_min_pixels=1,
     )
 
-
-# ---------------------------------------------------------------------------
-# Composite deck builder
-# ---------------------------------------------------------------------------
 
 def build_engineering_view(
     network: RoadNetwork,

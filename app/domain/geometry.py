@@ -16,13 +16,8 @@ from pydantic import BaseModel, Field, model_validator
 from scipy.interpolate import CubicSpline
 from shapely.geometry import LineString, Point
 
-# Coordinate system: generators use scale ~0.0005 "deg"/m, so 1 coord unit ≈ 2000 m.
 METRES_PER_COORD = 2000.0
 
-
-# ---------------------------------------------------------------------------
-# Value objects
-# ---------------------------------------------------------------------------
 
 class ControlPoint(BaseModel):
     """Single 2-D control point used to define road centrelines."""
@@ -55,7 +50,6 @@ class RoadSegment(BaseModel):
     speed_limit_kmh: float = Field(default=60.0, ge=5)
     is_bridge: bool = Field(default=False, description="True if segment is elevated (higher construction cost)")
 
-    # -- computed helpers (not serialised) --
     _geometry_cache: LineString | None = None
 
     model_config = {"arbitrary_types_allowed": True}
@@ -64,10 +58,6 @@ class RoadSegment(BaseModel):
     def _invalidate_cache(self) -> "RoadSegment":
         object.__setattr__(self, "_geometry_cache", None)
         return self
-
-    # ------------------------------------------------------------------
-    # Core geometry generation
-    # ------------------------------------------------------------------
 
     def generate_centreline(self, steps: int = 200) -> List[Tuple[float, float]]:
         """
@@ -151,11 +141,6 @@ class RoadSegment(BaseModel):
         else:
             factor = 1.0
         return base * self.num_lanes * factor
-
-
-# ---------------------------------------------------------------------------
-# Network aggregate
-# ---------------------------------------------------------------------------
 
 class RoadNetwork(BaseModel):
     """Collection of road segments forming a routable network."""

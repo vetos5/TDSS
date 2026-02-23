@@ -10,6 +10,8 @@ from app.application.traffic_engine import TrafficState, bpr_travel_time, stress
 from app.infrastructure.generators import CloverleafGenerator, DDIGenerator, RoundaboutGenerator
 
 
+
+
 def test_straight_segment():
     seg = RoadSegment(
         id="straight",
@@ -37,7 +39,6 @@ def test_curved_segment():
     )
     pts = seg.generate_centreline(steps=200)
     assert len(pts) == 200
-    # Curve should deviate from the straight x-axis
     y_vals = [p[1] for p in pts]
     assert max(y_vals) > 5.0, "Spline should curve above y=0"
     assert min(y_vals) < -2.0, "Spline should dip below y=0"

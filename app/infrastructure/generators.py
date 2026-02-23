@@ -18,10 +18,6 @@ from shapely.geometry import LineString as _ShapelyLine
 from app.domain.geometry import ControlPoint, RoadNetwork, RoadSegment
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _arc_points(
     cx: float,
     cy: float,
@@ -86,11 +82,6 @@ def _bezier_to_control_points(
     """Translate raw coordinates by (cx, cy) and wrap as ControlPoints."""
     return [ControlPoint(x=c[0] + cx, y=c[1] + cy) for c in coords]
 
-
-# ---------------------------------------------------------------------------
-# Cloverleaf Interchange
-# ---------------------------------------------------------------------------
-
 class CloverleafGenerator:
     """
     Generates a standard 4-loop cloverleaf interchange centred at the origin.
@@ -127,7 +118,6 @@ class CloverleafGenerator:
         r = self.radius * s
         cx, cy = self.cx, self.cy
 
-        # Through-roads
         network.add_segment(RoadSegment(
             id="mainline-EW",
             control_points=_line_points(cx - half, cy, cx + half, cy, n=6),
@@ -143,15 +133,6 @@ class CloverleafGenerator:
             speed_limit_kmh=80,
         ))
 
-        # Loop ramps — one per quadrant
-        quadrants = [
-            ("loop-NE", cx + r, cy + r, math.pi,      math.pi / 2),
-            ("loop-NW", cx - r, cy + r, 0,             math.pi / 2),
-            ("loop-SW", cx - r, cy - r, 0,             -math.pi / 2),
-            ("loop-SE", cx + r, cy - r, math.pi,       -math.pi / 2),
-        ]
-        # NE quadrant: centre at (+r, +r), arc from π → π/2 (sweeps from left to top)
-        # Adjust: for a cloverleaf each loop connects the two mainlines
         quadrant_defs = [
             ("loop-NE", 1,  1,  math.pi,        math.pi * 1.5),
             ("loop-NW", -1, 1,  0.0,             -math.pi * 0.5),
@@ -172,10 +153,6 @@ class CloverleafGenerator:
 
         return network
 
-
-# ---------------------------------------------------------------------------
-# Diverging Diamond Interchange (DDI)
-# ---------------------------------------------------------------------------
 
 class DDIGenerator:
     """
@@ -213,7 +190,6 @@ class DDIGenerator:
         half = self.length / 2 * s
         cx, cy = self.cx, self.cy
 
-        # Freeway mainline (E-W) — at-grade
         network.add_segment(RoadSegment(
             id="freeway",
             control_points=_line_points(cx - half, cy, cx + half, cy, n=6),
@@ -223,10 +199,8 @@ class DDIGenerator:
             is_bridge=False,
         ))
 
-        # Arterial: crossover geometry with Bezier-style control points (smooth S-curve)
         offset = self.length * 0.12 * s
         half_ext = self.length * 0.08 * s
-        # Approach from S: curve into crossover (left side)
         approach_s = [
             ControlPoint(x=cx, y=cy - half),
             ControlPoint(x=cx - half_ext * 0.3, y=cy - offset),
@@ -241,7 +215,6 @@ class DDIGenerator:
             speed_limit_kmh=50,
             is_bridge=False,
         ))
-        # Bridge segment over freeway (crossover)
         bridge_pts = [
             ControlPoint(x=cx - half_ext, y=cy),
             ControlPoint(x=cx, y=cy + offset * 0.3),
@@ -255,7 +228,6 @@ class DDIGenerator:
             speed_limit_kmh=50,
             is_bridge=True,
         ))
-        # Departure to N
         depart_n = [
             ControlPoint(x=cx + half_ext, y=cy),
             ControlPoint(x=cx + half_ext, y=cy + offset * 0.4),
@@ -271,9 +243,6 @@ class DDIGenerator:
             is_bridge=False,
         ))
 
-        # Diamond ramps (Bezier with G1 at both endpoints)
-        # G1 at freeway: tangent perpendicular to freeway (pure N/S)
-        # G1 at arterial: tangent along arterial direction (toward centre)
         ramp_offset = self.length * 0.22 * s
         tangent_len = offset * 0.6
         ramp_defs = [
@@ -299,10 +268,6 @@ class DDIGenerator:
 
         return network
 
-
-# ---------------------------------------------------------------------------
-# Roundabout
-# ---------------------------------------------------------------------------
 
 class RoundaboutGenerator:
     """
@@ -337,7 +302,6 @@ class RoundaboutGenerator:
         arm_len = self.arm_length * s
         cx, cy = self.cx, self.cy
 
-        # Circulatory roadway — full circle split into arcs between entry angles
         entry_angles = [2 * math.pi * i / self.num_entries for i in range(self.num_entries)]
 
         for i in range(self.num_entries):
@@ -354,14 +318,12 @@ class RoundaboutGenerator:
                 speed_limit_kmh=30,
             ))
 
-        # Approach / departure arms
         for i, angle in enumerate(entry_angles):
             tip_x = cx + (r + arm_len) * math.cos(angle)
             tip_y = cy + (r + arm_len) * math.sin(angle)
             entry_x = cx + r * math.cos(angle)
             entry_y = cy + r * math.sin(angle)
 
-            # Slight flare: offset the arm to create a gentle entry curve
             mid_x = cx + (r + arm_len * 0.3) * math.cos(angle + 0.05)
             mid_y = cy + (r + arm_len * 0.3) * math.sin(angle + 0.05)
 
@@ -379,10 +341,6 @@ class RoundaboutGenerator:
 
         return network
 
-
-# ---------------------------------------------------------------------------
-# Single Point Urban Interchange (SPUI)
-# ---------------------------------------------------------------------------
 
 class SPUIGenerator:
     """
@@ -413,7 +371,6 @@ class SPUIGenerator:
         L = self.leg_length * s
         cx, cy = self.cx, self.cy
 
-        # Freeway (E-W) at-grade through the middle
         network.add_segment(RoadSegment(
             id="freeway",
             control_points=_line_points(cx - L * 1.5, cy, cx + L * 1.5, cy, n=6),
@@ -423,7 +380,6 @@ class SPUIGenerator:
             is_bridge=False,
         ))
 
-        # Central bridge (single point): compact diamond over the freeway
         r = L * 0.35
         bridge_pts = [
             ControlPoint(x=cx - r, y=cy),
@@ -445,7 +401,6 @@ class SPUIGenerator:
             is_bridge=True,
         ))
 
-        # Four approach/departure legs to the bridge
         for i, (dx, dy) in enumerate([(0, -1), (1, 0), (0, 1), (-1, 0)]):
             ax = cx + dx * (r + L * 0.5)
             ay = cy + dy * (r + L * 0.5)
@@ -460,7 +415,6 @@ class SPUIGenerator:
                 is_bridge=False,
             ))
 
-        # Ramps from freeway to bridge
         ramp_offsets = [(1, 0, L * 0.4), (1, 0, -L * 0.4), (-1, 0, L * 0.4), (-1, 0, -L * 0.4)]
         for i, (sx, sy, off) in enumerate(ramp_offsets):
             x0, y0 = cx + sx * L * 0.5, cy + off
@@ -480,10 +434,6 @@ class SPUIGenerator:
 
         return network
 
-
-# ---------------------------------------------------------------------------
-# Turbine Interchange (Cubic Bezier with G1 continuity)
-# ---------------------------------------------------------------------------
 
 class TurbineGenerator:
     """
@@ -528,7 +478,6 @@ class TurbineGenerator:
         half = self.mainline_length / 2 * s
         cx, cy = self.cx, self.cy
 
-        # ---- mainlines (unchanged) ----
         network.add_segment(RoadSegment(
             id="mainline-EW",
             control_points=_line_points(cx - half, cy, cx + half, cy, n=6),
@@ -546,17 +495,12 @@ class TurbineGenerator:
             is_bridge=False,
         ))
 
-        # ---- Bezier ramp geometry (local coords, origin = interchange centre) ----
-        # Lane offset from road centreline: half mainline width + half ramp width
         lane_off = (self.mainline_lanes * self.lane_width / 2
                     + self.ramp_lanes * self.lane_width / 2) * s
-        start_d = self.mainline_length * 0.38 * s   # departure point
-        end_d = self.mainline_length * 0.38 * s      # merge point
-        sweep = self.spiral_radius * 1.0 * s         # tangent handle magnitude
+        start_d = self.mainline_length * 0.38 * s
+        end_d = self.mainline_length * 0.38 * s
+        sweep = self.spiral_radius * 1.0 * s
 
-        # Canonical ramp: S → W  (starts heading North, ends heading West)
-        #   G1 at P0: P1-P0 = (0, +dy)  → pure North
-        #   G1 at P3: P3-P2 = (-dx, 0)  → pure West (requires sweep < end_d)
         p0 = (lane_off, -start_d)
         p1 = (lane_off, sweep)
         p2 = (-sweep, lane_off)

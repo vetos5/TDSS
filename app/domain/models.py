@@ -15,9 +15,8 @@ from shapely.ops import unary_union
 from app.domain.geometry import METRES_PER_COORD, RoadNetwork
 
 
-# Unit costs (USD): asphalt at-grade, bridge/structure (7× asphalt)
 UNIT_COST_ASPHALT_PER_SQ_M = 500.0
-UNIT_COST_BRIDGE_PER_SQ_M = 3500.0  # 7 × 500
+UNIT_COST_BRIDGE_PER_SQ_M = 3500.0
 
 
 @dataclass
@@ -61,7 +60,6 @@ class InterchangeMetrics:
             return 0.0
         hull = union.convex_hull
         area_sq_coord = hull.area
-        # Convert coord² to m² then to hectares (1 ha = 10 000 m²)
         area_sq_m = area_sq_coord * (METRES_PER_COORD ** 2)
         return area_sq_m / 10_000.0
 

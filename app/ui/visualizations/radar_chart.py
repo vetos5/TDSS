@@ -25,7 +25,6 @@ def _normalize(x: float, x_min: float, x_max: float, inverse: bool = False) -> f
         t = 1.0 - t
     return t * 100.0
 
-
 def compute_radar_scores(
     interchange_type: str,
     metrics: InterchangeMetrics,
@@ -42,9 +41,8 @@ def compute_radar_scores(
     if n:
         avg_speed = sum(s.free_flow_speed_kmh for s in traffic.segment_states.values()) / n
 
-    # Reference ranges for normalization (typical bounds)
     cost_lo, cost_hi = 1e6, 50e6
-    foot_lo, foot_hi = 1.0, 50.0  # hectares
+    foot_lo, foot_hi = 1.0, 50.0
     cap_lo, cap_hi = 2000, 25000
     speed_lo, speed_hi = 30, 120
 
@@ -53,7 +51,6 @@ def compute_radar_scores(
     land_score = _normalize(footprint, foot_lo, foot_hi, inverse=True)
     speed_score = _normalize(avg_speed, speed_lo, speed_hi, inverse=False)
 
-    # Safety: heuristic by type (DDI/SPUI typically higher; cloverleaf weaving lower)
     safety_heuristic = {
         "Cloverleaf": 55,
         "Diverging Diamond (DDI)": 88,
