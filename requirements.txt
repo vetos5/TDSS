@@ -6,3 +6,4 @@ pydeck>=0.9
 streamlit>=1.31
 streamlit-shadcn-ui>=0.1
 pandas>=2.1
+svgpathtools>=1.6.1
