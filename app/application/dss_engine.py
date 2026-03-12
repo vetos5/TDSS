@@ -2,6 +2,18 @@
 Decision Support System — Weighted Sum Model (WSM) for transport
 interchange evaluation.
 
+Architectural Role (Decoupled Architecture)
+--------------------------------------------
+This module is the *pure Logic Layer*.  It knows nothing about SVG files,
+geometric parsers, databases, or UI frameworks.  It receives plain Python
+data structures and returns plain Python data structures.  This isolation
+makes the MCDA engine independently testable and reusable across any
+front-end or data source.
+
+    DATA  → app.data.interchange_data   (expert constants, no I/O)
+    LOGIC → app.application.dss_engine  (THIS FILE — pure maths only)
+    VIEW  → app.ui.main                 (Streamlit UI, no calculations)
+
 Academic context (MCDA)
 -----------------------
 Multi-Criteria Decision Analysis (MCDA) provides a structured framework
@@ -91,8 +103,9 @@ class Alternative:
         Display label (e.g. ``"Cloverleaf"``, ``"Roundabout"``).
     raw_values :
         Mapping of ``criterion_name → raw numeric value`` for this
-        alternative.  Values are typically populated by combining dynamic
-        SVG-geometry metrics with hardcoded expert estimates.
+        alternative.  In the decoupled architecture these values come
+        exclusively from the expert data layer (``app.data``), not from
+        any geometric parser or SVG file.
     description :
         Optional free-text description for the UI.
     """
@@ -138,8 +151,8 @@ class DecisionSupportSystem:
     Typical workflow
     ----------------
     1. Instantiate with a list of ``Criterion`` objects (names + directions).
-    2. Build ``Alternative`` objects and populate their ``raw_values`` dicts
-       with both dynamically-computed SVG metrics and expert-preset values.
+    2. Build ``Alternative`` objects whose ``raw_values`` dicts are populated
+       by the data layer (``app.data.interchange_data``) — not by any parser.
     3. Call ``evaluate(alternatives, weights)`` to obtain a ranked list of
        ``EvaluationResult`` objects.
 
