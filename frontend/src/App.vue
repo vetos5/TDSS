@@ -34,8 +34,16 @@ watch(
 </script>
 
 <template>
-  <div class="min-h-screen transition-colors duration-200"
-       :class="dark ? 'bg-slate-900 text-slate-200' : 'bg-slate-50 text-slate-900'">
+  <div class="relative min-h-screen overflow-hidden transition-colors duration-200"
+       :class="dark ? 'bg-slate-900 text-slate-200' : 'bg-[#F5F5F7] text-slate-900'">
+
+    <!-- Global ambient blobs (light mode glassmorphism backdrop) -->
+    <div v-if="!dark" class="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+      <div class="absolute -top-32 left-1/4 h-[480px] w-[480px] rounded-full bg-blue-200/60 blur-[120px]"></div>
+      <div class="absolute top-1/3 -right-24 h-[420px] w-[420px] rounded-full bg-rose-200/60 blur-[120px]"></div>
+      <div class="absolute bottom-0 left-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-violet-200/40 blur-[140px]"></div>
+    </div>
+
     <div class="flex">
       <Sidebar :dark="dark" :dss="dss" @toggle-theme="toggle" />
 
