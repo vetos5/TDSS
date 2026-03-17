@@ -74,14 +74,14 @@ function radarData() {
     data: traces,
     layout: {
       polar: {
-        bgcolor: p ? '#1e293b' : '#ffffff',
+        bgcolor: 'rgba(0,0,0,0)',
         radialaxis: { visible: true, range: [0, 1], tickvals: [0.25, 0.5, 0.75, 1], tickfont: { size: 10, color: p ? '#94a3b8' : '#334155' }, gridcolor: p ? '#334155' : '#cbd5e1' },
-        angularaxis: { tickfont: { size: 11, color: p ? '#e2e8f0' : '#0f172a' }, gridcolor: p ? '#334155' : '#cbd5e1', rotation: 90, direction: 'clockwise' },
+        angularaxis: { tickfont: { size: 12, color: p ? '#e2e8f0' : '#0f172a' }, gridcolor: p ? '#334155' : '#cbd5e1', rotation: 90, direction: 'clockwise' },
       },
-      paper_bgcolor: p ? '#1e293b' : '#f8fafc', plot_bgcolor: p ? '#1e293b' : '#f8fafc',
+      paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
       font: { family: 'Inter, system-ui, sans-serif', color: p ? '#e2e8f0' : '#0f172a', size: 12 },
-      legend: { orientation: 'h', y: -0.15, x: 0.5, xanchor: 'center', font: { size: 11 }, bgcolor: 'rgba(0,0,0,0)' },
-      margin: { l: 16, r: 16, t: 48, b: 16 },
+      legend: { orientation: 'h', y: -0.18, x: 0.5, xanchor: 'center', font: { size: 11 }, bgcolor: 'rgba(0,0,0,0)' },
+      margin: { l: 56, r: 56, t: 56, b: 56 },
       title: { text: `Normalised Criterion Profile — Top ${results.length}`, font: { size: 15 }, x: 0.02 },
       height: 420,
     },
@@ -91,6 +91,8 @@ function radarData() {
 function barChartData() {
   const ordered = [...props.data.results].sort((a, b) => a.total_score - b.total_score)
   const p = props.dark
+  const maxLabelLen = Math.max(...ordered.map(r => r.alternative_name.length))
+  const leftMargin = Math.max(160, maxLabelLen * 11)
   return {
     data: [{
       type: 'bar', orientation: 'h',
@@ -102,11 +104,11 @@ function barChartData() {
       hovertemplate: '<b>%{y}</b><br>WSM Score: <b>%{x:.4f}</b><extra></extra>',
     }],
     layout: {
-      paper_bgcolor: p ? '#1e293b' : '#f8fafc', plot_bgcolor: p ? '#1e293b' : '#f8fafc',
+      paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
       font: { family: 'Inter, system-ui, sans-serif', color: p ? '#e2e8f0' : '#0f172a', size: 12 },
       xaxis: { title: 'WSM Composite Score', range: [0, 1.22], gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { color: p ? '#94a3b8' : '#334155' } },
-      yaxis: { gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { size: 12, color: p ? '#e2e8f0' : '#0f172a' } },
-      margin: { l: 16, r: 16, t: 48, b: 16 },
+      yaxis: { gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { size: 12, color: p ? '#e2e8f0' : '#0f172a' }, automargin: true, ticksuffix: '  ' },
+      margin: { l: leftMargin, r: 80, t: 48, b: 48 },
       title: { text: 'WSM Score Ranking', font: { size: 15 }, x: 0.02 },
       showlegend: false, height: 300,
     },
@@ -118,6 +120,8 @@ function stackedBarData() {
   const keys = Object.keys(props.data.results[0].weighted_scores)
   const COLORS = props.dark ? ['#2dd4bf', '#fb923c', '#a78bfa', '#60a5fa'] : ['#0f766e', '#ea580c', '#7c3aed', '#1d4ed8']
   const p = props.dark
+  const maxLabelLen = Math.max(...ordered.map(r => r.alternative_name.length))
+  const leftMargin = Math.max(160, maxLabelLen * 11)
   return {
     data: keys.map((k, i) => ({
       type: 'bar', orientation: 'h',
@@ -129,12 +133,12 @@ function stackedBarData() {
     })),
     layout: {
       barmode: 'stack',
-      paper_bgcolor: p ? '#1e293b' : '#f8fafc', plot_bgcolor: p ? '#1e293b' : '#f8fafc',
+      paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
       font: { family: 'Inter, system-ui, sans-serif', color: p ? '#e2e8f0' : '#0f172a', size: 12 },
       xaxis: { title: 'Summed Weighted Contribution', range: [0, 1.08], gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { color: p ? '#94a3b8' : '#334155' } },
-      yaxis: { gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { size: 12, color: p ? '#e2e8f0' : '#0f172a' } },
-      legend: { orientation: 'h', y: 1.02, x: 0.5, xanchor: 'center', font: { size: 11 }, bgcolor: 'rgba(0,0,0,0)' },
-      margin: { l: 16, r: 16, t: 88, b: 32 },
+      yaxis: { gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { size: 12, color: p ? '#e2e8f0' : '#0f172a' }, automargin: true, ticksuffix: '  ' },
+      legend: { orientation: 'h', y: 1.08, x: 0.5, xanchor: 'center', font: { size: 11 }, bgcolor: 'rgba(0,0,0,0)' },
+      margin: { l: leftMargin, r: 24, t: 72, b: 48 },
       title: { text: 'Weighted Contribution Breakdown', font: { size: 15 }, x: 0.02 },
       height: 340,
     },
@@ -425,11 +429,26 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
 
     <!-- Charts -->
     <div class="grid grid-cols-2 gap-6 mb-6">
-      <PlotlyChart :chart="radarData()" :dark="dark" />
-      <PlotlyChart :chart="barChartData()" :dark="dark" />
+      <div class="rounded-[28px] overflow-hidden backdrop-blur-2xl"
+           :class="dark
+             ? 'bg-white/[0.06] border border-white/10'
+             : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
+        <PlotlyChart :chart="radarData()" :dark="dark" />
+      </div>
+      <div class="rounded-[28px] overflow-hidden backdrop-blur-2xl"
+           :class="dark
+             ? 'bg-white/[0.06] border border-white/10'
+             : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
+        <PlotlyChart :chart="barChartData()" :dark="dark" />
+      </div>
     </div>
 
-    <PlotlyChart :chart="stackedBarData()" :dark="dark" class="mb-6" />
+    <div class="rounded-[28px] overflow-hidden backdrop-blur-2xl mb-6"
+         :class="dark
+           ? 'bg-white/[0.06] border border-white/10'
+           : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
+      <PlotlyChart :chart="stackedBarData()" :dark="dark" />
+    </div>
 
     <hr class="mb-6" :class="dark ? 'border-slate-700' : 'border-black/5'" />
 
