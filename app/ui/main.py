@@ -31,10 +31,12 @@ import streamlit as st
 from app.application.dss_engine import DecisionSupportSystem, EvaluationResult
 from app.data.interchange_data import (
     ALTERNATIVE_COLORS,
-    ALTERNATIVES,
+    ALTERNATIVE_COLORS_DARK,
     BLUEPRINT_PATHS,
     CRITERIA,
     CRITERION_LABELS,
+    INTERCHANGE_DATA,
+    get_alternatives_for_context,
 )
 from app.ui.charts import (
     create_contribution_stacked_bar,
@@ -173,16 +175,50 @@ def _build_css(t: dict) -> str:
         background: {t["card_bg"]}; border: 1px solid {t["card_border"]};
         border-radius: 14px; padding: 18px 10px; text-align: center;
         box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-        transition: box-shadow 0.2s, transform 0.2s;
+        transition: box-shadow 0.25s, transform 0.25s, border-color 0.25s;
+        position: relative;
     }}
-    .rank-card:hover {{ box-shadow: 0 6px 20px rgba(15,118,110,0.16); transform: translateY(-2px); }}
-    .rank-card.winner {{ border-color: {t["winner_border"]}; border-width: 2px; }}
+    .rank-card:hover {{
+        box-shadow: 0 8px 28px rgba(15,118,110,0.22);
+        transform: translateY(-4px);
+        border-color: {t["accent"]};
+    }}
+    .rank-card.winner {{
+        border-color: {t["winner_border"]}; border-width: 2px;
+        transform: scale(1.03);
+        box-shadow: 0 4px 24px rgba(45,212,191,0.18);
+    }}
+    .rank-card.winner:hover {{
+        transform: scale(1.05) translateY(-3px);
+        box-shadow: 0 10px 36px rgba(45,212,191,0.28);
+    }}
+
+    /* ── Score progress bar ── */
+    .score-bar-bg {{
+        width: 80%; height: 5px; background: {t["card_border"]};
+        border-radius: 3px; overflow: hidden; margin: 6px auto 0;
+    }}
+    .score-bar-fill {{ height: 100%; border-radius: 3px; transition: width 0.4s ease; }}
+
+    /* ── Rank badge ── */
+    .rank-badge {{
+        display: inline-flex; align-items: center; justify-content: center;
+        gap: 3px; padding: 3px 10px; border-radius: 20px;
+        font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em;
+        text-transform: uppercase; line-height: 1.4;
+    }}
 
     /* ── Blueprint cards ── */
     .bp-card {{
         background: {t["card_bg"]}; border: 1px solid {t["card_border"]};
         border-radius: 12px; padding: 16px; text-align: center;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        transition: box-shadow 0.25s, transform 0.25s, border-color 0.25s;
+    }}
+    .bp-card:hover {{
+        box-shadow: 0 6px 20px rgba(15,118,110,0.16);
+        transform: translateY(-2px);
+        border-color: {t["accent"]};
     }}
 
     /* ── Sidebar weight bars ── */
@@ -227,13 +263,29 @@ st.markdown(_build_css(T), unsafe_allow_html=True)
 def _svg_img(name: str, width: str = "100%", max_h: str = "180px") -> str:
     path = _ROOT / BLUEPRINT_PATHS.get(name, "")
     if path.exists():
+        mime = "image/png" if path.suffix.lower() == ".png" else "image/svg+xml"
         b64 = base64.b64encode(path.read_bytes()).decode()
         return (
-            f'<img src="data:image/svg+xml;base64,{b64}" '
+            f'<img src="data:{mime};base64,{b64}" '
             f'width="{width}" style="max-height:{max_h};object-fit:contain;" '
             f'alt="{name} schematic"/>'
         )
     return f'<p style="color:{T["muted"]};font-size:0.78rem">Blueprint not found</p>'
+
+
+def _alt_color(name: str) -> str:
+    """Return the alternative colour appropriate for the active theme."""
+    if dark_mode:
+        return ALTERNATIVE_COLORS_DARK.get(name, "#e2e8f0")
+    return ALTERNATIVE_COLORS.get(name, "#0f766e")
+
+
+_RANK_BADGE_COLORS = {
+    1: ("#fbbf24", "#78350f"),  # gold bg, dark text
+    2: ("#cbd5e1", "#1e293b"),  # silver bg, dark text
+    3: ("#d6a06c", "#422006"),  # bronze bg, dark text
+}
+_RANK_ICONS = {1: "\U0001F3C6", 2: "\U0001F948", 3: "\U0001F949"}
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +293,22 @@ def _svg_img(name: str, width: str = "100%", max_h: str = "180px") -> str:
 # ---------------------------------------------------------------------------
 
 with st.sidebar:
+    # ── Context selector ─────────────────────────────────────────────────────
+    st.markdown(
+        f"<hr style='margin:10px 0;border-color:{T['divider']}'>"
+        f"<p style='color:{T['text']};font-weight:700;font-size:1rem;margin-bottom:4px'>"
+        "Task Context</p>"
+        f"<p style='color:{T['muted']};font-size:0.78rem;margin-bottom:8px'>"
+        "Select the interchange type category to compare alternatives.</p>",
+        unsafe_allow_html=True,
+    )
+    selected_context: str = st.selectbox(
+        "Select task context",
+        options=list(INTERCHANGE_DATA.keys()),
+        label_visibility="collapsed",
+    )
+
+    # ── Criteria weights ─────────────────────────────────────────────────────
     st.markdown(
         f"<hr style='margin:10px 0;border-color:{T['divider']}'>"
         f"<p style='color:{T['text']};font-weight:700;font-size:1rem;margin-bottom:4px'>"
@@ -268,6 +336,71 @@ with st.sidebar:
         norm_w: dict[str, float] = {k: 0.25 for k in raw_w}
     else:
         norm_w = {k: v / total_raw for k, v in raw_w.items()}
+
+    # ── Project Parameters ────────────────────────────────────────────────
+    st.markdown(
+        f"<hr style='margin:10px 0;border-color:{T['divider']}'>"
+        f"<p style='color:{T['text']};font-weight:700;font-size:1rem;margin-bottom:4px'>"
+        "Project Parameters</p>"
+        f"<p style='color:{T['muted']};font-size:0.78rem;margin-bottom:12px'>"
+        "Define site-specific constraints and traffic characteristics.</p>",
+        unsafe_allow_html=True,
+    )
+
+    param_design_speed = st.select_slider(
+        "Design Speed (km/h)",
+        options=[60, 80, 100, 120, 140],
+        value=100,
+    )
+    param_aadt = st.number_input(
+        "AADT (Annual Average Daily Traffic)",
+        min_value=1_000,
+        max_value=200_000,
+        value=45_000,
+        step=5_000,
+        help="Estimated average daily traffic volume on the main route.",
+    )
+    param_peak_factor = st.slider(
+        "Peak Hour Factor (K-factor %)",
+        min_value=5,
+        max_value=20,
+        value=10,
+        step=1,
+        format="%d%%",
+        help="Percentage of AADT occurring during the peak hour.",
+    )
+    param_num_lanes = st.select_slider(
+        "Number of Through Lanes (per direction)",
+        options=[1, 2, 3, 4, 5],
+        value=2,
+    )
+    param_budget = st.number_input(
+        "Budget Constraint (M USD)",
+        min_value=0.0,
+        max_value=500.0,
+        value=100.0,
+        step=5.0,
+        help="Maximum allowable construction budget.",
+    )
+    param_land_limit = st.number_input(
+        "Available Land (ha)",
+        min_value=0.0,
+        max_value=100.0,
+        value=30.0,
+        step=1.0,
+        help="Maximum available right-of-way area.",
+    )
+    param_terrain = st.selectbox(
+        "Terrain Type",
+        options=["Flat", "Rolling", "Mountainous"],
+        index=0,
+    )
+    param_env_sensitivity = st.select_slider(
+        "Environmental Sensitivity",
+        options=["Low", "Medium", "High", "Critical"],
+        value="Medium",
+        help="Level of environmental constraints at the project site.",
+    )
 
     st.markdown(
         f"<hr style='margin:10px 0;border-color:{T['divider']}'>"
@@ -307,13 +440,16 @@ with st.sidebar:
     st.caption("Data: FHWA (2023) · HCM 7th Ed. · PIARC Road Safety Manual (2022).")
 
 # ---------------------------------------------------------------------------
-# Run WSM evaluation
+# Build filtered alternatives and run WSM evaluation
 # ---------------------------------------------------------------------------
 
-dss     = DecisionSupportSystem(CRITERIA)
-results: list[EvaluationResult] = dss.evaluate(ALTERNATIVES, weights=norm_w)
+filtered_alternatives = get_alternatives_for_context(selected_context)
 
-_RANKS = ["1st", "2nd", "3rd", "4th"]
+dss     = DecisionSupportSystem(CRITERIA)
+results: list[EvaluationResult] = dss.evaluate(filtered_alternatives, weights=norm_w)
+
+_ORDINALS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"]
+_RANKS = _ORDINALS[: len(results)]
 
 # ---------------------------------------------------------------------------
 # Page header
@@ -326,6 +462,8 @@ st.markdown(
     "</p>",
     unsafe_allow_html=True,
 )
+
+# keep selected_context in scope for tab blocks below  (already set in sidebar)
 
 # ---------------------------------------------------------------------------
 # Tabs
@@ -341,29 +479,97 @@ tab_eval, tab_gallery, tab_method = st.tabs(
 
 with tab_eval:
 
+    # ── Context badge + winner success banner ────────────────────────────────
+    _winner      = results[0]
+    _winner_color = _alt_color(_winner.alternative_name)
+    st.markdown(
+        f"<div style='display:inline-block;background:{T['accent_light']};"
+        f"border:1px solid {T['winner_border']};border-radius:8px;"
+        f"padding:4px 12px;margin-bottom:10px'>"
+        f"<span style='color:{T['muted']};font-size:0.78rem;font-weight:600;"
+        f"letter-spacing:0.05em;text-transform:uppercase'>Context: </span>"
+        f"<span style='color:{T['accent']};font-weight:700;font-size:0.88rem'>"
+        f"{selected_context}</span></div>",
+        unsafe_allow_html=True,
+    )
+    st.success(
+        f"**Recommended: {_winner.alternative_name}** — "
+        f"WSM Score {_winner.total_score:.4f}  "
+        f"(rank #1 of {len(results)} alternatives in \"{selected_context}\")"
+    )
+
+    # ── Project parameters summary row ────────────────────────────────────────
+    _p_cols = st.columns(4)
+    _p_cols[0].metric("Design Speed", f"{param_design_speed} km/h")
+    _p_cols[1].metric("AADT", f"{param_aadt:,}")
+    _p_cols[2].metric("Budget Limit", f"${param_budget:.0f}M")
+    _p_cols[3].metric("Land Limit", f"{param_land_limit:.0f} ha")
+
+    _p_cols2 = st.columns(4)
+    _p_cols2[0].metric("Peak Hour Factor", f"{param_peak_factor}%")
+    _p_cols2[1].metric("Lanes / Direction", str(param_num_lanes))
+    _p_cols2[2].metric("Terrain", param_terrain)
+    _p_cols2[3].metric("Env. Sensitivity", param_env_sensitivity)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
     # ── Ranking banner ───────────────────────────────────────────────────────
     st.subheader("WSM Score Ranking")
+
+    _max_score = results[0].total_score if results else 1.0
     rank_cols = st.columns(len(results))
 
     for col, res, rank_label in zip(rank_cols, results, _RANKS):
-        color      = ALTERNATIVE_COLORS.get(res.alternative_name, T["accent"])
+        color      = _alt_color(res.alternative_name)
         card_class = "rank-card winner" if res.rank == 1 else "rank-card"
-        bp_html    = _svg_img(res.alternative_name, width="88%", max_h="96px")
+        bp_html    = _svg_img(res.alternative_name, width="92%", max_h="140px")
+        bar_pct    = int((res.total_score / _max_score) * 100) if _max_score > 0 else 0
+
+        badge_bg, badge_fg = _RANK_BADGE_COLORS.get(res.rank, (T["card_border"], T["subtext"]))
+        badge_icon = _RANK_ICONS.get(res.rank, "")
+        badge_html = (
+            f"<span class='rank-badge' style='background:{badge_bg};color:{badge_fg}'>"
+            f"{badge_icon} {rank_label}</span>"
+        )
 
         with col:
             st.markdown(
                 f"<div class='{card_class}'>"
-                f"<div style='font-size:0.75rem;font-weight:600;color:{T['muted']};letter-spacing:0.05em;text-transform:uppercase'>"
-                f"{rank_label}</div>"
-                f"<div style='color:{color};font-weight:700;font-size:0.92rem;margin:6px 0 8px'>"
+                f"<div style='margin-bottom:6px'>{badge_html}</div>"
+                f"<div style='color:{color};font-weight:700;font-size:0.95rem;margin:4px 0 8px'>"
                 f"{res.alternative_name}</div>"
                 f"{bp_html}"
                 f"<div style='color:{T['text']};font-size:1.35rem;font-weight:800;margin-top:10px'>"
                 f"{res.total_score:.4f}</div>"
                 f"<div style='color:{T['muted']};font-size:0.7rem'>WSM Score</div>"
+                f"<div class='score-bar-bg'>"
+                f"<div class='score-bar-fill' style='width:{bar_pct}%;background:{color}'></div>"
+                f"</div>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
+
+            with st.expander("Criterion breakdown", expanded=False):
+                for key in dss.criterion_names():
+                    crit_obj = next(c for c in CRITERIA if c.name == key)
+                    w_score  = res.weighted_scores[key]
+                    n_score  = res.normalised_values[key]
+                    raw_val  = res.raw_values[key]
+                    c_pct    = int(n_score * 100)
+                    st.markdown(
+                        f"<div style='margin:4px 0'>"
+                        f"<div style='display:flex;justify-content:space-between;font-size:0.75rem'>"
+                        f"<span style='color:{T['subtext']}'>{CRITERION_LABELS[key]}</span>"
+                        f"<span style='color:{T['text']};font-weight:600'>{raw_val} {crit_obj.unit}</span>"
+                        f"</div>"
+                        f"<div class='score-bar-bg' style='width:100%'>"
+                        f"<div class='score-bar-fill' style='width:{c_pct}%;background:{color}'></div>"
+                        f"</div>"
+                        f"<div style='font-size:0.65rem;color:{T['muted']};text-align:right'>"
+                        f"norm {n_score:.3f} &rarr; w&middot;x&#772; = {w_score:.4f}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -450,10 +656,34 @@ with tab_gallery:
 
     st.subheader("Interchange Schematic Blueprints")
 
+    # ── Project parameters summary ────────────────────────────────────────────
+    st.markdown(
+        f"<div style='background:{T['card_bg']};border:1px solid {T['card_border']};"
+        f"border-radius:10px;padding:14px 18px;margin-bottom:18px'>"
+        f"<div style='color:{T['muted']};font-size:0.72rem;font-weight:600;"
+        f"letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px'>Project Parameters</div>"
+        f"<div style='display:flex;flex-wrap:wrap;gap:16px'>"
+        f"<span style='color:{T['subtext']};font-size:0.82rem'>Design Speed: <b style='color:{T['text']}'>{param_design_speed} km/h</b></span>"
+        f"<span style='color:{T['subtext']};font-size:0.82rem'>AADT: <b style='color:{T['text']}'>{param_aadt:,}</b></span>"
+        f"<span style='color:{T['subtext']};font-size:0.82rem'>Peak Factor: <b style='color:{T['text']}'>{param_peak_factor}%</b></span>"
+        f"<span style='color:{T['subtext']};font-size:0.82rem'>Lanes: <b style='color:{T['text']}'>{param_num_lanes}/dir</b></span>"
+        f"<span style='color:{T['subtext']};font-size:0.82rem'>Budget: <b style='color:{T['text']}'>${param_budget:.0f}M</b></span>"
+        f"<span style='color:{T['subtext']};font-size:0.82rem'>Land: <b style='color:{T['text']}'>{param_land_limit:.0f} ha</b></span>"
+        f"<span style='color:{T['subtext']};font-size:0.82rem'>Terrain: <b style='color:{T['text']}'>{param_terrain}</b></span>"
+        f"<span style='color:{T['subtext']};font-size:0.82rem'>Env. Sensitivity: <b style='color:{T['text']}'>{param_env_sensitivity}</b></span>"
+        f"</div></div>",
+        unsafe_allow_html=True,
+    )
+
     # ── Winner spotlight ──────────────────────────────────────────────────────
     winner     = results[0]
-    winner_alt = next(a for a in ALTERNATIVES if a.name == winner.alternative_name)
-    w_color    = ALTERNATIVE_COLORS.get(winner.alternative_name, T["accent"])
+    winner_alt = next(a for a in filtered_alternatives if a.name == winner.alternative_name)
+    w_color    = _alt_color(winner.alternative_name)
+
+    _budget_ok = winner.raw_values["construction_cost_mln"] <= param_budget
+    _land_ok   = winner.raw_values["land_area_hectares"] <= param_land_limit
+    _feasibility = "Feasible" if (_budget_ok and _land_ok) else "Exceeds constraints"
+    _feas_color  = T["accent"] if (_budget_ok and _land_ok) else "#ef4444"
 
     col_w, col_detail = st.columns([2, 5], gap="large")
 
@@ -466,7 +696,9 @@ with tab_gallery:
             f"<div style='color:{w_color};font-size:1.15rem;font-weight:800;margin-bottom:2px'>"
             f"{winner.alternative_name}</div>"
             f"<div style='color:{T['text']};font-size:1.6rem;font-weight:700'>WSM {winner.total_score:.4f}</div>"
-            f"<div style='margin:14px 0'>{_svg_img(winner.alternative_name, '100%', '160px')}</div>"
+            f"<div style='margin:14px 0'>{_svg_img(winner.alternative_name, '100%', '260px')}</div>"
+            f"<div style='color:{_feas_color};font-size:0.78rem;font-weight:600;margin-top:6px'>"
+            f"{_feasibility}</div>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -496,29 +728,51 @@ with tab_gallery:
 
     st.markdown(f"<hr style='border-color:{T['divider']}'>", unsafe_allow_html=True)
 
-    # ── All four alternatives in a 4-column grid ──────────────────────────────
+    # ── All alternatives in a responsive grid (max 4 cols) ───────────────────
     st.markdown(
         f"<p style='color:{T['subtext']};font-weight:600;margin-bottom:12px'>All Alternatives</p>",
         unsafe_allow_html=True,
     )
-    bp_cols = st.columns(4, gap="small")
+    _n_cols = min(len(results), 4)
+    bp_cols = st.columns(_n_cols, gap="small")
+
+    _gal_max_score = results[0].total_score if results else 1.0
 
     for col, res in zip(bp_cols, results):
-        color   = ALTERNATIVE_COLORS.get(res.alternative_name, T["accent"])
+        color    = _alt_color(res.alternative_name)
         rank_lbl = _RANKS[res.rank - 1]
-        alt_obj  = next(a for a in ALTERNATIVES if a.name == res.alternative_name)
+        alt_obj  = next(a for a in filtered_alternatives if a.name == res.alternative_name)
+        bar_pct  = int((res.total_score / _gal_max_score) * 100) if _gal_max_score > 0 else 0
+
+        _b_ok = res.raw_values["construction_cost_mln"] <= param_budget
+        _l_ok = res.raw_values["land_area_hectares"] <= param_land_limit
+        _feas_badge = (
+            f"<div style='color:{T['accent']};font-size:0.65rem;margin-top:4px'>&#10003; Feasible</div>"
+            if (_b_ok and _l_ok)
+            else f"<div style='color:#ef4444;font-size:0.65rem;margin-top:4px'>&#10007; Exceeds limits</div>"
+        )
+
+        badge_bg, badge_fg = _RANK_BADGE_COLORS.get(res.rank, (T["card_border"], T["subtext"]))
+        badge_icon = _RANK_ICONS.get(res.rank, "")
+        badge_html = (
+            f"<span class='rank-badge' style='background:{badge_bg};color:{badge_fg}'>"
+            f"{badge_icon} {rank_lbl}</span>"
+        )
 
         with col:
             st.markdown(
                 f"<div class='bp-card'>"
-                f"<div style='color:{T['muted']};font-size:0.7rem;font-weight:600;"
-                f"letter-spacing:0.06em;text-transform:uppercase'>{rank_lbl}</div>"
+                f"<div style='margin-bottom:4px'>{badge_html}</div>"
                 f"<div style='color:{color};font-weight:700;font-size:0.88rem;margin:4px 0'>"
                 f"{res.alternative_name}</div>"
                 f"<div style='color:{T['subtext']};font-size:0.75rem;margin-bottom:10px'>"
                 f"WSM: <b style='color:{T['text']}'>{res.total_score:.4f}</b></div>"
-                f"{_svg_img(res.alternative_name, '100%', '130px')}"
-                f"<div style='color:{T['muted']};font-size:0.7rem;margin-top:8px'>"
+                f"{_svg_img(res.alternative_name, '100%', '210px')}"
+                f"<div class='score-bar-bg' style='margin-top:8px'>"
+                f"<div class='score-bar-fill' style='width:{bar_pct}%;background:{color}'></div>"
+                f"</div>"
+                f"{_feas_badge}"
+                f"<div style='color:{T['muted']};font-size:0.7rem;margin-top:6px'>"
                 f"{alt_obj.description[:90]}\u2026"
                 f"</div>"
                 f"</div>",
@@ -625,13 +879,16 @@ introducing bias.
         )
 
         for res in results:
-            color    = ALTERNATIVE_COLORS.get(res.alternative_name, T["accent"])
+            color    = _alt_color(res.alternative_name)
             rank_lbl = _RANKS[res.rank - 1]
+            badge_bg, badge_fg = _RANK_BADGE_COLORS.get(res.rank, (T["card_border"], T["subtext"]))
+            badge_icon = _RANK_ICONS.get(res.rank, "")
             st.markdown(
                 f"<div style='display:flex;align-items:center;gap:10px;"
                 f"background:{T['card_bg']};border:1px solid {T['card_border']};"
                 f"border-radius:8px;padding:9px 14px;margin-bottom:6px'>"
-                f"<span style='color:{T['muted']};font-size:0.78rem;min-width:28px'>{rank_lbl}</span>"
+                f"<span class='rank-badge' style='background:{badge_bg};color:{badge_fg};font-size:0.68rem'>"
+                f"{badge_icon} {rank_lbl}</span>"
                 f"<span style='color:{color};font-weight:700;flex:1'>{res.alternative_name}</span>"
                 f"<span style='color:{T['text']};font-weight:700'>{res.total_score:.4f}</span>"
                 f"</div>",

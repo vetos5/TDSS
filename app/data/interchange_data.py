@@ -2,8 +2,9 @@
 Decoupled Architecture: Expert Data Layer
 ==========================================
 This module defines ALL interchange alternatives using expert-sourced,
-predefined constants.  It is completely independent of any SVG geometry,
-CAD blueprint parsing, or visual asset processing.
+predefined constants organised into four functional context categories.
+It is completely independent of any SVG geometry, CAD blueprint parsing,
+or visual asset processing.
 
 Architectural Significance (for academic report)
 -------------------------------------------------
@@ -76,104 +77,179 @@ CRITERION_LABELS: Dict[str, str] = {
 }
 
 # ---------------------------------------------------------------------------
-# Alternatives — expert-sourced predefined data
+# Categorised interchange data — INTERCHANGE_DATA
 # ---------------------------------------------------------------------------
-# Raw values are fixed expert estimates drawn from the sources listed above.
-# They are intentionally *not* derived from geometry so that the model
-# remains stable, reproducible, and auditable for academic review.
+# Top-level keys represent the three functional context categories.
+# Inner dict keys are alternative names; values map directly to criterion names
+# used by CRITERIA / DecisionSupportSystem (no short-key aliases needed).
 
-ALTERNATIVES: list[Alternative] = [
-    Alternative(
-        name="Cloverleaf",
-        description=(
-            "Grade-separated 4-loop interchange. High capacity and free-flow "
-            "operations with no traffic signals, but the loop ramp geometry "
-            "creates large land requirements and weaving sections between "
-            "successive on/off ramps reduce safety at high volumes."
-        ),
-        raw_values={
-            # FHWA: complex grade-separated interchange, 4 loop ramps
-            "construction_cost_mln": 45.2,
-            # NCHRP 659: typical footprint ~125 000 m² (12.5 ha)
-            "land_area_hectares":    12.5,
-            # HCM 7th, Ch.14: free-flow, no signals → highest throughput class
+INTERCHANGE_DATA: Dict[str, Dict[str, Dict[str, float]]] = {
+    "System (Highway + Highway)": {
+        "Cloverleaf": {
+            "construction_cost_mln": 15.0,
+            "land_area_hectares":    20.0,
+            "throughput_vph":        4_000.0,
+            "safety_index":          4.0,
+        },
+        "Turbine": {
+            "construction_cost_mln": 45.0,
+            "land_area_hectares":    25.0,
             "throughput_vph":        6_500.0,
-            # PIARC: weaving zones → moderate-risk; below grade-sep average
-            "safety_index":          7.2,
+            "safety_index":          8.0,
         },
-    ),
-    Alternative(
-        name="Diamond",
-        description=(
-            "Standard diamond interchange with four ramp terminals controlled "
-            "by signals or roundabouts at the arterial crossings. "
-            "Cost-effective and compact, but at-grade signal crossings "
-            "introduce delay and limit peak throughput."
-        ),
-        raw_values={
-            # FHWA: simple 2-bridge diamond; lower cost than full grade-sep
-            "construction_cost_mln": 18.4,
-            "land_area_hectares":     4.2,
-            # HCM: signalised ramp terminals reduce effective capacity
-            "throughput_vph":         4_200.0,
-            # AASHTO HSM: at-grade crossings, left-turn conflicts
-            "safety_index":           6.5,
+        "Stack (4-Level)": {
+            "construction_cost_mln": 80.0,
+            "land_area_hectares":    12.0,
+            "throughput_vph":        7_500.0,
+            "safety_index":          9.0,
         },
-    ),
-    Alternative(
-        name="Roundabout",
-        description=(
-            "Modern multi-lane roundabout handling all turning movements via "
-            "yield control. Extremely safe due to a low conflict-point count "
-            "and reduced approach speeds, but throughput is limited compared "
-            "to grade-separated alternatives at high-volume corridors."
-        ),
-        raw_values={
-            # Minimal civil works; no bridges or ramp structures required
-            "construction_cost_mln":  7.8,
-            "land_area_hectares":     1.8,
-            # HCM Ch.22: yield-controlled entry limits peak throughput
-            "throughput_vph":         2_800.0,
-            # AASHTO HSM: lowest crash severity class; single conflict-point type
-            "safety_index":           9.1,
+    },
+    "Service (Highway + Urban)": {
+        "Diamond": {
+            "construction_cost_mln": 10.0,
+            "land_area_hectares":     5.0,
+            "throughput_vph":         2_500.0,
+            "safety_index":           5.0,
         },
-    ),
-    Alternative(
-        name="SPUI",
-        description=(
-            "Single Point Urban Interchange (SPUI): all ramp movements "
-            "converge at one signalised intersection beneath/above the "
-            "freeway. Combines near-cloverleaf throughput with a compact "
-            "urban footprint, making it optimal for constrained corridors "
-            "where land acquisition cost is critical."
-        ),
-        raw_values={
-            # FHWA SPUI Design Guide: elevated structure + single signal point
-            "construction_cost_mln": 28.6,
-            "land_area_hectares":     3.5,
-            # FHWA SPUI Guide: ~5 800 vph through single signal cycle
-            "throughput_vph":         5_800.0,
-            # Grade-separated + signal control → above diamond, below roundabout
-            "safety_index":           7.8,
+        "SPUI": {
+            "construction_cost_mln": 20.0,
+            "land_area_hectares":     4.0,
+            "throughput_vph":         4_500.0,
+            "safety_index":           7.0,
         },
+        "DDI": {
+            "construction_cost_mln": 18.0,
+            "land_area_hectares":     6.0,
+            "throughput_vph":         5_500.0,
+            "safety_index":           9.0,
+        },
+    },
+    "T-Type (3 Directions)": {
+        "Trumpet": {
+            "construction_cost_mln": 12.0,
+            "land_area_hectares":    10.0,
+            "throughput_vph":        3_500.0,
+            "safety_index":          7.0,
+        },
+        "Directional T": {
+            "construction_cost_mln": 35.0,
+            "land_area_hectares":    15.0,
+            "throughput_vph":        5_000.0,
+            "safety_index":          9.0,
+        },
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Alternative descriptions — free-text summaries used in the UI gallery
+# ---------------------------------------------------------------------------
+
+ALTERNATIVE_DESCRIPTIONS: Dict[str, str] = {
+    "Cloverleaf": (
+        "Grade-separated 4-loop interchange. High capacity and free-flow operations with no "
+        "traffic signals, but loop ramp geometry creates large land requirements and weaving "
+        "sections between successive on/off ramps reduce safety at high volumes."
     ),
-]
+    "Turbine": (
+        "Directional interchange with semi-direct ramps arranged in a turbine pattern. "
+        "Eliminates weaving conflicts, delivers superior throughput and safety, but requires "
+        "significant right-of-way and construction investment."
+    ),
+    "Stack (4-Level)": (
+        "Four-level fully directional grade-separated interchange. The highest-capacity and "
+        "safest system interchange type; all movements are direct with no weaving or signal "
+        "delay, at the cost of maximum construction complexity."
+    ),
+    "Diamond": (
+        "Standard diamond interchange with four ramp terminals controlled by signals or "
+        "roundabouts at the arterial crossings. Cost-effective and compact, but at-grade "
+        "signal crossings introduce delay and limit peak throughput."
+    ),
+    "SPUI": (
+        "Single Point Urban Interchange: all ramp movements converge at one signalised "
+        "intersection. Combines near-cloverleaf throughput with a compact urban footprint, "
+        "optimal for constrained corridors where land acquisition cost is critical."
+    ),
+    "DDI": (
+        "Diverging Diamond Interchange: traffic crosses to the opposite side of the road at "
+        "two signalised crossovers, eliminating left-turn conflicts. High throughput and a "
+        "strong safety record in recent North American and European deployments."
+    ),
+    "Trumpet": (
+        "Three-leg interchange with a loop ramp for one turning movement and direct ramps "
+        "for the other two. Common for highway termini; cost-effective with a moderate "
+        "footprint and good safety characteristics."
+    ),
+    "Directional T": (
+        "Three-leg directional interchange using semi-direct flyover ramps. Achieves maximum "
+        "throughput and safety for T-junctions at the cost of higher construction expense "
+        "and right-of-way requirements."
+    ),
+}
 
 # ---------------------------------------------------------------------------
 # Static visual asset paths — display only, NEVER parsed
 # ---------------------------------------------------------------------------
 
 BLUEPRINT_PATHS: Dict[str, str] = {
-    "Cloverleaf": "assets/blueprints/cloverleaf.svg",
-    "Diamond":    "assets/blueprints/diamond.svg",
-    "Roundabout": "assets/blueprints/roundabout.svg",
-    "SPUI":       "assets/blueprints/spui.svg",
+    "Cloverleaf":              "assets/blueprints/cloverleaf.png",
+    "Turbine":                 "assets/blueprints/turbine.png",
+    "Stack (4-Level)":         "assets/blueprints/stack.png",
+    "Diamond":                 "assets/blueprints/diamond.svg",
+    "SPUI":                    "assets/blueprints/spui.png",
+    "DDI":                     "assets/blueprints/ddi.png",
+    "Trumpet":                 "assets/blueprints/trumpet.png",
+    "Directional T":           "assets/blueprints/directional_t.png",
 }
 
-# Modern, accessible chart colour palette (WCAG AA contrast compliant).
+# WCAG AA contrast-compliant colour palette (one distinct colour per alternative).
+# Light-mode colours are saturated/dark; dark-mode colours are bright/neon for
+# readability on dark card backgrounds.
 ALTERNATIVE_COLORS: Dict[str, str] = {
-    "Cloverleaf": "#0f766e",   # Deep Teal
-    "Diamond":    "#ea580c",   # Coral / Burnt Orange
-    "Roundabout": "#7c3aed",   # Violet
-    "SPUI":       "#1d4ed8",   # Royal Blue
+    "Cloverleaf":              "#0f766e",
+    "Turbine":                 "#0369a1",
+    "Stack (4-Level)":         "#1d4ed8",
+    "Diamond":                 "#ea580c",
+    "SPUI":                    "#d97706",
+    "DDI":                     "#b45309",
+    "Trumpet":                 "#7c3aed",
+    "Directional T":           "#6d28d9",
 }
+
+ALTERNATIVE_COLORS_DARK: Dict[str, str] = {
+    "Cloverleaf":              "#5eead4",   # Teal-300
+    "Turbine":                 "#7dd3fc",   # Sky-300
+    "Stack (4-Level)":         "#93c5fd",   # Blue-300
+    "Diamond":                 "#fdba74",   # Orange-300
+    "SPUI":                    "#fcd34d",   # Amber-300
+    "DDI":                     "#fbbf24",   # Amber-400
+    "Trumpet":                 "#c4b5fd",   # Violet-300
+    "Directional T":           "#a78bfa",   # Violet-400
+}
+
+# ---------------------------------------------------------------------------
+# Helper — build Alternative objects for a given context
+# ---------------------------------------------------------------------------
+
+def get_alternatives_for_context(context: str) -> list[Alternative]:
+    """Return a list of Alternative objects for the given top-level context key.
+
+    Parameters
+    ----------
+    context :
+        One of the three keys of ``INTERCHANGE_DATA``
+        (e.g. ``"System (Highway + Highway)"``).
+
+    Returns
+    -------
+    list[Alternative]
+        Ready-to-pass list for ``DecisionSupportSystem.evaluate()``.
+    """
+    return [
+        Alternative(
+            name=name,
+            raw_values=dict(values),
+            description=ALTERNATIVE_DESCRIPTIONS.get(name, ""),
+        )
+        for name, values in INTERCHANGE_DATA[context].items()
+    ]
