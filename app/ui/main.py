@@ -35,6 +35,7 @@ from app.data.interchange_data import (
     BLUEPRINT_PATHS,
     CRITERIA,
     CRITERION_LABELS,
+    DETAILED_INTERCHANGE_INFO,
     INTERCHANGE_DATA,
     get_alternatives_for_context,
 )
@@ -43,6 +44,9 @@ from app.ui.charts import (
     create_radar_chart,
     create_wsm_bar_chart,
 )
+
+import folium
+from streamlit_folium import st_folium
 
 # ---------------------------------------------------------------------------
 # Page configuration
@@ -60,6 +64,8 @@ st.set_page_config(
 
 if "dark_mode" not in st.session_state:
     st.session_state["dark_mode"] = False
+if "selected_detail" not in st.session_state:
+    st.session_state["selected_detail"] = None
 
 # Theme toggle — icon button at the very top of the sidebar
 with st.sidebar:
@@ -173,10 +179,11 @@ def _build_css(t: dict) -> str:
     /* ── Rank cards ── */
     .rank-card {{
         background: {t["card_bg"]}; border: 1px solid {t["card_border"]};
-        border-radius: 14px; padding: 18px 10px; text-align: center;
+        border-radius: 14px 14px 0 0; padding: 18px 10px 14px; text-align: center;
         box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-        transition: box-shadow 0.25s, transform 0.25s, border-color 0.25s;
+        transition: box-shadow 0.3s, transform 0.3s, border-color 0.3s, opacity 0.3s;
         position: relative;
+        border-bottom: none;
     }}
     .rank-card:hover {{
         box-shadow: 0 8px 28px rgba(15,118,110,0.22);
@@ -191,6 +198,48 @@ def _build_css(t: dict) -> str:
     .rank-card.winner:hover {{
         transform: scale(1.05) translateY(-3px);
         box-shadow: 0 10px 36px rgba(45,212,191,0.28);
+    }}
+
+    /* Active / selected card */
+    .rank-card.selected {{
+        border-color: {t["accent"]} !important; border-width: 2px;
+        border-bottom: none !important;
+        box-shadow: 0 4px 24px rgba(45,212,191,0.30);
+        transform: scale(1.03);
+    }}
+
+    /* Dim non-selected cards when one IS selected */
+    .rank-card.dimmed {{
+        opacity: 0.5;
+        filter: grayscale(30%);
+    }}
+    .rank-card.dimmed:hover {{
+        opacity: 0.85;
+        filter: grayscale(0%);
+    }}
+
+    /* ── Card-action buttons (footer strip below each rank card) ── */
+    [data-testid="stMainBlockContainer"] [data-testid="stButton"] button {{
+        min-height: 34px !important;
+        border: 1.5px solid {t["card_border"]} !important;
+        border-radius: 0 0 12px 12px !important;
+        background: {t["card_bg"]} !important;
+        color: {t["accent"]} !important;
+        font-size: 0.72rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.04em !important;
+        padding: 5px 0 !important;
+        cursor: pointer !important;
+        transition: background 0.2s, border-color 0.2s, color 0.2s !important;
+        box-shadow: none !important;
+    }}
+    [data-testid="stMainBlockContainer"] [data-testid="stButton"] button:hover {{
+        background: {t["accent"]} !important;
+        border-color: {t["accent"]} !important;
+        color: {t["page_bg"]} !important;
+    }}
+    [data-testid="stMainBlockContainer"] [data-testid="stButton"] button:focus {{
+        box-shadow: none !important;
     }}
 
     /* ── Score progress bar ── */
@@ -244,6 +293,76 @@ def _build_css(t: dict) -> str:
     section[data-testid="stSidebar"] [data-testid="stButton"] button:hover {{
         background: {t["card_border"]} !important;
         border-color: {t["accent"]} !important;
+    }}
+
+    /* ── Detailed Analytical View ── */
+    .detail-section {{
+        background: {t["card_bg"]};
+        border: 2px solid {t["accent"]};
+        border-radius: 14px;
+        padding: 24px 28px;
+        margin-top: 8px;
+    }}
+    .detail-header {{
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 0;
+        padding-bottom: 14px;
+        border-bottom: 1px solid {t["divider"]};
+    }}
+    .detail-header-title {{
+        font-size: clamp(1rem, 2vw, 1.25rem);
+        font-weight: 700;
+        color: {t["text"]};
+        flex: 1;
+    }}
+    .detail-header-badge {{
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+    }}
+    .pros-cons-grid {{
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-top: 12px;
+    }}
+    .pros-cons-col {{
+        background: {t["page_bg"]};
+        border: 1px solid {t["card_border"]};
+        border-radius: 10px;
+        padding: 14px 16px;
+    }}
+    .pros-cons-col h4 {{
+        font-size: 0.82rem;
+        font-weight: 700;
+        margin: 0 0 10px 0;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }}
+    .pros-cons-col ul {{
+        margin: 0;
+        padding-left: 18px;
+    }}
+    .pros-cons-col li {{
+        font-size: 0.82rem !important;
+        color: {t["text"]} !important;
+        line-height: 1.55;
+        margin-bottom: 4px;
+    }}
+    .eng-desc p {{
+        color: {t["text"]} !important;
+        font-size: 0.88rem !important;
+        line-height: 1.6 !important;
+    }}
+    .eng-desc strong {{
+        color: {t["accent"]} !important;
     }}
 
     /* ── Misc ── */
@@ -445,6 +564,10 @@ with st.sidebar:
 
 filtered_alternatives = get_alternatives_for_context(selected_context)
 
+if st.session_state.get("_prev_context") != selected_context:
+    st.session_state["selected_detail"] = None
+    st.session_state["_prev_context"] = selected_context
+
 dss     = DecisionSupportSystem(CRITERIA)
 results: list[EvaluationResult] = dss.evaluate(filtered_alternatives, weights=norm_w)
 
@@ -515,15 +638,26 @@ with tab_eval:
 
     # ── Ranking banner ───────────────────────────────────────────────────────
     st.subheader("WSM Score Ranking")
+    st.caption("Click any card to view its detailed engineering profile, metrics, and real-world map.")
 
     _max_score = results[0].total_score if results else 1.0
+    _current_sel = st.session_state.get("selected_detail")
+    _any_selected = _current_sel is not None
     rank_cols = st.columns(len(results))
 
     for col, res, rank_label in zip(rank_cols, results, _RANKS):
         color      = _alt_color(res.alternative_name)
-        card_class = "rank-card winner" if res.rank == 1 else "rank-card"
+        _is_active = (_current_sel == res.alternative_name)
         bp_html    = _svg_img(res.alternative_name, width="92%", max_h="140px")
         bar_pct    = int((res.total_score / _max_score) * 100) if _max_score > 0 else 0
+
+        card_class = "rank-card"
+        if res.rank == 1:
+            card_class += " winner"
+        if _is_active:
+            card_class += " selected"
+        elif _any_selected:
+            card_class += " dimmed"
 
         badge_bg, badge_fg = _RANK_BADGE_COLORS.get(res.rank, (T["card_border"], T["subtext"]))
         badge_icon = _RANK_ICONS.get(res.rank, "")
@@ -549,27 +683,176 @@ with tab_eval:
                 unsafe_allow_html=True,
             )
 
-            with st.expander("Criterion breakdown", expanded=False):
-                for key in dss.criterion_names():
-                    crit_obj = next(c for c in CRITERIA if c.name == key)
-                    w_score  = res.weighted_scores[key]
-                    n_score  = res.normalised_values[key]
-                    raw_val  = res.raw_values[key]
-                    c_pct    = int(n_score * 100)
+            _btn_label = "\u2716  Close Details" if _is_active else "\u2192  Detailed Analysis"
+            if st.button(_btn_label, key=f"card_btn_{res.alternative_name}", use_container_width=True):
+                if _is_active:
+                    st.session_state["selected_detail"] = None
+                else:
+                    st.session_state["selected_detail"] = res.alternative_name
+                st.rerun()
+
+    # ── Detailed Analytical View — full-width, OUTSIDE the columns ────────────
+    _selected_name = st.session_state.get("selected_detail")
+    if _selected_name and _selected_name in [r.alternative_name for r in results]:
+        _sel_res: EvaluationResult = next(
+            r for r in results if r.alternative_name == _selected_name
+        )
+        _sel_info: dict = DETAILED_INTERCHANGE_INFO.get(_selected_name, {})
+        _sel_color = _alt_color(_selected_name)
+        _sel_rank_lbl = (
+            _RANKS[_sel_res.rank - 1] if _sel_res.rank <= len(_RANKS)
+            else f"#{_sel_res.rank}"
+        )
+        _d_badge_bg, _d_badge_fg = _RANK_BADGE_COLORS.get(
+            _sel_res.rank, (T["card_border"], T["subtext"])
+        )
+        _d_badge_icon = _RANK_ICONS.get(_sel_res.rank, "")
+
+        with st.container():
+            st.markdown(
+                f"<div class='detail-section'>"
+                f"<div class='detail-header'>"
+                f"<span class='detail-header-badge' "
+                f"style='background:{_d_badge_bg};color:{_d_badge_fg}'>"
+                f"{_d_badge_icon} {_sel_rank_lbl}</span>"
+                f"<span class='detail-header-title' style='color:{_sel_color}'>"
+                f"Detailed Analysis: {_selected_name}</span>"
+                f"</div></div>",
+                unsafe_allow_html=True,
+            )
+
+            # ── Row 1: criterion breakdown (full-width) ──────────────────
+            _crit_cols = st.columns(len(dss.criterion_names()))
+            for _ci, key in enumerate(dss.criterion_names()):
+                crit_obj = next(c for c in CRITERIA if c.name == key)
+                w_score  = _sel_res.weighted_scores[key]
+                n_score  = _sel_res.normalised_values[key]
+                raw_val  = _sel_res.raw_values[key]
+                c_pct    = int(n_score * 100)
+                with _crit_cols[_ci]:
                     st.markdown(
-                        f"<div style='margin:4px 0'>"
-                        f"<div style='display:flex;justify-content:space-between;font-size:0.75rem'>"
-                        f"<span style='color:{T['subtext']}'>{CRITERION_LABELS[key]}</span>"
-                        f"<span style='color:{T['text']};font-weight:600'>{raw_val} {crit_obj.unit}</span>"
-                        f"</div>"
-                        f"<div class='score-bar-bg' style='width:100%'>"
-                        f"<div class='score-bar-fill' style='width:{c_pct}%;background:{color}'></div>"
-                        f"</div>"
-                        f"<div style='font-size:0.65rem;color:{T['muted']};text-align:right'>"
-                        f"norm {n_score:.3f} &rarr; w&middot;x&#772; = {w_score:.4f}</div>"
+                        f"<div style='background:{T['card_bg']};border:1px solid {T['card_border']};"
+                        f"border-radius:10px;padding:12px 14px'>"
+                        f"<div style='color:{T['muted']};font-size:0.68rem;font-weight:600;"
+                        f"text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px'>"
+                        f"{CRITERION_LABELS[key]}</div>"
+                        f"<div style='color:{T['text']};font-size:1.1rem;font-weight:700'>"
+                        f"{raw_val} {crit_obj.unit}</div>"
+                        f"<div class='score-bar-bg' style='width:100%;margin:8px 0 4px'>"
+                        f"<div class='score-bar-fill' "
+                        f"style='width:{c_pct}%;background:{_sel_color}'></div></div>"
+                        f"<div style='display:flex;justify-content:space-between;"
+                        f"font-size:0.65rem;color:{T['muted']}'>"
+                        f"<span>norm {n_score:.3f}</span>"
+                        f"<span>w\u00b7x\u0305 = {w_score:.4f}</span></div>"
                         f"</div>",
                         unsafe_allow_html=True,
                     )
+
+            # ── Row 2: key metrics ───────────────────────────────────────
+            _m1, _m2, _m3, _m4, _m5, _m6 = st.columns(6)
+            _m1.metric("WSM Score", f"{_sel_res.total_score:.4f}")
+            _m2.metric("Cost", f"${_sel_res.raw_values['construction_cost_mln']:.1f}M")
+            _m3.metric("Throughput", f"{int(_sel_res.raw_values['throughput_vph']):,} vph")
+            _m4.metric("Safety", f"{_sel_res.raw_values['safety_index']:.1f} / 10")
+            _m5.metric("Land Area", f"{_sel_res.raw_values['land_area_hectares']:.1f} ha")
+            _budget_ok = _sel_res.raw_values["construction_cost_mln"] <= param_budget
+            _land_ok = _sel_res.raw_values["land_area_hectares"] <= param_land_limit
+            _feas_text = "Feasible" if (_budget_ok and _land_ok) else "Over limit"
+            _m6.metric("Feasibility", _feas_text)
+
+            # ── Row 3: description + pros/cons (left) | map (right) ──────
+            _col_info, _col_map = st.columns([3, 2], gap="large")
+
+            with _col_info:
+                st.markdown(
+                    f"<p style='color:{T['muted']};font-size:0.7rem;font-weight:600;"
+                    f"text-transform:uppercase;letter-spacing:0.06em;"
+                    f"margin-bottom:8px'>Engineering Description</p>",
+                    unsafe_allow_html=True,
+                )
+                if _sel_info.get("engineering_desc"):
+                    st.markdown(
+                        f"<div class='eng-desc'>"
+                        f"{_sel_info['engineering_desc']}</div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    _alt_obj = next(
+                        (a for a in filtered_alternatives
+                         if a.name == _selected_name),
+                        None,
+                    )
+                    if _alt_obj:
+                        st.markdown(
+                            f"<div class='eng-desc'>"
+                            f"{_alt_obj.description}</div>",
+                            unsafe_allow_html=True,
+                        )
+
+                _pros = _sel_info.get("pros", [])
+                _cons = _sel_info.get("cons", [])
+                if _pros or _cons:
+                    _pros_li = "".join(f"<li>{p}</li>" for p in _pros)
+                    _cons_li = "".join(f"<li>{c}</li>" for c in _cons)
+                    st.markdown(
+                        f"<div class='pros-cons-grid'>"
+                        f"<div class='pros-cons-col'>"
+                        f"<h4 style='color:{T['accent']}'>Advantages</h4>"
+                        f"<ul>{_pros_li}</ul></div>"
+                        f"<div class='pros-cons-col'>"
+                        f"<h4 style='color:#ef4444'>Limitations</h4>"
+                        f"<ul>{_cons_li}</ul></div>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+            with _col_map:
+                _lat = _sel_info.get("lat", 40.0)
+                _lon = _sel_info.get("lon", -74.0)
+                _example = _sel_info.get("example_name", "Example location")
+
+                _fmap = folium.Map(
+                    location=[_lat, _lon],
+                    zoom_start=15,
+                    tiles=(
+                        "https://server.arcgisonline.com/ArcGIS/rest/services"
+                        "/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                    ),
+                    attr="Esri World Imagery",
+                )
+                folium.Marker(
+                    [_lat, _lon],
+                    popup=folium.Popup(
+                        f"<b>{_selected_name}</b><br>{_example}",
+                        max_width=260,
+                    ),
+                    tooltip=_example,
+                    icon=folium.Icon(color="green", icon="road", prefix="fa"),
+                ).add_to(_fmap)
+                folium.CircleMarker(
+                    [_lat, _lon],
+                    radius=50,
+                    color="#2dd4bf",
+                    fill=True,
+                    fill_opacity=0.10,
+                    weight=2,
+                ).add_to(_fmap)
+
+                st_folium(
+                    _fmap, height=400,
+                    use_container_width=True, returned_objects=[],
+                )
+
+                st.markdown(
+                    f"<p style='color:{T['text']};font-size:0.82rem;margin-top:6px'>"
+                    f"<b>Real-world example:</b> {_example}</p>"
+                    f"<p style='color:{T['muted']};font-size:0.75rem'>"
+                    f"Coordinates: {_lat:.4f}\u00b0N, "
+                    f"{abs(_lon):.4f}\u00b0{'W' if _lon < 0 else 'E'}"
+                    f" \u00b7 Satellite imagery (Esri)</p>",
+                    unsafe_allow_html=True,
+                )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
