@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from app.application.dss_engine import DecisionSupportSystem
 from app.data.interchange_data import (
@@ -88,10 +88,12 @@ def evaluate(req: EvaluateRequest):
 
 
 @router.get("/interchange/{name}", response_model=InterchangeDetailSchema)
-def get_interchange_detail(name: str):
+def get_interchange_detail(name: str, response: Response):
     info = DETAILED_INTERCHANGE_INFO.get(name)
     if not info:
         raise HTTPException(status_code=404, detail=f"No detail for: {name}")
+
+    response.headers["Cache-Control"] = "no-store"
 
     return InterchangeDetailSchema(
         name=name,

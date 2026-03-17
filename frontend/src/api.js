@@ -13,7 +13,9 @@ export async function evaluate(context, weights, params) {
 }
 
 export async function fetchInterchangeDetail(name) {
-  const { data } = await api.get(`/interchange/${encodeURIComponent(name)}`)
+  const { data } = await api.get(`/interchange/${encodeURIComponent(name)}`, {
+    params: { _t: Date.now() },
+  })
   return data
 }
 

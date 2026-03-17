@@ -46,7 +46,7 @@ onMounted(() => {
   nextTick(initMap)
 })
 
-watch(() => [props.lat, props.lon], () => {
+watch(() => [props.lat, props.lon, props.name, props.example], () => {
   nextTick(initMap)
 })
 </script>
