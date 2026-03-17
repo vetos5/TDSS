@@ -239,9 +239,9 @@ ALTERNATIVE_COLORS_DARK: Dict[str, str] = {
 
 DETAILED_INTERCHANGE_INFO: Dict[str, dict] = {
     "Cloverleaf": {
-        "lat": 41.8571,
-        "lon": -87.9058,
-        "example_name": "I-290 / I-294 Cloverleaf, Hillside, IL",
+        "lat": 52.17571085485798,
+        "lon": 5.42835179002764,
+        "example_name": "A1/A28 Knooppunt Hoevelaken, Netherlands",
         "pros": [
             "Full free-flow movement — no traffic signals required",
             "Moderate construction cost relative to directional interchanges",
@@ -268,9 +268,9 @@ DETAILED_INTERCHANGE_INFO: Dict[str, dict] = {
         ),
     },
     "Turbine": {
-        "lat": 52.1756,
-        "lon": 5.4276,
-        "example_name": "A1/A28 Knooppunt Hoevelaken, Netherlands",
+        "lat": 35.34832579634311,
+        "lon": -80.73352264845165,
+        "example_name": "I-485/I-85 Turbine Interchange, Charlotte, NC",
         "pros": [
             "Eliminates all weaving conflicts — direct/semi-direct ramps only",
             "High throughput capacity (5,500–7,000 veh/hr per HCM Ch. 14)",
@@ -298,8 +298,8 @@ DETAILED_INTERCHANGE_INFO: Dict[str, dict] = {
         ),
     },
     "Stack (4-Level)": {
-        "lat": 33.9287,
-        "lon": -118.2810,
+        "lat": 29.780682113553848,
+        "lon": -95.45416042412587,
         "example_name": "Judge Harry Pregerson Interchange (I-105/I-110), Los Angeles, CA",
         "pros": [
             "Maximum throughput — all movements are direct with no weaving or signals",
@@ -329,8 +329,8 @@ DETAILED_INTERCHANGE_INFO: Dict[str, dict] = {
         ),
     },
     "Diamond": {
-        "lat": 38.6307,
-        "lon": -90.2154,
+        "lat": 38.6274825958427,
+        "lon": -90.21773134487837,
         "example_name": "I-64 / Jefferson Ave Diamond, St. Louis, MO",
         "pros": [
             "Lowest construction cost of all interchange types",
@@ -357,8 +357,8 @@ DETAILED_INTERCHANGE_INFO: Dict[str, dict] = {
         ),
     },
     "SPUI": {
-        "lat": 33.5667,
-        "lon": -112.0958,
+        "lat": 33.567584165755285,
+        "lon": -112.117341986649,
         "example_name": "I-17 / Dunlap Ave SPUI, Phoenix, AZ",
         "pros": [
             "Single signal phase handles all movements — high throughput for footprint",
@@ -385,8 +385,8 @@ DETAILED_INTERCHANGE_INFO: Dict[str, dict] = {
         ),
     },
     "DDI": {
-        "lat": 37.2086,
-        "lon": -93.2923,
+        "lat": 37.2503533593438,
+        "lon": -93.31069441742719,
         "example_name": "I-44 / Route 13 DDI, Springfield, MO (first US DDI, 2009)",
         "pros": [
             "Eliminates left-turn conflict points — strong safety improvement (40–60% crash reduction)",
@@ -414,8 +414,8 @@ DETAILED_INTERCHANGE_INFO: Dict[str, dict] = {
         ),
     },
     "Trumpet": {
-        "lat": 51.7534,
-        "lon": -0.4437,
+        "lat": 51.757061532105844,
+        "lon": -0.4163784923468657,
         "example_name": "M1 Junction 8, Hemel Hempstead, UK",
         "pros": [
             "Cost-effective three-leg interchange — one loop + two direct ramps",
@@ -441,8 +441,8 @@ DETAILED_INTERCHANGE_INFO: Dict[str, dict] = {
         ),
     },
     "Directional T": {
-        "lat": 29.7420,
-        "lon": -95.4584,
+        "lat": 55.832584716078884,
+        "lon": -4.101001282052542,
         "example_name": "US-59 / I-610 West Loop Interchange, Houston, TX",
         "pros": [
             "Maximum throughput for three-leg junctions — all movements semi-direct",
