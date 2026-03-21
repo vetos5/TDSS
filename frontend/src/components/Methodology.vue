@@ -1,19 +1,14 @@
 <script setup>
 import { computed } from 'vue'
+import { useLocale } from '../composables/useLocale.js'
 
 const props = defineProps({
   data: Object,
   dark: Boolean,
 })
 
-const CRITERION_LABELS = {
-  construction_cost_mln: 'Construction Cost',
-  land_area_hectares: 'Land Area',
-  throughput_vph: 'Throughput (vph)',
-  safety_index: 'Safety Index',
-}
+const { t } = useLocale()
 
-const ORDINALS = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th']
 const RANK_BADGES = { 1: { bg: '#fbbf24', fg: '#78350f', icon: '🏆' }, 2: { bg: '#cbd5e1', fg: '#1e293b', icon: '🥈' }, 3: { bg: '#d6a06c', fg: '#422006', icon: '🥉' } }
 
 function altColor(name) {
@@ -26,11 +21,10 @@ function altColor(name) {
   <div v-if="data" class="grid grid-cols-10 gap-8">
     <!-- Left column — methodology text -->
     <div class="col-span-6 prose max-w-none" :class="dark ? 'prose-invert' : ''">
-      <h2 class="text-xl font-bold mb-4" :class="dark ? 'text-slate-100' : 'text-slate-900'">Weighted Sum Model (WSM)</h2>
+      <h2 class="text-xl font-bold mb-4" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.wsmTitle }}</h2>
 
       <p :class="dark ? 'text-slate-300' : 'text-slate-600'">
-        The composite priority score for alternative <em>i</em> is computed as the weighted
-        sum of normalised criterion values:
+        {{ t.wsmDesc }}
       </p>
 
       <div class="rounded-xl border p-4 my-4 text-center text-lg font-mono"
@@ -43,26 +37,26 @@ function altColor(name) {
         <table class="w-full text-sm">
           <thead>
             <tr :class="dark ? 'bg-slate-800' : 'bg-slate-50'">
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">Symbol</th>
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">Definition</th>
+              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.symbol }}</th>
+              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.definition }}</th>
             </tr>
           </thead>
           <tbody :class="dark ? 'text-slate-300' : 'text-slate-600'">
             <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
               <td class="px-4 py-2 font-mono">S<sub>i</sub></td>
-              <td class="px-4 py-2">Composite WSM score for alternative <em>i</em>, S<sub>i</sub> ∈ [0, 1]</td>
+              <td class="px-4 py-2">{{ t.defSi }}</td>
             </tr>
             <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
               <td class="px-4 py-2 font-mono">n</td>
-              <td class="px-4 py-2">Number of evaluation criteria</td>
+              <td class="px-4 py-2">{{ t.defN }}</td>
             </tr>
             <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
               <td class="px-4 py-2 font-mono">w<sub>j</sub></td>
-              <td class="px-4 py-2">Normalised weight for criterion <em>j</em>, with Σw<sub>j</sub> = 1</td>
+              <td class="px-4 py-2">{{ t.defWj }}</td>
             </tr>
             <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
               <td class="px-4 py-2 font-mono">x̄<sub>ij</sub></td>
-              <td class="px-4 py-2">Min-Max normalised value of criterion <em>j</em> for alternative <em>i</em></td>
+              <td class="px-4 py-2">{{ t.defXij }}</td>
             </tr>
           </tbody>
         </table>
@@ -70,14 +64,14 @@ function altColor(name) {
 
       <hr class="my-6" :class="dark ? 'border-slate-700' : 'border-slate-200'" />
 
-      <h2 class="text-xl font-bold mb-4" :class="dark ? 'text-slate-100' : 'text-slate-900'">Min-Max Normalisation</h2>
+      <h2 class="text-xl font-bold mb-4" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.minMaxTitle }}</h2>
 
       <p :class="dark ? 'text-slate-300' : 'text-slate-600'">
-        Raw criterion values are mapped to the unit interval [0, 1] according to the direction of preference.
+        {{ t.minMaxDesc }}
       </p>
 
       <p class="font-semibold mt-3" :class="dark ? 'text-slate-200' : 'text-slate-700'">
-        Maximize — higher raw value is preferred (e.g. throughput, safety):
+        {{ t.maxDir }}
       </p>
       <div class="rounded-xl border p-3 my-2 text-center font-mono"
            :class="dark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200'">
@@ -85,7 +79,7 @@ function altColor(name) {
       </div>
 
       <p class="font-semibold mt-3" :class="dark ? 'text-slate-200' : 'text-slate-700'">
-        Minimize — lower raw value is preferred (e.g. cost, land area):
+        {{ t.minDir }}
       </p>
       <div class="rounded-xl border p-3 my-2 text-center font-mono"
            :class="dark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200'">
@@ -93,39 +87,39 @@ function altColor(name) {
       </div>
 
       <p class="text-sm italic mt-2" :class="dark ? 'text-slate-400' : 'text-slate-500'">
-        Edge case: when max<sub>j</sub> = min<sub>j</sub> (all alternatives equal), the normalised score is set to 0.5.
+        {{ t.edgeCase }}
       </p>
 
       <hr class="my-6" :class="dark ? 'border-slate-700' : 'border-slate-200'" />
 
-      <h2 class="text-xl font-bold mb-4" :class="dark ? 'text-slate-100' : 'text-slate-900'">Criteria and Data Sources</h2>
+      <h2 class="text-xl font-bold mb-4" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.criteriaDataTitle }}</h2>
 
       <div class="overflow-x-auto rounded-xl border mb-6"
            :class="dark ? 'border-slate-700' : 'border-slate-200'">
         <table class="w-full text-sm">
           <thead>
             <tr :class="dark ? 'bg-slate-800' : 'bg-slate-50'">
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">Criterion</th>
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">Direction</th>
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">Unit</th>
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">Source</th>
+              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.criterionLabel }}</th>
+              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.directionCol }}</th>
+              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.weight }}</th>
+              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.source }}</th>
             </tr>
           </thead>
           <tbody :class="dark ? 'text-slate-300' : 'text-slate-600'">
             <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2">Construction Cost</td><td class="px-4 py-2">Minimize</td><td class="px-4 py-2">M USD</td>
+              <td class="px-4 py-2">{{ t.constructionCost }}</td><td class="px-4 py-2">{{ t.minimize }}</td><td class="px-4 py-2">M USD</td>
               <td class="px-4 py-2">FHWA Interchange Justification Report Guidelines (2023)</td>
             </tr>
             <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2">Land Area</td><td class="px-4 py-2">Minimize</td><td class="px-4 py-2">ha</td>
+              <td class="px-4 py-2">{{ t.landArea }}</td><td class="px-4 py-2">{{ t.minimize }}</td><td class="px-4 py-2">ha</td>
               <td class="px-4 py-2">TRB NCHRP Report 659</td>
             </tr>
             <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2">Throughput</td><td class="px-4 py-2">Maximize</td><td class="px-4 py-2">veh/hr</td>
+              <td class="px-4 py-2">{{ t.throughput }}</td><td class="px-4 py-2">{{ t.maximize }}</td><td class="px-4 py-2">veh/hr</td>
               <td class="px-4 py-2">HCM 7th Edition, Chapter 14</td>
             </tr>
             <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2">Safety Index</td><td class="px-4 py-2">Maximize</td><td class="px-4 py-2">1–10</td>
+              <td class="px-4 py-2">{{ t.safetyIndex }}</td><td class="px-4 py-2">{{ t.maximize }}</td><td class="px-4 py-2">1–10</td>
               <td class="px-4 py-2">PIARC Road Safety Manual (2019); AASHTO HSM (2022)</td>
             </tr>
           </tbody>
@@ -134,7 +128,7 @@ function altColor(name) {
 
       <hr class="my-6" :class="dark ? 'border-slate-700' : 'border-slate-200'" />
 
-      <h2 class="text-xl font-bold mb-3" :class="dark ? 'text-slate-100' : 'text-slate-900'">References</h2>
+      <h2 class="text-xl font-bold mb-3" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.referencesTitle }}</h2>
       <ul class="list-disc pl-5 space-y-1.5 text-sm" :class="dark ? 'text-slate-300' : 'text-slate-600'">
         <li>Fishburn, P. C. (1967). Additive utilities with incomplete product sets. <em>Operations Research</em>, 15(3), 537–542.</li>
         <li>Triantaphyllou, E. (2000). <em>Multi-Criteria Decision Making Methods: A Comparative Study.</em> Kluwer Academic Publishers.</li>
@@ -147,14 +141,14 @@ function altColor(name) {
 
     <!-- Right column — weight profile + ranking -->
     <div class="col-span-4">
-      <p class="font-semibold text-sm mb-2" :class="dark ? 'text-slate-100' : 'text-slate-900'">Active Weight Profile</p>
+      <p class="font-semibold text-sm mb-2" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.activeWeightProfile }}</p>
       <div class="overflow-x-auto rounded-xl border mb-6"
            :class="dark ? 'border-slate-700' : 'border-slate-200'">
         <table class="w-full text-sm">
           <thead>
             <tr :class="dark ? 'bg-slate-800' : 'bg-slate-50'">
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">Criterion</th>
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">Weight</th>
+              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.criterionLabel }}</th>
+              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.weight }}</th>
             </tr>
           </thead>
           <tbody>
@@ -169,7 +163,7 @@ function altColor(name) {
         </table>
       </div>
 
-      <p class="font-semibold text-sm mb-2" :class="dark ? 'text-slate-100' : 'text-slate-900'">Current Ranking</p>
+      <p class="font-semibold text-sm mb-2" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.currentRanking }}</p>
       <div class="space-y-2">
         <div v-for="res in data.results" :key="res.alternative_name"
              class="flex items-center gap-3 rounded-lg border px-4 py-2.5"
@@ -179,7 +173,7 @@ function altColor(name) {
                   background: RANK_BADGES[res.rank]?.bg || (dark ? '#334155' : '#e2e8f0'),
                   color: RANK_BADGES[res.rank]?.fg || (dark ? '#94a3b8' : '#334155'),
                 }">
-            {{ RANK_BADGES[res.rank]?.icon }} {{ ORDINALS[res.rank - 1] }}
+            {{ RANK_BADGES[res.rank]?.icon }} {{ t.ordinals[res.rank - 1] }}
           </span>
           <span class="flex-1 font-bold text-sm" :style="{ color: altColor(res.alternative_name) }">
             {{ res.alternative_name }}

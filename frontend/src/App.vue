@@ -2,6 +2,7 @@
 import { onMounted, watch, ref } from 'vue'
 import { useDSS } from './composables/useDSS.js'
 import { useTheme } from './composables/useTheme.js'
+import { useLocale } from './composables/useLocale.js'
 import Sidebar from './components/Sidebar.vue'
 import TabNav from './components/TabNav.vue'
 import DssEvaluation from './components/DssEvaluation.vue'
@@ -9,6 +10,7 @@ import BlueprintGallery from './components/BlueprintGallery.vue'
 import Methodology from './components/Methodology.vue'
 
 const { dark, toggle } = useTheme()
+const { t } = useLocale()
 const dss = useDSS()
 const activeTab = ref('evaluation')
 
@@ -51,10 +53,10 @@ watch(
         <header class="mb-6">
           <h1 class="text-2xl lg:text-3xl font-extrabold tracking-tight"
               :class="dark ? 'text-slate-100' : 'text-slate-900'">
-            Transport Interchange Decision Support System
+            {{ t.appTitle }}
           </h1>
           <p class="text-sm mt-1" :class="dark ? 'text-slate-400' : 'text-slate-500'">
-            Multi-Criteria Decision Analysis (MCDA) · Weighted Sum Model (WSM)
+            {{ t.appSubtitle }}
           </p>
         </header>
 

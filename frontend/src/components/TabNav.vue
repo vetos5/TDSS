@@ -1,12 +1,17 @@
 <script setup>
+import { computed } from 'vue'
+import { useLocale } from '../composables/useLocale.js'
+
 defineProps({ active: String, dark: Boolean })
 defineEmits(['update'])
 
-const tabs = [
-  { id: 'evaluation', label: 'DSS Evaluation' },
-  { id: 'gallery', label: 'Blueprint Gallery' },
-  { id: 'methodology', label: 'Methodology' },
-]
+const { t } = useLocale()
+
+const tabs = computed(() => [
+  { id: 'evaluation', label: t.value.tabEvaluation },
+  { id: 'gallery',    label: t.value.tabGallery },
+  { id: 'methodology', label: t.value.tabMethodology },
+])
 </script>
 
 <template>

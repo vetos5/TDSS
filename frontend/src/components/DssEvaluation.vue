@@ -3,12 +3,15 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { blueprintUrl, fetchInterchangeDetail } from '../api.js'
 import PlotlyChart from './PlotlyChart.vue'
 import LeafletMap from './LeafletMap.vue'
+import { useLocale } from '../composables/useLocale.js'
 
 const props = defineProps({
   data: Object,
   params: Object,
   dark: Boolean,
 })
+
+const { t } = useLocale()
 
 const selectedDetail = ref(null)
 const detailInfo = ref(null)
@@ -17,14 +20,16 @@ const winner = computed(() => props.data?.results?.[0])
 const maxScore = computed(() => winner.value?.total_score || 1)
 
 const RANK_BADGES = { 1: { bg: '#fbbf24', fg: '#78350f', icon: '🏆' }, 2: { bg: '#cbd5e1', fg: '#1e293b', icon: '🥈' }, 3: { bg: '#d6a06c', fg: '#422006', icon: '🥉' } }
-const ORDINALS = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th']
 
-const CRITERION_LABELS = {
-  construction_cost_mln: 'Construction Cost',
-  land_area_hectares: 'Land Area',
-  throughput_vph: 'Throughput (vph)',
-  safety_index: 'Safety Index',
-}
+const criterionLabels = computed(() => ({
+  construction_cost_mln: t.value.constructionCost,
+  land_area_hectares:    t.value.landArea,
+  throughput_vph:        t.value.throughput,
+  safety_index:          t.value.safetyIndex,
+}))
+
+function displayTerrain(val) { return t.value.terrainDisplay?.[val] ?? val }
+function displayEnv(val)     { return t.value.envDisplay?.[val] ?? val }
 
 function altColor(name) {
   const r = props.data?.results?.find(r => r.alternative_name === name)
@@ -59,7 +64,7 @@ watch(() => props.data?.context, () => {
 function radarData() {
   const results = props.data.results.slice(0, 2)
   const keys = Object.keys(results[0].normalised_values)
-  const labels = keys.map(k => CRITERION_LABELS[k] || k)
+  const labels = keys.map(k => criterionLabels.value[k] || k)
   const traces = results.map((r, i) => ({
     type: 'scatterpolar',
     r: [...keys.map(k => r.normalised_values[k]), r.normalised_values[keys[0]]],
@@ -82,7 +87,7 @@ function radarData() {
       font: { family: 'Inter, system-ui, sans-serif', color: p ? '#e2e8f0' : '#0f172a', size: 12 },
       legend: { orientation: 'h', y: -0.18, x: 0.5, xanchor: 'center', font: { size: 11 }, bgcolor: 'rgba(0,0,0,0)' },
       margin: { l: 56, r: 56, t: 56, b: 56 },
-      title: { text: `Normalised Criterion Profile — Top ${results.length}`, font: { size: 15 }, x: 0.02 },
+      title: { text: `${t.value.chartRadarTitle} ${results.length}`, font: { size: 15 }, x: 0.02 },
       height: 420,
     },
   }
@@ -101,15 +106,15 @@ function barChartData() {
       marker: { color: ordered.map(r => p ? r.color_dark : r.color), opacity: 0.92 },
       text: ordered.map(r => `  #${r.rank}  ${r.total_score.toFixed(4)}`),
       textposition: 'outside', textfont: { size: 11, color: p ? '#e2e8f0' : '#0f172a' },
-      hovertemplate: '<b>%{y}</b><br>WSM Score: <b>%{x:.4f}</b><extra></extra>',
+      hovertemplate: `<b>%{y}</b><br>${t.value.wsmScore}: <b>%{x:.4f}</b><extra></extra>`,
     }],
     layout: {
       paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
       font: { family: 'Inter, system-ui, sans-serif', color: p ? '#e2e8f0' : '#0f172a', size: 12 },
-      xaxis: { title: 'WSM Composite Score', range: [0, 1.22], gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { color: p ? '#94a3b8' : '#334155' } },
+      xaxis: { title: t.value.chartBarXAxis, range: [0, 1.22], gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { color: p ? '#94a3b8' : '#334155' } },
       yaxis: { gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { size: 12, color: p ? '#e2e8f0' : '#0f172a' }, automargin: true, ticksuffix: '  ' },
       margin: { l: leftMargin, r: 80, t: 48, b: 48 },
-      title: { text: 'WSM Score Ranking', font: { size: 15 }, x: 0.02 },
+      title: { text: t.value.chartBarTitle, font: { size: 15 }, x: 0.02 },
       showlegend: false, height: 300,
     },
   }
@@ -125,21 +130,21 @@ function stackedBarData() {
   return {
     data: keys.map((k, i) => ({
       type: 'bar', orientation: 'h',
-      name: CRITERION_LABELS[k] || k,
+      name: criterionLabels.value[k] || k,
       x: ordered.map(r => r.weighted_scores[k]),
       y: ordered.map(r => r.alternative_name),
       marker: { color: COLORS[i % COLORS.length], opacity: 0.88 },
-      hovertemplate: `<b>${CRITERION_LABELS[k] || k}</b><br>Contribution: <b>%{x:.4f}</b><extra></extra>`,
+      hovertemplate: `<b>${criterionLabels.value[k] || k}</b><br>${t.value.chartContribution}: <b>%{x:.4f}</b><extra></extra>`,
     })),
     layout: {
       barmode: 'stack',
       paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
       font: { family: 'Inter, system-ui, sans-serif', color: p ? '#e2e8f0' : '#0f172a', size: 12 },
-      xaxis: { title: 'Summed Weighted Contribution', range: [0, 1.08], gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { color: p ? '#94a3b8' : '#334155' } },
+      xaxis: { title: t.value.chartStackXAxis, range: [0, 1.08], gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { color: p ? '#94a3b8' : '#334155' } },
       yaxis: { gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { size: 12, color: p ? '#e2e8f0' : '#0f172a' }, automargin: true, ticksuffix: '  ' },
       legend: { orientation: 'h', y: 1.08, x: 0.5, xanchor: 'center', font: { size: 11 }, bgcolor: 'rgba(0,0,0,0)' },
       margin: { l: leftMargin, r: 24, t: 72, b: 48 },
-      title: { text: 'Weighted Contribution Breakdown', font: { size: 15 }, x: 0.02 },
+      title: { text: t.value.chartStackTitle, font: { size: 15 }, x: 0.02 },
       height: 340,
     },
   }
@@ -156,7 +161,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
             :class="dark
               ? 'bg-teal-900/30 border border-teal-700 text-teal-400'
               : 'bg-blue-500/10 text-blue-600 border border-blue-200/60'">
-        Context: {{ data.context }}
+        {{ t.context }}: {{ data.context }}
       </span>
     </div>
 
@@ -166,19 +171,19 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
            : 'bg-white/60 border border-white/80 text-emerald-700 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
       <span class="text-lg">✅</span>
       <span class="text-sm font-medium">
-        Recommended: <strong>{{ winner?.alternative_name }}</strong> —
-        WSM Score {{ winner?.total_score?.toFixed(4) }}
-        (rank #1 of {{ data.results.length }} alternatives in "{{ data.context }}")
+        {{ t.recommended }}: <strong>{{ winner?.alternative_name }}</strong> —
+        {{ t.wsmScore }} {{ winner?.total_score?.toFixed(4) }}
+        ({{ t.rankOf }} {{ data.results.length }} {{ t.alternatives }} "{{ data.context }}")
       </span>
     </div>
 
     <!-- Project params summary -->
     <div class="grid grid-cols-4 gap-3 mb-4">
       <div v-for="m in [
-        { label: 'Design Speed', val: params.design_speed + ' km/h' },
-        { label: 'AADT', val: params.aadt.toLocaleString() },
-        { label: 'Budget Limit', val: '$' + params.budget + 'M' },
-        { label: 'Land Limit', val: params.land_limit + ' ha' },
+        { label: t.designSpeedLabel, val: params.design_speed + ' km/h' },
+        { label: t.aadtLabel,        val: params.aadt.toLocaleString() },
+        { label: t.budgetLimit,      val: '$' + params.budget + 'M' },
+        { label: t.landLimitLabel,   val: params.land_limit + ' ha' },
       ]" :key="m.label"
            class="rounded-2xl p-3 backdrop-blur-xl"
            :class="dark
@@ -190,10 +195,10 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
     </div>
     <div class="grid grid-cols-4 gap-3 mb-6">
       <div v-for="m in [
-        { label: 'Peak Hour Factor', val: params.peak_factor + '%' },
-        { label: 'Lanes / Direction', val: String(params.num_lanes) },
-        { label: 'Terrain', val: params.terrain },
-        { label: 'Env. Sensitivity', val: params.env_sensitivity },
+        { label: t.peakHourFactor, val: params.peak_factor + '%' },
+        { label: t.lanesPerDir,    val: String(params.num_lanes) },
+        { label: t.terrain,        val: displayTerrain(params.terrain) },
+        { label: t.envSens,        val: displayEnv(params.env_sensitivity) },
       ]" :key="m.label"
            class="rounded-2xl p-3 backdrop-blur-xl"
            :class="dark
@@ -211,7 +216,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
            : 'bg-amber-50/80 border border-amber-200/80 shadow-[0_4px_16px_rgb(0,0,0,0.04)]'">
       <p class="text-[0.7rem] font-bold uppercase tracking-widest mb-2"
          :class="dark ? 'text-amber-400' : 'text-amber-600'">
-        ⚙ Parameter Adjustments Applied
+        ⚙ {{ t.paramAdjustments }}
       </p>
       <ul class="space-y-1">
         <li v-for="note in data.adjustments" :key="note.kind"
@@ -238,11 +243,11 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
         <!-- Section header -->
         <h2 class="text-xl font-semibold tracking-tight mb-1"
             :class="dark ? 'text-white/90' : 'text-slate-900'">
-          WSM Score Ranking
+          {{ t.wsmRanking }}
         </h2>
         <p class="text-xs tracking-wide mb-6"
            :class="dark ? 'text-white/40' : 'text-slate-500'">
-          Tap any card to explore its detailed engineering profile, metrics, and real-world map.
+          {{ t.tapToExplore }}
         </p>
 
         <!-- Ranking cards grid -->
@@ -285,7 +290,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
                       : '',
                   ]">
               <span class="text-sm">{{ RANK_BADGES[res.rank]?.icon || '•' }}</span>
-              {{ ORDINALS[res.rank - 1] }}
+              {{ t.ordinals[res.rank - 1] }}
             </span>
 
             <!-- Alternative name -->
@@ -307,7 +312,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
             </p>
             <p class="text-[0.6rem] font-medium uppercase tracking-widest mb-3"
                :class="dark ? 'text-white/35' : 'text-slate-400'">
-              WSM Score
+              {{ t.wsmScore }}
             </p>
 
             <!-- Score progress bar -->
@@ -323,7 +328,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
                   :class="selectedDetail === res.alternative_name
                     ? (dark ? 'text-teal-300' : 'text-blue-500')
                     : (dark ? 'text-white/40 group-hover:text-white/70' : 'text-slate-400 group-hover:text-slate-600')">
-              {{ selectedDetail === res.alternative_name ? '✕  Close' : '→  Details' }}
+              {{ selectedDetail === res.alternative_name ? t.close : t.details }}
             </span>
           </div>
         </div>
@@ -344,10 +349,10 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
                 selResult.rank === 3 ? 'bg-orange-500' : '',
                 selResult.rank > 3 ? 'bg-slate-400' : '',
               ]">
-          {{ RANK_BADGES[selResult.rank]?.icon }} {{ ORDINALS[selResult.rank - 1] }}
+          {{ RANK_BADGES[selResult.rank]?.icon }} {{ t.ordinals[selResult.rank - 1] }}
         </span>
         <span class="text-lg font-bold" :style="{ color: altColor(selResult.alternative_name) }">
-          Detailed Analysis: {{ selResult.alternative_name }}
+          {{ t.detailedAnalysis }}: {{ selResult.alternative_name }}
         </span>
       </div>
 
@@ -360,7 +365,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
                : 'bg-white/70 border border-white/80 shadow-[0_4px_16px_rgb(0,0,0,0.03)]'">
           <p class="text-[0.65rem] font-semibold uppercase tracking-wider mb-1"
              :class="dark ? 'text-slate-400' : 'text-slate-500'">
-            {{ data.criterion_labels[crit.name] }}
+            {{ criterionLabels[crit.name] }}
           </p>
           <p class="text-base font-bold" :class="dark ? 'text-slate-100' : 'text-slate-900'">
             {{ selResult.raw_values[crit.name] }} {{ crit.unit }}
@@ -371,21 +376,20 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
                  :style="{ width: (selResult.normalised_values[crit.name] * 100) + '%', background: altColor(selResult.alternative_name) }"></div>
           </div>
           <div class="flex justify-between text-[0.6rem]" :class="dark ? 'text-slate-500' : 'text-slate-400'">
-            <span>norm {{ selResult.normalised_values[crit.name]?.toFixed(3) }}</span>
+          <span>{{ t.norm }} {{ selResult.normalised_values[crit.name]?.toFixed(3) }}</span>
             <span>w·x̄ = {{ selResult.weighted_scores[crit.name]?.toFixed(4) }}</span>
           </div>
         </div>
       </div>
 
-      <!-- Key metrics row -->
       <div class="grid grid-cols-6 gap-3 mb-4">
         <div v-for="m in [
-          { l: 'WSM Score', v: selResult.total_score.toFixed(4) },
-          { l: 'Cost', v: '$' + selResult.raw_values.construction_cost_mln.toFixed(1) + 'M' },
-          { l: 'Throughput', v: Math.round(selResult.raw_values.throughput_vph).toLocaleString() + ' vph' },
-          { l: 'Safety', v: selResult.raw_values.safety_index.toFixed(1) + ' / 10' },
-          { l: 'Land Area', v: selResult.raw_values.land_area_hectares.toFixed(1) + ' ha' },
-          { l: 'Feasibility', v: isFeasible(selResult.raw_values) ? '✅ Feasible' : '⚠ Over limit' },
+          { l: t.wsmScore,    v: selResult.total_score.toFixed(4) },
+          { l: t.cost,        v: '$' + selResult.raw_values.construction_cost_mln.toFixed(1) + 'M' },
+          { l: t.throughput,  v: Math.round(selResult.raw_values.throughput_vph).toLocaleString() + ' vph' },
+          { l: t.safetyIndex, v: selResult.raw_values.safety_index.toFixed(1) + ' / 10' },
+          { l: t.landArea,    v: selResult.raw_values.land_area_hectares.toFixed(1) + ' ha' },
+          { l: t.feasibility, v: isFeasible(selResult.raw_values) ? t.feasible : t.overLimit },
         ]" :key="m.l"
              class="rounded-2xl p-3 backdrop-blur-xl"
              :class="dark
@@ -400,7 +404,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
       <div class="grid grid-cols-5 gap-6" v-if="detailInfo">
         <div class="col-span-3">
           <p class="text-[0.65rem] font-semibold uppercase tracking-wider mb-2"
-             :class="dark ? 'text-slate-400' : 'text-slate-500'">Engineering Description</p>
+             :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ t.engineeringDesc }}</p>
           <div class="text-sm leading-relaxed mb-4" :class="dark ? 'text-slate-200' : 'text-slate-700'"
                v-html="detailInfo.engineering_desc?.replace(/\*\*(.*?)\*\*/g, '<strong class=\'text-teal-500\'>$1</strong>').replace(/\n\n/g, '<br/><br/>')">
           </div>
@@ -411,7 +415,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
                    ? 'bg-slate-900 border border-slate-700'
                    : 'bg-white/70 border border-white/80 shadow-[0_4px_16px_rgb(0,0,0,0.03)]'">
               <h4 class="text-xs font-bold uppercase tracking-wider mb-2"
-                  :class="dark ? 'text-teal-400' : 'text-emerald-600'">Advantages</h4>
+                  :class="dark ? 'text-teal-400' : 'text-emerald-600'">{{ t.advantages }}</h4>
               <ul class="list-disc pl-4 space-y-1 text-sm" :class="dark ? 'text-slate-200' : 'text-slate-700'">
                 <li v-for="p in detailInfo.pros" :key="p">{{ p }}</li>
               </ul>
@@ -420,7 +424,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
                  :class="dark
                    ? 'bg-slate-900 border border-slate-700'
                    : 'bg-white/70 border border-white/80 shadow-[0_4px_16px_rgb(0,0,0,0.03)]'">
-              <h4 class="text-xs font-bold uppercase tracking-wider mb-2 text-red-500">Limitations</h4>
+              <h4 class="text-xs font-bold uppercase tracking-wider mb-2 text-red-500">{{ t.limitations }}</h4>
               <ul class="list-disc pl-4 space-y-1 text-sm" :class="dark ? 'text-slate-200' : 'text-slate-700'">
                 <li v-for="c in detailInfo.cons" :key="c">{{ c }}</li>
               </ul>
@@ -438,12 +442,12 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
             :dark="dark"
           />
           <p class="text-sm mt-2" :class="dark ? 'text-slate-200' : 'text-slate-700'">
-            <strong>Real-world example:</strong> {{ detailInfo.example_name }}
+            <strong>{{ t.realWorldExample }}:</strong> {{ detailInfo.example_name }}
           </p>
           <p class="text-xs" :class="dark ? 'text-slate-400' : 'text-slate-500'">
-            Coordinates: {{ Math.abs(detailInfo.lat)?.toFixed(4) }}°{{ detailInfo.lat >= 0 ? 'N' : 'S' }},
+            {{ t.coordinates }}: {{ Math.abs(detailInfo.lat)?.toFixed(4) }}°{{ detailInfo.lat >= 0 ? 'N' : 'S' }},
             {{ Math.abs(detailInfo.lon)?.toFixed(4) }}°{{ detailInfo.lon < 0 ? 'W' : 'E' }}
-            · Satellite imagery (Esri)
+            · {{ t.satellite }}
           </p>
         </div>
       </div>
@@ -475,7 +479,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
     <hr class="mb-6" :class="dark ? 'border-slate-700' : 'border-black/5'" />
 
     <!-- Raw data table -->
-    <h2 class="text-lg font-bold mb-3" :class="dark ? 'text-slate-100' : 'text-slate-900'">Criterion Values</h2>
+    <h2 class="text-lg font-bold mb-3" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.criterionValues }}</h2>
     <div class="overflow-x-auto rounded-2xl border mb-6 backdrop-blur-xl"
          :class="dark
            ? 'border-slate-700'
@@ -483,12 +487,12 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
       <table class="w-full text-sm">
         <thead>
           <tr :class="dark ? 'bg-slate-800' : 'bg-white/50'">
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">Rank</th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">Alternative</th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">Cost (M USD)</th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">Land Area (ha)</th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">Throughput (vph)</th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">Safety Index</th>
+            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.rank }}</th>
+            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.alternative }}</th>
+            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.cost }}</th>
+            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.landAreaCol }}</th>
+            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.throughputCol }}</th>
+            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.safetyCol }}</th>
           </tr>
         </thead>
         <tbody>
@@ -508,10 +512,9 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
     <hr class="mb-6" :class="dark ? 'border-slate-700' : 'border-black/5'" />
 
     <!-- Normalised scores table -->
-    <h2 class="text-lg font-bold mb-1" :class="dark ? 'text-slate-100' : 'text-slate-900'">Normalised Scores and Weighted Contributions</h2>
+    <h2 class="text-lg font-bold mb-1" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.normScores }}</h2>
     <p class="text-xs mb-3" :class="dark ? 'text-slate-400' : 'text-slate-500'">
-      Min-Max normalisation maps each raw value to [0, 1]. Minimize criteria are inverted so 1.0 denotes the best performer.
-      Cell format: normalised x̄ᵢⱼ → weighted contribution wⱼ · x̄ᵢⱼ.
+      {{ t.normDesc }}
     </p>
     <div class="overflow-x-auto rounded-2xl border backdrop-blur-xl"
          :class="dark
@@ -520,14 +523,14 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
       <table class="w-full text-sm">
         <thead>
           <tr :class="dark ? 'bg-slate-800' : 'bg-white/50'">
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">Rank</th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">Alternative</th>
+            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.rank }}</th>
+            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.alternative }}</th>
             <th v-for="crit in data.criteria" :key="crit.name"
                 class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">
-              {{ data.criterion_labels[crit.name] }}
+              {{ criterionLabels[crit.name] }}
               [{{ crit.direction === 'maximize' ? 'Max' : 'Min' }}, w={{ data.normalised_weights[crit.name]?.toFixed(2) }}]
             </th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">WSM Score</th>
+            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.wsmScore }}</th>
           </tr>
         </thead>
         <tbody>
