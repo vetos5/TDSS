@@ -149,7 +149,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
 </script>
 
 <template>
-  <div v-if="data" :class="{ 'dss-main-container': !dark }">
+  <div v-if="data" class="dss-wrapper" :class="{ 'dss-main-container': !dark }">
     <!-- Context badge + winner banner -->
     <div class="flex items-center gap-3 mb-3">
       <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold"
@@ -525,12 +525,15 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
 </template>
 
 <style scoped>
+.dss-wrapper {
+  border-radius: 1.5rem;
+  padding: 1.75rem 2rem;
+}
+
 .dss-main-container {
   background:
     radial-gradient(ellipse at 18% 22%, #e0e5ec 0%, transparent 52%),
     radial-gradient(ellipse at 82% 70%, #dce3ee 0%, transparent 50%),
     radial-gradient(ellipse at 50% 50%, #f0f2f6 0%, #eaecf2 100%);
-  border-radius: 1.5rem;
-  padding: 1.75rem 2rem;
 }
 </style>
