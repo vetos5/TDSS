@@ -204,6 +204,28 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
       </div>
     </div>
 
+    <!-- ═══ Active Parameter Adjustments ═══ -->
+    <div v-if="data.adjustments && data.adjustments.length" class="rounded-2xl px-4 py-3 mb-6"
+         :class="dark
+           ? 'bg-amber-900/20 border border-amber-700/50'
+           : 'bg-amber-50/80 border border-amber-200/80 shadow-[0_4px_16px_rgb(0,0,0,0.04)]'">
+      <p class="text-[0.7rem] font-bold uppercase tracking-widest mb-2"
+         :class="dark ? 'text-amber-400' : 'text-amber-600'">
+        ⚙ Parameter Adjustments Applied
+      </p>
+      <ul class="space-y-1">
+        <li v-for="note in data.adjustments" :key="note.kind"
+            class="flex items-start gap-2 text-xs leading-relaxed"
+            :class="dark ? 'text-amber-200' : 'text-amber-800'">
+          <span class="mt-0.5 shrink-0 font-bold uppercase tracking-wide text-[0.6rem] px-1.5 py-0.5 rounded"
+                :class="dark ? 'bg-amber-700/40 text-amber-300' : 'bg-amber-200 text-amber-700'">
+            {{ note.kind.replace('_', ' ') }}
+          </span>
+          <span>{{ note.message }}</span>
+        </li>
+      </ul>
+    </div>
+
     <!-- ═══ WSM Score Ranking — iOS Light Glassmorphism ═══ -->
     <div class="relative overflow-hidden rounded-[32px] p-1 mb-6">
 
@@ -363,7 +385,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
           { l: 'Throughput', v: Math.round(selResult.raw_values.throughput_vph).toLocaleString() + ' vph' },
           { l: 'Safety', v: selResult.raw_values.safety_index.toFixed(1) + ' / 10' },
           { l: 'Land Area', v: selResult.raw_values.land_area_hectares.toFixed(1) + ' ha' },
-          { l: 'Feasibility', v: isFeasible(selResult.raw_values) ? 'Feasible' : 'Over limit' },
+          { l: 'Feasibility', v: isFeasible(selResult.raw_values) ? '✅ Feasible' : '⚠ Over limit' },
         ]" :key="m.l"
              class="rounded-2xl p-3 backdrop-blur-xl"
              :class="dark

@@ -38,6 +38,12 @@ class EvaluateRequest(BaseModel):
     params: ProjectParams
 
 
+class AdjustmentNote(BaseModel):
+    """A single human-readable note describing a parameter-driven adjustment."""
+    kind: str   # one of: terrain, env_sensitivity, design_speed, traffic_demand, feasibility
+    message: str
+
+
 class EvaluationResultSchema(BaseModel):
     alternative_name: str
     raw_values: Dict[str, float]
@@ -57,6 +63,7 @@ class EvaluateResponse(BaseModel):
     criteria: List[CriterionSchema]
     criterion_labels: Dict[str, str]
     normalised_weights: Dict[str, float]
+    adjustments: List[AdjustmentNote] = []
 
 
 class InterchangeDetailSchema(BaseModel):
