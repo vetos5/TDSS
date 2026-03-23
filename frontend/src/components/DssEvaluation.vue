@@ -96,8 +96,6 @@ function radarData() {
 function barChartData() {
   const ordered = [...props.data.results].sort((a, b) => a.total_score - b.total_score)
   const p = props.dark
-  const maxLabelLen = Math.max(...ordered.map(r => r.alternative_name.length))
-  const leftMargin = Math.max(160, maxLabelLen * 11)
   return {
     data: [{
       type: 'bar', orientation: 'h',
@@ -113,9 +111,10 @@ function barChartData() {
       font: { family: 'Inter, system-ui, sans-serif', color: p ? '#e2e8f0' : '#0f172a', size: 12 },
       xaxis: { title: t.value.chartBarXAxis, range: [0, 1.22], gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { color: p ? '#94a3b8' : '#334155' } },
       yaxis: { gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { size: 12, color: p ? '#e2e8f0' : '#0f172a' }, automargin: true, ticksuffix: '  ' },
-      margin: { l: leftMargin, r: 80, t: 48, b: 48 },
+      margin: { l: 8, r: 80, t: 48, b: 48, pad: 4 },
       title: { text: t.value.chartBarTitle, font: { size: 15 }, x: 0.02 },
       showlegend: false, height: 300,
+      autosize: true,
     },
   }
 }
@@ -125,8 +124,6 @@ function stackedBarData() {
   const keys = Object.keys(props.data.results[0].weighted_scores)
   const COLORS = props.dark ? ['#2dd4bf', '#fb923c', '#a78bfa', '#60a5fa'] : ['#0f766e', '#ea580c', '#7c3aed', '#1d4ed8']
   const p = props.dark
-  const maxLabelLen = Math.max(...ordered.map(r => r.alternative_name.length))
-  const leftMargin = Math.max(160, maxLabelLen * 11)
   return {
     data: keys.map((k, i) => ({
       type: 'bar', orientation: 'h',
@@ -142,10 +139,11 @@ function stackedBarData() {
       font: { family: 'Inter, system-ui, sans-serif', color: p ? '#e2e8f0' : '#0f172a', size: 12 },
       xaxis: { title: t.value.chartStackXAxis, range: [0, 1.08], gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { color: p ? '#94a3b8' : '#334155' } },
       yaxis: { gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { size: 12, color: p ? '#e2e8f0' : '#0f172a' }, automargin: true, ticksuffix: '  ' },
-      legend: { orientation: 'h', y: 1.08, x: 0.5, xanchor: 'center', font: { size: 11 }, bgcolor: 'rgba(0,0,0,0)' },
-      margin: { l: leftMargin, r: 24, t: 72, b: 48 },
+      legend: { orientation: 'h', y: -0.32, x: 0.5, xanchor: 'center', font: { size: 11 }, bgcolor: 'rgba(0,0,0,0)' },
+      margin: { l: 8, r: 24, t: 48, b: 120, pad: 4 },
       title: { text: t.value.chartStackTitle, font: { size: 15 }, x: 0.02 },
-      height: 340,
+      height: 380,
+      autosize: true,
     },
   }
 }
