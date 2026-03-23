@@ -13,6 +13,7 @@ const { dark, toggle } = useTheme()
 const { t } = useLocale()
 const dss = useDSS()
 const activeTab = ref('evaluation')
+const sidebarOpen = ref(false)
 
 let debounceTimer = null
 
@@ -47,20 +48,40 @@ watch(
     </div>
 
     <div class="flex">
-      <Sidebar :dark="dark" :dss="dss" @toggle-theme="toggle" />
+      <!-- Mobile sidebar backdrop -->
+      <div v-if="sidebarOpen"
+           class="fixed inset-0 z-20 bg-black/40 backdrop-blur-sm md:hidden"
+           @click="sidebarOpen = false"></div>
 
-      <main class="flex-1 ml-80 p-6 lg:p-8">
-        <header class="mb-6">
-          <h1 class="text-2xl lg:text-3xl font-extrabold tracking-tight"
-              :class="dark ? 'text-slate-100' : 'text-slate-900'">
-            {{ t.appTitle }}
-          </h1>
-          <p class="text-sm mt-1" :class="dark ? 'text-slate-400' : 'text-slate-500'">
-            {{ t.appSubtitle }}
-          </p>
+      <Sidebar :dark="dark" :dss="dss" :open="sidebarOpen"
+               @toggle-theme="toggle"
+               @close="sidebarOpen = false" />
+
+      <main class="flex-1 md:ml-80 p-4 sm:p-6 lg:p-8 min-w-0">
+        <header class="mb-6 flex items-start gap-3">
+          <!-- Hamburger (mobile only) -->
+          <button class="mt-1 md:hidden shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
+                  :class="dark
+                    ? 'bg-slate-700 border border-slate-600 text-slate-200 hover:bg-slate-600'
+                    : 'bg-white/80 border border-black/5 shadow-[0_1px_3px_rgb(0,0,0,0.06)] text-slate-700 hover:bg-white'"
+                  @click="sidebarOpen = true"
+                  aria-label="Open settings">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+          </button>
+          <div>
+            <h1 class="text-2xl lg:text-3xl font-extrabold tracking-tight"
+                :class="dark ? 'text-slate-100' : 'text-slate-900'">
+              {{ t.appTitle }}
+            </h1>
+            <p class="text-sm mt-1" :class="dark ? 'text-slate-400' : 'text-slate-500'">
+              {{ t.appSubtitle }}
+            </p>
+          </div>
         </header>
 
-        <TabNav :active="activeTab" :dark="dark" @update="activeTab = $event" />
+        <TabNav :active="activeTab" :dark="dark" @update="v => { activeTab = v; sidebarOpen = false }" />
 
         <div v-if="dss.loading.value" class="flex items-center justify-center py-20">
           <div class="animate-spin rounded-full h-10 w-10 border-b-2"

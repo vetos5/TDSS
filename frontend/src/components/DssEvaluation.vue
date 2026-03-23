@@ -165,7 +165,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
       </span>
     </div>
 
-    <div class="rounded-2xl px-4 py-3 mb-6 flex items-center gap-2 backdrop-blur-xl"
+    <div class="rounded-2xl px-4 py-3 mb-6 flex items-start gap-2 backdrop-blur-xl"
          :class="dark
            ? 'bg-emerald-900/20 border border-emerald-700 text-emerald-300'
            : 'bg-white/60 border border-white/80 text-emerald-700 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
@@ -178,7 +178,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
     </div>
 
     <!-- Project params summary -->
-    <div class="grid grid-cols-4 gap-3 mb-4">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
       <div v-for="m in [
         { label: t.designSpeedLabel, val: params.design_speed + ' km/h' },
         { label: t.aadtLabel,        val: params.aadt.toLocaleString() },
@@ -193,7 +193,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
         <p class="text-lg font-bold" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ m.val }}</p>
       </div>
     </div>
-    <div class="grid grid-cols-4 gap-3 mb-6">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
       <div v-for="m in [
         { label: t.peakHourFactor, val: params.peak_factor + '%' },
         { label: t.lanesPerDir,    val: String(params.num_lanes) },
@@ -251,7 +251,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
         </p>
 
         <!-- Ranking cards grid -->
-        <div class="grid gap-4" :style="{ gridTemplateColumns: `repeat(${data.results.length}, 1fr)` }">
+        <div class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <div v-for="(res, idx) in data.results" :key="res.alternative_name"
                class="group relative flex flex-col items-center rounded-3xl border p-6 text-center cursor-pointer
                       transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)]
@@ -357,7 +357,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
       </div>
 
       <!-- Criterion breakdown -->
-      <div class="grid gap-3 mb-4" :style="{ gridTemplateColumns: `repeat(${data.criteria.length}, 1fr)` }">
+      <div class="grid gap-3 mb-4 grid-cols-2 sm:grid-cols-4">
         <div v-for="crit in data.criteria" :key="crit.name"
              class="rounded-2xl p-3 backdrop-blur-xl"
              :class="dark
@@ -382,7 +382,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
         </div>
       </div>
 
-      <div class="grid grid-cols-6 gap-3 mb-4">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
         <div v-for="m in [
           { l: t.wsmScore,    v: selResult.total_score.toFixed(4) },
           { l: t.cost,        v: '$' + selResult.raw_values.construction_cost_mln.toFixed(1) + 'M' },
@@ -401,15 +401,15 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
       </div>
 
       <!-- Description + Map row -->
-      <div class="grid grid-cols-5 gap-6" v-if="detailInfo">
-        <div class="col-span-3">
+      <div class="grid grid-cols-1 md:grid-cols-5 gap-6" v-if="detailInfo">
+        <div class="md:col-span-3">
           <p class="text-[0.65rem] font-semibold uppercase tracking-wider mb-2"
              :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ t.engineeringDesc }}</p>
           <div class="text-sm leading-relaxed mb-4" :class="dark ? 'text-slate-200' : 'text-slate-700'"
                v-html="detailInfo.engineering_desc?.replace(/\*\*(.*?)\*\*/g, '<strong class=\'text-teal-500\'>$1</strong>').replace(/\n\n/g, '<br/><br/>')">
           </div>
 
-          <div v-if="detailInfo.pros?.length || detailInfo.cons?.length" class="grid grid-cols-2 gap-3">
+          <div v-if="detailInfo.pros?.length || detailInfo.cons?.length" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div class="rounded-2xl p-4 backdrop-blur-xl"
                  :class="dark
                    ? 'bg-slate-900 border border-slate-700'
@@ -432,7 +432,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
           </div>
         </div>
 
-        <div class="col-span-2">
+        <div class="md:col-span-2">
           <LeafletMap
             :key="selectedDetail"
             :lat="detailInfo.lat"
@@ -454,7 +454,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
     </div>
 
     <!-- Charts -->
-    <div class="grid grid-cols-2 gap-6 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
       <div class="rounded-[28px] overflow-hidden backdrop-blur-2xl"
            :class="dark
              ? 'bg-white/[0.06] border border-white/10'
@@ -552,7 +552,13 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
 <style scoped>
 .dss-wrapper {
   border-radius: 1.5rem;
-  padding: 1.75rem 2rem;
+  padding: 1rem;
+}
+
+@media (min-width: 640px) {
+  .dss-wrapper {
+    padding: 1.75rem 2rem;
+  }
 }
 
 .dss-main-container {

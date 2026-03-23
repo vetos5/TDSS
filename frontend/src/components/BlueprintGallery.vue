@@ -38,7 +38,7 @@ function isFeasible(rv) {
          :class="dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'">
       <p class="text-[0.65rem] font-semibold uppercase tracking-wider mb-2"
          :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ t.projectParamsSummary }}</p>
-      <div class="flex flex-wrap gap-4 text-sm" :class="dark ? 'text-slate-300' : 'text-slate-600'">
+      <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm" :class="dark ? 'text-slate-300' : 'text-slate-600'">
         <span>{{ t.designSpeedShort }}: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ params.design_speed }} km/h</strong></span>
         <span>AADT: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ params.aadt.toLocaleString() }}</strong></span>
         <span>{{ t.peakFactorShort }}: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ params.peak_factor }}%</strong></span>
@@ -51,8 +51,8 @@ function isFeasible(rv) {
     </div>
 
     <!-- Winner spotlight -->
-    <div class="grid grid-cols-7 gap-6 mb-6">
-      <div class="col-span-2">
+    <div class="grid grid-cols-1 md:grid-cols-7 gap-6 mb-6">
+      <div class="md:col-span-2">
         <div class="rounded-2xl border-2 p-5 text-center"
              :class="dark ? 'bg-teal-900/20 border-teal-600' : 'bg-teal-50 border-teal-600'">
           <p class="text-[0.65rem] font-semibold uppercase tracking-wider mb-1"
@@ -72,7 +72,7 @@ function isFeasible(rv) {
         </div>
       </div>
 
-      <div class="col-span-5">
+      <div class="md:col-span-5">
         <p class="font-semibold mb-1" :style="{ color: altColor(winner.alternative_name) }">
           {{ winner.alternative_name }} — {{ t.criterionLabel }} {{ t.directionCol }}
         </p>
@@ -112,7 +112,7 @@ function isFeasible(rv) {
 
     <!-- All alternatives grid -->
     <p class="font-semibold text-sm mb-3" :class="dark ? 'text-slate-200' : 'text-slate-700'">{{ t.allAlternatives }}</p>
-    <div class="grid gap-4" :style="{ gridTemplateColumns: `repeat(${Math.min(data.results.length, 4)}, 1fr)` }">
+    <div class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       <div v-for="res in data.results" :key="res.alternative_name"
            class="rounded-xl border p-4 text-center transition-all hover:shadow-lg hover:-translate-y-0.5"
            :class="dark ? 'bg-slate-800 border-slate-700 hover:border-teal-500' : 'bg-white border-slate-200 hover:border-teal-600'">

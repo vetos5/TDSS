@@ -5,8 +5,9 @@ import { useLocale } from '../composables/useLocale.js'
 const props = defineProps({
   dark: Boolean,
   dss: Object,
+  open: Boolean,
 })
-const emit = defineEmits(['toggle-theme'])
+const emit = defineEmits(['toggle-theme', 'close'])
 
 const { lang, toggleLang, t } = useLocale()
 
@@ -47,11 +48,26 @@ const envOptions = computed(() => [
 </script>
 
 <template>
-  <aside class="fixed left-0 top-0 h-screen w-80 overflow-y-auto border-r z-30 transition-colors"
-         :class="dark
-           ? 'bg-slate-800 border-slate-700'
-           : 'bg-white/60 backdrop-blur-2xl border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
+  <aside class="fixed left-0 top-0 h-screen w-80 overflow-y-auto border-r z-30 transition-all duration-300"
+         :class="[
+           dark
+             ? 'bg-slate-800 border-slate-700'
+             : 'bg-white/60 backdrop-blur-2xl border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]',
+           open ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+         ]">
     <div class="p-5">
+      <!-- Mobile close button -->
+      <div class="flex justify-end mb-2 md:hidden">
+        <button @click="emit('close')"
+                class="w-8 h-8 rounded-xl flex items-center justify-center text-lg transition-colors"
+                :class="dark
+                  ? 'bg-slate-700 border border-slate-600 text-slate-300 hover:bg-slate-600'
+                  : 'bg-white/80 border border-black/5 shadow-[0_1px_3px_rgb(0,0,0,0.06)] text-slate-500 hover:bg-white'"
+                aria-label="Close sidebar">
+          ✕
+        </button>
+      </div>
+
       <!-- Theme + Language toggles -->
       <div class="flex items-center justify-between mb-4">
         <span class="text-xs font-semibold uppercase tracking-wider"
