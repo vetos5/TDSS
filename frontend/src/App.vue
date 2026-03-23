@@ -53,23 +53,27 @@ watch(
            class="fixed inset-0 z-20 bg-black/40 backdrop-blur-sm md:hidden"
            @click="sidebarOpen = false"></div>
 
+      <!-- Hamburger (mobile only) — fixed so it stays visible when scrolling -->
+      <button v-if="!sidebarOpen"
+              class="fixed top-3 left-3 z-40 md:hidden w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
+              :class="dark
+                ? 'bg-slate-700 border border-slate-600 text-slate-200 hover:bg-slate-600'
+                : 'bg-white/80 border border-black/5 shadow-[0_1px_3px_rgb(0,0,0,0.06)] text-slate-700 hover:bg-white'"
+              @click="sidebarOpen = true"
+              aria-label="Open settings">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+
       <Sidebar :dark="dark" :dss="dss" :open="sidebarOpen"
                @toggle-theme="toggle"
                @close="sidebarOpen = false" />
 
       <main class="flex-1 md:ml-80 p-4 sm:p-6 lg:p-8 min-w-0">
         <header class="mb-6 flex items-start gap-3">
-          <!-- Hamburger (mobile only) -->
-          <button class="mt-1 md:hidden shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
-                  :class="dark
-                    ? 'bg-slate-700 border border-slate-600 text-slate-200 hover:bg-slate-600'
-                    : 'bg-white/80 border border-black/5 shadow-[0_1px_3px_rgb(0,0,0,0.06)] text-slate-700 hover:bg-white'"
-                  @click="sidebarOpen = true"
-                  aria-label="Open settings">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
-            </svg>
-          </button>
+          <!-- Spacer so the title doesn't sit under the fixed hamburger on mobile -->
+          <div class="md:hidden shrink-0 w-9 h-9" aria-hidden="true"></div>
           <div>
             <h1 class="text-2xl lg:text-3xl font-extrabold tracking-tight"
                 :class="dark ? 'text-slate-100' : 'text-slate-900'">
