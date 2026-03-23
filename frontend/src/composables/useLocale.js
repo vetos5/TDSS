@@ -61,6 +61,7 @@ const STRINGS = {
     envCritical: 'Critical',
 
     // DSS Evaluation
+    updating: 'Updating…',
     context: 'Context',
     recommended: 'Recommended',
     wsmScore: 'WSM Score',
@@ -209,6 +210,7 @@ const STRINGS = {
     envCritical: 'Критична',
 
     // DSS Evaluation
+    updating: 'Оновлення…',
     context: 'Контекст',
     recommended: 'Рекомендовано',
     wsmScore: 'Оцінка WSM',

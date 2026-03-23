@@ -83,12 +83,21 @@ watch(
 
         <TabNav :active="activeTab" :dark="dark" @update="v => { activeTab = v; sidebarOpen = false }" />
 
-        <div v-if="dss.loading.value" class="flex items-center justify-center py-20">
+        <!-- Full-page spinner only on initial load (no data yet) -->
+        <div v-if="dss.loading.value && !dss.evalData.value" class="flex items-center justify-center py-20">
           <div class="animate-spin rounded-full h-10 w-10 border-b-2"
                :class="dark ? 'border-teal-400' : 'border-teal-700'"></div>
         </div>
 
-        <template v-else-if="dss.evalData.value">
+        <template v-if="dss.evalData.value">
+          <!-- Subtle re-evaluation indicator -->
+          <div class="flex items-center gap-2 mb-3 h-5 transition-opacity duration-200"
+               :class="dss.loading.value ? 'opacity-100' : 'opacity-0 pointer-events-none'">
+            <div class="animate-spin rounded-full h-3.5 w-3.5 border-b-2"
+                 :class="dark ? 'border-teal-400' : 'border-teal-600'"></div>
+            <span class="text-xs" :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ t.updating }}</span>
+          </div>
+
           <DssEvaluation
             v-show="activeTab === 'evaluation'"
             :data="dss.evalData.value"
