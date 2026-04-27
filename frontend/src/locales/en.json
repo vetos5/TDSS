@@ -1,0 +1,294 @@
+{
+  "appTitle": "Transport Interchange Decision Support System",
+  "appSubtitle": "Multi-Criteria Decision Analysis (MCDA) · Weighted Sum Model (WSM)",
+
+  "tabEvaluation": "DSS Evaluation",
+  "tabGallery": "Blueprint Gallery",
+  "tabMethodology": "Methodology",
+
+  "sidebarVersion": "TDSS v4",
+  "taskContext": "Task Context",
+  "taskContextDesc": "Select the interchange type category to compare alternatives.",
+  "criteriaWeights": "Criteria Weights",
+  "criteriaWeightsDesc": "Adjust slider values. Weights are auto-normalised to sum to 1.0.",
+  "projectParameters": "Project Parameters",
+  "projectParamsDesc": "Define site-specific constraints and traffic characteristics.",
+  "normWeightsLabel": "Normalised weights (sum = 1.0)",
+  "rawTotalLabel": "Raw slider total",
+  "dataFooter": "Data: FHWA (2023) · HCM 7th Ed. · PIARC Road Safety Manual (2022).",
+
+  "constructionCost": "Construction Cost",
+  "landArea": "Land Area",
+  "throughput": "Throughput (vph)",
+  "safetyIndex": "Safety Index",
+
+  "minimize": "Minimize",
+  "maximize": "Maximize",
+
+  "designSpeed": "Design Speed (km/h)",
+  "aadt": "AADT",
+  "peakFactor": "Peak Hour Factor (%)",
+  "numLanes": "Lanes / Direction",
+  "budget": "Budget (M USD)",
+  "landLimit": "Available Land (ha)",
+  "terrainType": "Terrain Type",
+  "envSensitivity": "Environmental Sensitivity",
+
+  "terrainFlat": "Flat",
+  "terrainRolling": "Rolling",
+  "terrainMountainous": "Mountainous",
+
+  "envLow": "Low",
+  "envMedium": "Medium",
+  "envHigh": "High",
+  "envCritical": "Critical",
+
+  "updating": "Updating…",
+  "context": "Context",
+  "recommended": "Recommended",
+  "wsmScore": "WSM Score",
+  "rankOf": "rank #1 of",
+  "alternatives": "alternatives in",
+  "designSpeedLabel": "Design Speed",
+  "aadtLabel": "AADT",
+  "budgetLimit": "Budget Limit",
+  "landLimitLabel": "Land Limit",
+  "peakHourFactor": "Peak Hour Factor",
+  "lanesPerDir": "Lanes / Direction",
+  "terrain": "Terrain",
+  "envSens": "Env. Sensitivity",
+  "paramAdjustments": "Parameter Adjustments Applied",
+  "wsmRanking": "WSM Score Ranking",
+  "tapToExplore": "Tap any card to explore its detailed engineering profile, metrics, and real-world map.",
+  "details": "→  Details",
+  "close": "✕  Close",
+  "detailedAnalysis": "Detailed Analysis",
+  "engineeringDesc": "Engineering Description",
+  "advantages": "Advantages",
+  "limitations": "Limitations",
+  "realWorldExample": "Real-world example",
+  "coordinates": "Coordinates",
+  "satellite": "Satellite imagery (Esri)",
+  "criterionValues": "Criterion Values",
+  "normScores": "Normalised Scores and Weighted Contributions",
+  "normDesc": "Min-Max normalisation maps each raw value to [0, 1]. Minimize criteria are inverted so 1.0 denotes the best performer. Cell format: normalised x̄ᵢⱼ → weighted contribution wⱼ · x̄ᵢⱼ.",
+  "rank": "Rank",
+  "alternative": "Alternative",
+  "cost": "Cost (M USD)",
+  "landAreaCol": "Land Area (ha)",
+  "throughputCol": "Throughput (vph)",
+  "safetyCol": "Safety Index",
+  "norm": "norm",
+  "feasibility": "Feasibility",
+  "feasible": "✅ Feasible",
+  "overLimit": "⚠ Over limit",
+
+  "blueprints": "Interchange Schematic Blueprints",
+  "projectParamsSummary": "Project Parameters",
+  "designSpeedShort": "Design Speed",
+  "peakFactorShort": "Peak Factor",
+  "lanesShort": "Lanes",
+  "budgetShort": "Budget",
+  "landShort": "Land",
+  "terrainShort": "Terrain",
+  "envShort": "Env",
+  "dir": "/dir",
+  "allAlternatives": "All Alternatives",
+  "feasibleCheck": "✓ Feasible",
+  "exceedsLimits": "✗ Exceeds limits",
+  "criterionLabel": "Criterion",
+  "directionCol": "Direction",
+  "rawValue": "Raw Value",
+  "normalised": "Normalised",
+  "weight": "Weight",
+  "contribution": "Contribution",
+
+  "wsmTitle": "Weighted Sum Model (WSM)",
+  "wsmDesc": "The composite priority score for alternative i is computed as the weighted sum of normalised criterion values:",
+  "symbol": "Symbol",
+  "definition": "Definition",
+  "defSi": "Composite WSM score for alternative i, Sᵢ ∈ [0, 1]",
+  "defN": "Number of evaluation criteria",
+  "defWj": "Normalised weight for criterion j, with Σwⱼ = 1",
+  "defXij": "Min-Max normalised value of criterion j for alternative i",
+  "minMaxTitle": "Min-Max Normalisation",
+  "minMaxDesc": "Raw criterion values are mapped to the unit interval [0, 1] according to the direction of preference.",
+  "maxDir": "Maximize — higher raw value is preferred (e.g. throughput, safety):",
+  "minDir": "Minimize — lower raw value is preferred (e.g. cost, land area):",
+  "edgeCase": "Edge case: when maxⱼ = minⱼ (all alternatives equal), the normalised score is set to 0.5.",
+  "criteriaDataTitle": "Criteria and Data Sources",
+  "source": "Source",
+  "referencesTitle": "References",
+  "activeWeightProfile": "Active Weight Profile",
+  "currentRanking": "Current Ranking",
+  "ordinals": ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"],
+
+  "chartRadarTitle": "Normalised Criterion Profile — Top",
+  "chartBarTitle": "WSM Score Ranking",
+  "chartBarXAxis": "WSM Composite Score",
+  "chartStackTitle": "Weighted Contribution Breakdown",
+  "chartStackXAxis": "Summed Weighted Contribution",
+  "chartContribution": "Contribution",
+
+  "terrainDisplay": {
+    "Flat": "Flat",
+    "Rolling": "Rolling",
+    "Mountainous": "Mountainous"
+  },
+  "envDisplay": {
+    "Low": "Low",
+    "Medium": "Medium",
+    "High": "High",
+    "Critical": "Critical"
+  },
+
+  "switchLang": "Switch language",
+  "openSettings": "Open settings",
+  "closeSidebar": "Close sidebar",
+
+  "backend": {
+    "project_active": "Active",
+    "project_closed": "Closed",
+    "project_pending": "Pending",
+    "terrain_flat": "Flat",
+    "terrain_rolling": "Rolling",
+    "terrain_mountainous": "Mountainous",
+    "env_low": "Low",
+    "env_medium": "Medium",
+    "env_high": "High",
+    "env_critical": "Critical",
+    "direction_maximize": "Maximize",
+    "direction_minimize": "Minimize"
+  },
+
+  "interchange": {
+    "Cloverleaf": {
+      "description": "Grade-separated 4-loop interchange. High capacity and free-flow operations with no traffic signals, but loop ramp geometry creates large land requirements and weaving sections between successive on/off ramps reduce safety at high volumes.",
+      "engineering_desc": "The cloverleaf interchange is a grade-separated junction where each turning movement is served by a loop ramp in one of the four quadrants. Per the **AASHTO Green Book (7th Ed.)**, loop ramp design speeds range from 25–50 km/h depending on the ramp radius.\n\n**HCM 7th Edition (Chapter 14)** notes that weaving segments between consecutive on- and off-ramps are the primary capacity bottleneck. The effective Level of Service degrades rapidly above 3,500–4,000 veh/hr aggregate volume.\n\nModern practice favours *collector-distributor (C-D) roads* to mitigate weaving, effectively converting a basic cloverleaf into a *partial cloverleaf with C-D* (FHWA, 2023).",
+      "pros": [
+        "Full free-flow movement — no traffic signals required",
+        "Moderate construction cost relative to directional interchanges",
+        "Well-understood design with extensive AASHTO/FHWA guidance",
+        "Simultaneous left-turn accommodation via loop ramps"
+      ],
+      "cons": [
+        "Large right-of-way footprint (typically 16–25 ha)",
+        "Weaving sections between successive loop ramps degrade capacity at high volumes",
+        "Low-speed loop geometry (40–55 km/h design speed) creates merge conflicts",
+        "Lower safety index due to speed differentials and weaving (PIARC, 2019)"
+      ]
+    },
+    "Turbine": {
+      "description": "Directional interchange with semi-direct ramps arranged in a turbine pattern. Eliminates weaving conflicts, delivers superior throughput and safety, but requires significant right-of-way and construction investment.",
+      "engineering_desc": "The turbine interchange arranges semi-direct ramps in a spiralling pattern, eliminating the weaving segments inherent in cloverleaf designs. **FHWA Interchange Justification Report Guidelines (2023)** classify turbine interchanges as a *system interchange* suitable for freeway-to-freeway junctions with projected AADT above 80,000.\n\nPer **HCM 7th Edition**, the absence of weaving allows sustained LOS C/D operation at volumes that would push a cloverleaf into LOS E/F. The curving flyover ramps are typically designed for 60–80 km/h, significantly higher than cloverleaf loops.\n\nWidely adopted in the Netherlands and Germany, the turbine is considered a best-practice design for high-volume, space-conscious system interchanges (PIARC Road Safety Manual, 2019).",
+      "pros": [
+        "Eliminates all weaving conflicts — direct/semi-direct ramps only",
+        "High throughput capacity (5,500–7,000 veh/hr per HCM Ch. 14)",
+        "Excellent safety record — no speed-differential merge conflicts",
+        "Aesthetically efficient footprint relative to capacity delivered"
+      ],
+      "cons": [
+        "Significant construction cost due to multilevel flyover ramps",
+        "Larger right-of-way than stacked designs (25–30 ha typical)",
+        "Complex drainage design due to curved, elevated ramp geometry",
+        "Longer construction timeline compared to at-grade alternatives"
+      ]
+    },
+    "Stack (4-Level)": {
+      "description": "Four-level fully directional grade-separated interchange. The highest-capacity and safest system interchange type; all movements are direct with no weaving or signal delay, at the cost of maximum construction complexity.",
+      "engineering_desc": "The four-level stack interchange provides fully directional, grade-separated connections for all turning movements using stacked flyover ramps. **FHWA (2023)** considers this the highest-capacity system interchange form, justified only when projected volumes exceed the capacity of turbine or cloverleaf alternatives.\n\n**HCM 7th Edition (Chapter 14)** reports effective capacity of 7,000–8,500 veh/hr with sustained LOS C. The absence of weaving, loop-ramp speed differentials, and at-grade conflicts yields the highest safety index per **AASHTO Highway Safety Manual (2022)**.\n\nThe vertical stacking of four structural levels compresses the ground-level footprint to roughly 10–15 ha — considerably less than a cloverleaf serving the same volume — at the cost of significant structural engineering investment.",
+      "pros": [
+        "Maximum throughput — all movements are direct with no weaving or signals",
+        "Highest safety index among system interchanges (AASHTO HSM, 2022)",
+        "Minimal land footprint for capacity delivered (10–15 ha typical)",
+        "Design speeds of 50–80 km/h on all ramps — no slow loops"
+      ],
+      "cons": [
+        "Highest construction cost of all interchange types (typically $60–120M+)",
+        "Maximum structural complexity — 3 or 4 bridge levels required",
+        "Visual impact and noise propagation due to elevated structures",
+        "Long construction duration (5–8 years for major urban stacks)"
+      ]
+    },
+    "Diamond": {
+      "description": "Standard diamond interchange with four ramp terminals controlled by signals or roundabouts at the arterial crossings. Cost-effective and compact, but at-grade signal crossings introduce delay and limit peak throughput.",
+      "engineering_desc": "The conventional diamond interchange connects a limited-access highway to an arterial via four ramp terminals — two on each side of the overpass. **AASHTO Green Book (7th Ed.)** identifies it as the default service interchange for low-to-moderate volume crossings.\n\nPer **HCM 7th Edition (Chapter 23)**, the signalised ramp terminals are the capacity bottleneck; adaptive signal control (SCOOT/SCATS) can improve throughput by 10–15% over fixed-time plans.\n\n**FHWA (2023)** notes that the diamond is the most cost-effective interchange where AADT is below 30,000 and left-turn volumes are moderate.",
+      "pros": [
+        "Lowest construction cost of all interchange types",
+        "Minimal right-of-way requirement (3–6 ha typical)",
+        "Simple, well-understood design — rapid construction timeline",
+        "Easily retrofittable with roundabouts or adaptive signal control"
+      ],
+      "cons": [
+        "At-grade signal crossings limit peak throughput to ~2,500 veh/hr",
+        "Signal delay degrades LOS during peak hours (HCM Ch. 23)",
+        "Left-turn conflict points reduce safety compared to grade-separated designs",
+        "Not suitable for freeway-to-freeway (system) interchange applications"
+      ]
+    },
+    "SPUI": {
+      "description": "Single Point Urban Interchange: all ramp movements converge at one signalised intersection. Combines near-cloverleaf throughput with a compact urban footprint, optimal for constrained corridors where land acquisition cost is critical.",
+      "engineering_desc": "The Single Point Urban Interchange (SPUI) consolidates all ramp movements into one signalised intersection positioned directly under or over the freeway bridge. **FHWA Technical Advisory T6640.8A** recommends SPUIs where conventional diamonds exceed capacity but land constraints preclude a DDI or cloverleaf.\n\n**HCM 7th Edition (Chapter 23)** reports that a well-designed SPUI achieves throughput of 4,000–5,000 veh/hr — nearly double a conventional diamond — through its efficient two-phase signal cycle.\n\nThe design requires a wider bridge deck (typically 40–60 m) compared to a diamond (20–30 m), increasing structural cost by 30–50% (NCHRP Report 345).",
+      "pros": [
+        "Single signal phase handles all movements — high throughput for footprint",
+        "Compact urban footprint (3–5 ha typical)",
+        "Reduces conflict points vs. conventional diamond (fewer signal phases)",
+        "Strong LOS performance at moderate-to-high volumes (HCM Ch. 23)"
+      ],
+      "cons": [
+        "Higher construction cost than diamond due to wider bridge structure",
+        "Single-point signal failure cascades to entire interchange",
+        "Pedestrian accommodation requires careful design (FHWA Ped. Guide, 2023)",
+        "Complex signal timing — requires experienced traffic engineering"
+      ]
+    },
+    "DDI": {
+      "description": "Diverging Diamond Interchange: traffic crosses to the opposite side of the road at two signalised crossovers, eliminating left-turn conflicts. High throughput and a strong safety record in recent North American and European deployments.",
+      "engineering_desc": "The Diverging Diamond Interchange (DDI), also known as the Double Crossover Diamond (DCD), routes traffic to the left side of the road between two signalised crossover points. This geometry eliminates all left-turn conflict points, dramatically improving safety.\n\n**FHWA Every Day Counts (EDC-4)** promoted the DDI as a proven innovation; crash studies at early installations (e.g., I-44/Route 13, Springfield, MO) reported 40–60% reduction in total crashes.\n\n**HCM 7th Edition** notes that the two-phase crossover signal achieves throughput comparable to a SPUI (5,000–6,000 veh/hr) at 60–70% of SPUI construction cost, making it an increasingly popular retrofit option.",
+      "pros": [
+        "Eliminates left-turn conflict points — strong safety improvement (40–60% crash reduction)",
+        "High throughput with only two signal phases per crossover",
+        "Moderate construction cost — often a retrofit of existing diamond",
+        "Proven safety record: 100+ US installations since 2009 (FHWA EDC-4)"
+      ],
+      "cons": [
+        "Counter-intuitive driver experience at crossover points",
+        "Requires clear wayfinding signage and positive guidance markings",
+        "Slightly larger footprint than conventional diamond (5–7 ha)",
+        "Limited pedestrian/bicycle accommodation without dedicated facilities"
+      ]
+    },
+    "Trumpet": {
+      "description": "Three-leg interchange with a loop ramp for one turning movement and direct ramps for the other two. Common for highway termini; cost-effective with a moderate footprint and good safety characteristics.",
+      "engineering_desc": "The trumpet interchange serves three-leg (T-junction) connections where a highway terminates or a major ramp branches. One movement uses a loop ramp while the other two use semi-direct or direct ramps.\n\n**AASHTO Green Book (7th Ed.)** specifies trumpet interchanges for freeway termini where traffic demand on the loop movement is moderate (<1,500 veh/hr).\n\n**HCM 7th Edition** capacity analysis shows the loop ramp governs overall interchange capacity. **PIARC (2019)** rates trumpets favourably for safety among T-junction solutions due to the limited number of conflict points.",
+      "pros": [
+        "Cost-effective three-leg interchange — one loop + two direct ramps",
+        "Moderate footprint (8–12 ha typical)",
+        "Good safety for T-junction applications (AASHTO HSM, 2022)",
+        "Simple design with proven performance for highway termini"
+      ],
+      "cons": [
+        "One loop ramp introduces speed differential and potential weaving",
+        "Not expandable to four-leg operation without major reconstruction",
+        "Loop ramp capacity is the system bottleneck at high volumes",
+        "Limited to three-leg (T-junction) configurations only"
+      ]
+    },
+    "Directional T": {
+      "description": "Three-leg directional interchange using semi-direct flyover ramps. Achieves maximum throughput and safety for T-junctions at the cost of higher construction expense and right-of-way requirements.",
+      "engineering_desc": "The Directional T interchange replaces the trumpet's loop ramp with a semi-direct flyover, providing high-speed, free-flow connections for all three turning movements.\n\n**FHWA (2023)** recommends the directional T when peak-hour turning volumes exceed the capacity of a trumpet's loop ramp (typically >2,000 veh/hr) or when the mainline design speed exceeds 100 km/h.\n\n**HCM 7th Edition** reports that directional T interchanges sustain LOS C at volumes that would degrade a trumpet to LOS E. **AASHTO HSM (2022)** assigns the highest safety performance function (SPF) scores among T-junction designs.",
+      "pros": [
+        "Maximum throughput for three-leg junctions — all movements semi-direct",
+        "Highest safety index for T-junction category (AASHTO HSM, 2022)",
+        "No loop ramp speed differentials — higher design speeds on all ramps",
+        "Scalable — can accommodate very high turning volumes (>5,000 veh/hr)"
+      ],
+      "cons": [
+        "High construction cost due to multilevel flyover ramps",
+        "Large right-of-way requirement (12–18 ha typical)",
+        "Complex structural engineering — multiple bridge levels",
+        "Longer construction timeline than trumpet alternatives"
+      ]
+    }
+  }
+}

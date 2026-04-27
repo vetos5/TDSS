@@ -43,12 +43,12 @@ async function loadContexts() {
   }
 }
 
-async function runEvaluation() {
+async function runEvaluation(lang = 'en') {
   if (!selectedContext.value) return
   loading.value = true
   try {
     const nw = normalizedWeights()
-    evalData.value = await evaluate(selectedContext.value, nw, { ...params })
+    evalData.value = await evaluate(selectedContext.value, nw, { ...params }, lang)
   } finally {
     loading.value = false
   }

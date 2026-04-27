@@ -7,14 +7,14 @@ export async function fetchContexts() {
   return data.contexts
 }
 
-export async function evaluate(context, weights, params) {
-  const { data } = await api.post('/evaluate', { context, weights, params })
+export async function evaluate(context, weights, params, lang = 'en') {
+  const { data } = await api.post('/evaluate', { context, weights, params }, { params: { lang } })
   return data
 }
 
-export async function fetchInterchangeDetail(name) {
+export async function fetchInterchangeDetail(name, lang = 'en') {
   const { data } = await api.get(`/interchange/${encodeURIComponent(name)}`, {
-    params: { _t: Date.now() },
+    params: { lang, _t: Date.now() },
   })
   return data
 }

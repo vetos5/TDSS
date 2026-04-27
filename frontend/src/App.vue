@@ -10,30 +10,34 @@ import BlueprintGallery from './components/BlueprintGallery.vue'
 import Methodology from './components/Methodology.vue'
 
 const { dark, toggle } = useTheme()
-const { t } = useLocale()
+const { locale, t } = useLocale()
 const dss = useDSS()
 const activeTab = ref('evaluation')
 const sidebarOpen = ref(false)
 
 let debounceTimer = null
 
+function scheduleEvaluation() {
+  clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(async () => {
+    if (dss.selectedContext.value) {
+      await dss.runEvaluation(locale.value)
+    }
+  }, 300)
+}
+
 onMounted(async () => {
   await dss.loadContexts()
-  await dss.runEvaluation()
+  await dss.runEvaluation(locale.value)
 })
 
 watch(
   [() => dss.selectedContext.value, () => ({ ...dss.weights }), () => ({ ...dss.params })],
-  () => {
-    clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(async () => {
-      if (dss.selectedContext.value) {
-        await dss.runEvaluation()
-      }
-    }, 300)
-  },
+  scheduleEvaluation,
   { deep: true }
 )
+
+watch(locale, scheduleEvaluation)
 </script>
 
 <template>

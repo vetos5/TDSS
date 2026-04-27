@@ -11,7 +11,7 @@ const props = defineProps({
   dark: Boolean,
 })
 
-const { t } = useLocale()
+const { t, locale } = useLocale()
 
 const selectedDetail = ref(null)
 const detailInfo = ref(null)
@@ -52,13 +52,21 @@ async function toggleDetail(name) {
   }
   selectedDetail.value = name
   try {
-    detailInfo.value = await fetchInterchangeDetail(name)
+    detailInfo.value = await fetchInterchangeDetail(name, locale.value)
   } catch { detailInfo.value = null }
 }
 
 watch(() => props.data?.context, () => {
   selectedDetail.value = null
   detailInfo.value = null
+})
+
+watch(locale, async () => {
+  if (selectedDetail.value) {
+    try {
+      detailInfo.value = await fetchInterchangeDetail(selectedDetail.value, locale.value)
+    } catch { detailInfo.value = null }
+  }
 })
 
 function radarData() {
