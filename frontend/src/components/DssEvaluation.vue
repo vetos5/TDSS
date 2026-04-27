@@ -412,7 +412,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
           <p class="text-[0.65rem] font-semibold uppercase tracking-wider mb-2"
              :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ t.engineeringDesc }}</p>
           <div class="text-sm leading-relaxed mb-4" :class="dark ? 'text-slate-200' : 'text-slate-700'"
-               v-html="detailInfo.engineering_desc?.replace(/\*\*(.*?)\*\*/g, '<strong class=\'text-teal-500\'>$1</strong>').replace(/\n\n/g, '<br/><br/>')">
+               v-html="detailInfo.engineering_desc?.replace(/\*\*(.*?)\*\*/g, '<strong class=\'text-teal-500\'>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/\n\n/g, '<br/><br/>')">
           </div>
 
           <div v-if="detailInfo.pros?.length || detailInfo.cons?.length" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
