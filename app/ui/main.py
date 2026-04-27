@@ -52,9 +52,38 @@ st.markdown(
         padding-right: 1.5rem !important;
         max-width: 100% !important;
     }
-    [data-testid="stHeader"] { display: none !important; }
+    [data-testid="stHeader"] {
+        background: transparent !important;
+        height: 0 !important;
+        min-height: 0 !important;
+    }
     [data-testid="stDecoration"] { display: none !important; }
     [data-testid="stToolbar"] { display: none !important; }
+
+    /* ── Sticky sidebar-toggle pill ── */
+    #tdss-menu-btn {
+        display: none;
+        position: fixed;
+        top: 0.55rem;
+        left: 0.6rem;
+        z-index: 99999;
+        background: #1E2130;
+        border: 1px solid #2C3048;
+        border-radius: 8px;
+        padding: 0.35rem 0.55rem;
+        cursor: pointer;
+        line-height: 1;
+        color: #C8CAD4;
+        font-size: 1.1rem;
+    }
+    #tdss-menu-btn:hover { background: #252A3A; }
+
+    @media (max-width: 768px) {
+        #tdss-menu-btn { display: block; }
+        [data-testid="stAppViewContainer"] > .main > .block-container {
+            padding-top: 2.8rem !important;
+        }
+    }
 
     section[data-testid="stSidebar"] {
         background-color: #1A1D25 !important;
@@ -139,6 +168,34 @@ st.markdown(
 
     .stCaption { color: #4A5068 !important; font-size: 0.7rem !important; }
     </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+    <button id="tdss-menu-btn" title="Toggle sidebar" aria-label="Toggle sidebar">&#9776;</button>
+    <script>
+    (function () {
+        var btn = document.getElementById('tdss-menu-btn');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+            var sidebar = window.parent.document.querySelector('[data-testid="stSidebar"]');
+            if (!sidebar) return;
+            var collapsed = sidebar.getAttribute('aria-expanded') === 'false';
+            var toggle = window.parent.document.querySelector(
+                '[data-testid="stSidebar"] [data-testid="collapsedControl"], ' +
+                'button[kind="header"], ' +
+                '[data-testid="stSidebarCollapseButton"] button'
+            );
+            if (toggle) {
+                toggle.click();
+            } else {
+                sidebar.style.display = (sidebar.style.display === 'none') ? '' : 'none';
+            }
+        });
+    })();
+    </script>
     """,
     unsafe_allow_html=True,
 )

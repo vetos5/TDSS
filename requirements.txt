@@ -1,9 +1,17 @@
+# Backend (Python)
 numpy>=1.26
 scipy>=1.12
 shapely>=2.0
 pydantic>=2.6
-pydeck>=0.9
-streamlit>=1.31
-streamlit-shadcn-ui>=0.1
+fastapi>=0.110
+uvicorn[standard]>=0.27
 pandas>=2.1
+<<<<<<< HEAD
+pydeck>=0.9
+
+# Dev / test
+pytest>=8.0
+ruff>=0.2
+=======
 plotly>=5.18
+>>>>>>> 54b5a4160de9e725957c49fb74dc7e989b811381
