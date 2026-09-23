@@ -7,13 +7,27 @@ Kept free of web-framework types so it can be reused by the copilot and batch ex
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, Sequence
+from typing import Any, Literal, Mapping, Sequence
 
 import numpy as np
 
 from app.application.adjustments import AdjustmentNote
-from app.application.mcda import DecisionMatrix, MethodResult, RankAgreement, evaluate, weighting
+from app.application.mcda import (
+    METHODS,
+    DecisionMatrix,
+    MethodResult,
+    RankAgreement,
+    evaluate,
+    weighting,
+)
 from app.application.mcda import rank_agreement as _rank_agreement
+from app.application.mcda.sensitivity import SensitivityAnalysis, analyse_sensitivity
+from app.application.mcda.smaa import (
+    SMAAAnalysis,
+    ValueUncertainty,
+    WeightUncertainty,
+    run_smaa,
+)
 
 WeightingMode = Literal["manual", "entropy", "critic", "ahp", "combined"]
 
@@ -127,3 +141,37 @@ def run_methods(
     results = evaluate(matrix, weights.weights, methods)
     agreement = _rank_agreement(results) if len(results) >= 2 else None
     return MultiMethodEvaluation(matrix, weights, results, agreement)
+
+
+@dataclass
+class RobustnessAnalysis:
+    smaa: SMAAAnalysis
+    sensitivity: dict[str, SensitivityAnalysis]
+    value_uncertainty: dict[str, ValueUncertainty]
+
+
+def analyse_robustness(
+    matrix: DecisionMatrix,
+    weights: np.ndarray,
+    methods: Sequence[str],
+    *,
+    value_uncertainty: Mapping[str, ValueUncertainty],
+    weight_model: WeightUncertainty,
+    iterations: int,
+    seed: int,
+    limits: Mapping[str, float] | None = None,
+) -> RobustnessAnalysis:
+    """SMAA-2 over all *methods* on shared draws, plus deterministic weight sensitivity."""
+    fns = {name: METHODS[name] for name in methods}
+    smaa = run_smaa(
+        matrix,
+        weights,
+        fns,
+        values=value_uncertainty,
+        weight_model=weight_model,
+        iterations=iterations,
+        seed=seed,
+        limits=limits,
+    )
+    sensitivity = {name: analyse_sensitivity(matrix, weights, fn, name) for name, fn in fns.items()}
+    return RobustnessAnalysis(smaa, sensitivity, dict(value_uncertainty))

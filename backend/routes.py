@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -10,8 +11,15 @@ from fastapi import APIRouter, HTTPException, Query, Response
 
 from app.application.adjustments import apply_project_params
 from app.application.dss_engine import DecisionSupportSystem
-from app.application.evaluation import MultiMethodEvaluation, run_methods, select_weights
+from app.application.evaluation import (
+    MultiMethodEvaluation,
+    WeightSelection,
+    analyse_robustness,
+    run_methods,
+    select_weights,
+)
 from app.application.mcda import METHODS, DecisionMatrix
+from app.application.mcda.smaa import ValueUncertainty, WeightUncertainty
 from app.data.interchange_data import (
     ALTERNATIVE_COLORS,
     ALTERNATIVE_COLORS_DARK,
@@ -24,10 +32,12 @@ from app.data.interchange_data import (
     resolve_interchange_detail,
 )
 from app.data.mcda_methods import resolve_method_info
+from app.data.uncertainty_defaults import DEFAULT_VALUE_UNCERTAINTY
 from backend.schemas import (
     AdjustmentNote,
     ContextListResponse,
     CriterionSchema,
+    CriterionSensitivitySchema,
     EvaluateRequest,
     EvaluateResponse,
     EvaluationResultSchema,
@@ -36,6 +46,12 @@ from backend.schemas import (
     MethodResultSchema,
     MethodScore,
     RankAgreementSchema,
+    RobustnessRequest,
+    RobustnessResponse,
+    SensitivitySchema,
+    SMAAAlternative,
+    SMAAMethodSchema,
+    ValueRangeInput,
     WeightingInfo,
 )
 
@@ -47,8 +63,19 @@ def list_contexts():
     return ContextListResponse(contexts=list(INTERCHANGE_DATA.keys()))
 
 
-@router.post("/evaluate", response_model=EvaluateResponse)
-def evaluate(req: EvaluateRequest, lang: str = Query(default="en")):
+@dataclass
+class _Prepared:
+    """Adjusted feasible alternatives, their decision matrix and the resolved weights."""
+
+    locale: str
+    alternatives: list
+    matrix: DecisionMatrix
+    selection: WeightSelection
+    weights: dict[str, float]
+    notes: list[AdjustmentNote]
+
+
+def _prepare(req: EvaluateRequest, lang: str) -> _Prepared:
     if req.context not in INTERCHANGE_DATA:
         raise HTTPException(status_code=404, detail=f"Unknown context: {req.context}")
 
@@ -96,6 +123,16 @@ def evaluate(req: EvaluateRequest, lang: str = Query(default="en")):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     adjustment_notes += [AdjustmentNote(kind=n.kind, message=n.message) for n in selection.notes]
     norm_w = {c.name: float(w) for c, w in zip(CRITERIA, selection.weights, strict=True)}
+    return _Prepared(locale, alternatives, matrix, selection, norm_w, adjustment_notes)
+
+
+@router.post("/evaluate", response_model=EvaluateResponse)
+def evaluate(req: EvaluateRequest, lang: str = Query(default="en")):
+    prep = _prepare(req, lang)
+    locale, alternatives, matrix, selection = (
+        prep.locale, prep.alternatives, prep.matrix, prep.selection
+    )
+    norm_w, adjustment_notes = prep.weights, prep.notes
 
     multi = run_methods(matrix, selection, req.methods)
 
@@ -134,6 +171,109 @@ def evaluate(req: EvaluateRequest, lang: str = Query(default="en")):
         normalised_weights=norm_w,
         adjustments=adjustment_notes,
         **_multi_method_fields(multi, locale),
+    )
+
+
+@router.post("/robustness", response_model=RobustnessResponse)
+def robustness(req: RobustnessRequest, lang: str = Query(default="en")):
+    """SMAA-2 rank acceptability and weight sensitivity for the selected methods."""
+    prep = _prepare(req, lang)
+    unknown = set(req.uncertainty.values) - {c.name for c in CRITERIA}
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown criteria: {sorted(unknown)}")
+
+    ranges = {
+        name: ValueRangeInput(low=lo, high=hi, distribution=dist)
+        for name, (lo, hi, dist) in DEFAULT_VALUE_UNCERTAINTY.items()
+    }
+    ranges.update(req.uncertainty.values)
+    u = req.uncertainty
+    analysis = analyse_robustness(
+        prep.matrix,
+        prep.selection.weights,
+        req.methods,
+        value_uncertainty={
+            k: ValueUncertainty(v.low, v.high, v.distribution) for k, v in ranges.items()
+        },
+        weight_model=WeightUncertainty(u.weight_model, u.concentration),
+        iterations=u.iterations,
+        seed=u.seed,
+        limits={
+            "construction_cost_mln": req.params.budget,
+            "land_area_hectares": req.params.land_limit,
+        },
+    )
+
+    names = prep.matrix.alternatives
+    crits = prep.matrix.criterion_names
+
+    def label(m: str) -> str:
+        return resolve_method_info(m, prep.locale)["label"]
+
+    smaa = {}
+    for m, r in analysis.smaa.results.items():
+        rows = [
+            SMAAAlternative(
+                alternative_name=n,
+                rank_acceptability=[float(v) for v in r.rank_acceptability[i]],
+                holistic_acceptability=float(r.holistic_acceptability[i]),
+                confidence=_num(r.confidence[i]),
+                central_weights=(
+                    None if r.central_weights[i] is None
+                    else {c: float(v) for c, v in zip(crits, r.central_weights[i], strict=True)}
+                ),
+            )
+            for i, n in enumerate(names)
+        ]
+        rows.sort(key=lambda a: (-a.holistic_acceptability, names.index(a.alternative_name)))
+        smaa[m] = SMAAMethodSchema(method=m, label=label(m), alternatives=rows)
+
+    def name_of(i: int | None) -> str | None:
+        return None if i is None else names[i]
+
+    sensitivity = {}
+    for m, sa in analysis.sensitivity.items():
+        critical = sa.critical
+        sensitivity[m] = SensitivitySchema(
+            method=m,
+            label=label(m),
+            winner=names[sa.winner],
+            critical_criterion=critical.criterion if critical else None,
+            critical_change=critical.min_change if critical else None,
+            criteria=[
+                CriterionSensitivitySchema(
+                    criterion=c.criterion,
+                    weight=c.weight,
+                    lower=c.lower,
+                    upper=c.upper,
+                    winner_below=name_of(c.winner_below),
+                    winner_above=name_of(c.winner_above),
+                    min_change=c.min_change,
+                    grid=c.grid.tolist(),
+                    utility={n: c.utility[:, i].tolist() for i, n in enumerate(names)},
+                )
+                for c in sa.criteria
+            ],
+        )
+
+    return RobustnessResponse(
+        context=req.context,
+        alternatives=list(names),
+        colors={n: ALTERNATIVE_COLORS.get(n, "#0f766e") for n in names},
+        colors_dark={n: ALTERNATIVE_COLORS_DARK.get(n, "#2dd4bf") for n in names},
+        weights=prep.weights,
+        iterations=u.iterations,
+        seed=u.seed,
+        weight_model=u.weight_model,
+        concentration=u.concentration,
+        value_uncertainty=ranges,
+        smaa=smaa,
+        exceedance={
+            n: {c: float(p[i]) for c, p in analysis.smaa.exceedance.items()}
+            for i, n in enumerate(names)
+        },
+        sensitivity=sensitivity,
+        adjustments=prep.notes,
     )
 
 

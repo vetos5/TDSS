@@ -135,6 +135,83 @@ class EvaluateResponse(BaseModel):
     weighting: Optional[WeightingInfo] = None
 
 
+class ValueRangeInput(BaseModel):
+    """Multiplicative uncertainty range: true value ∈ [low·x, high·x]."""
+
+    low: float = Field(gt=0, le=1)
+    high: float = Field(ge=1, le=10)
+    distribution: Literal["triangular", "uniform"] = "triangular"
+
+
+class UncertaintyInput(BaseModel):
+    iterations: int = Field(1000, ge=100, le=10000)
+    seed: int = 42
+    weight_model: Literal["fixed", "perturbed", "uniform"] = "perturbed"
+    concentration: float = Field(100.0, gt=0, le=10000)
+    values: Dict[str, ValueRangeInput] = Field(
+        default_factory=dict, description="Per-criterion overrides of the default ranges"
+    )
+
+
+class RobustnessRequest(EvaluateRequest):
+    methods: List[MethodId] = Field(
+        default_factory=lambda: ["wsm", "topsis", "ahp", "promethee", "vikor"], min_length=1
+    )
+    uncertainty: UncertaintyInput = Field(default_factory=UncertaintyInput)
+
+
+class SMAAAlternative(BaseModel):
+    alternative_name: str
+    rank_acceptability: List[float]          # index r = P(rank r + 1)
+    holistic_acceptability: float
+    confidence: Optional[float]              # None if never ranked first
+    central_weights: Optional[Dict[str, float]]
+
+
+class SMAAMethodSchema(BaseModel):
+    method: str
+    label: str
+    alternatives: List[SMAAAlternative]      # sorted by holistic acceptability, best first
+
+
+class CriterionSensitivitySchema(BaseModel):
+    criterion: str
+    weight: float
+    lower: Optional[float]                   # winner changes below this weight (None: never)
+    upper: Optional[float]                   # winner changes above this weight (None: never)
+    winner_below: Optional[str]
+    winner_above: Optional[str]
+    min_change: Optional[float]
+    grid: List[float]
+    utility: Dict[str, List[float]]          # alternative → utility along the grid
+
+
+class SensitivitySchema(BaseModel):
+    method: str
+    label: str
+    winner: str
+    critical_criterion: Optional[str]
+    critical_change: Optional[float]
+    criteria: List[CriterionSensitivitySchema]
+
+
+class RobustnessResponse(BaseModel):
+    context: str
+    alternatives: List[str]
+    colors: Dict[str, str]
+    colors_dark: Dict[str, str]
+    weights: Dict[str, float]
+    iterations: int
+    seed: int
+    weight_model: str
+    concentration: float
+    value_uncertainty: Dict[str, ValueRangeInput]
+    smaa: Dict[str, SMAAMethodSchema]
+    exceedance: Dict[str, Dict[str, float]]  # alternative → {criterion: P(value > limit)}
+    sensitivity: Dict[str, SensitivitySchema]
+    adjustments: List[AdjustmentNote] = []
+
+
 class InterchangeDetailSchema(BaseModel):
     name: str
     lat: float = 0.0
