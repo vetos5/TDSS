@@ -422,5 +422,41 @@
   "sweepDesc": "Score of each alternative as one weight moves from 0 to 1 (the other weights keep their proportions). Dashed: current weight; red dotted: rank-reversal thresholds.",
 
   "methodScore": "Method score (higher is better)",
-  "methodLoss": "VIKOR Q (lower is better, axis flipped)"
+  "methodLoss": "VIKOR Q (lower is better, axis flipped)",
+
+  "tabSiteAnalysis": "Site Analysis",
+  "siteAnalysisTitle": "Site Analysis",
+  "siteAnalysisDesc": "Click the map to pick a site. The system infers context, terrain, environmental sensitivity and free land from OpenStreetMap and elevation data, and can draw the real footprint of an interchange there.",
+  "clickToPlaceHint": "Click the map to place the interchange centre.",
+  "pointAPlaced": "Drag the marker to adjust the site, or click elsewhere to move it.",
+  "setDirectionButton": "Set direction",
+  "clickToSetDirection": "Click the map to set the primary road direction…",
+  "resetSiteButton": "Reset",
+  "radiusLabel": "Search radius",
+  "analyseButton": "Analyse site",
+  "analysingLabel": "Analysing…",
+  "legend": {
+    "road": "Road",
+    "building": "Building",
+    "water": "Water",
+    "protected": "Protected area",
+    "residential": "Residential land"
+  },
+  "resultsInferred": "Inferred site parameters",
+  "confidentBadge": "Confident",
+  "lowConfidenceBadge": "Low confidence — confirm manually",
+  "maxGradeLabel": "Steepest grade",
+  "nearestWaterLabel": "Nearest water",
+  "residentialShareLabel": "Residential land share",
+  "buildingCountLabel": "Buildings found",
+  "buildingAreaLabel": "Building footprint area",
+  "waterAreaLabel": "Water area",
+  "applyParamsButton": "Apply to project parameters",
+  "confirmContextChange": "The inferred context differs from the one currently selected. Switching will change which alternatives are being compared. Continue?",
+  "footprintSectionTitle": "Interchange Footprint",
+  "footprintSectionDesc": "Draw a chosen interchange type's real footprint at this site and estimate right-of-way / demolition cost from buildings it would displace. Available for Cloverleaf, DDI, SPUI and Turbine — the other types don't have a geometry generator yet.",
+  "selectAlternativeLabel": "Interchange type",
+  "buildingsAffectedLabel": "Buildings affected",
+  "demolishedAreaLabel": "Demolished area",
+  "estimatedCostLabel": "Estimated cost"
 }

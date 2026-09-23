@@ -24,6 +24,16 @@ export async function fetchInterchangeDetail(name, lang = 'en') {
   return data
 }
 
+export async function analyseSite(body, lang = 'en') {
+  const { data } = await api.post('/site/analyse', body, { params: { lang } })
+  return data
+}
+
+export async function getFootprint(body, lang = 'en') {
+  const { data } = await api.post('/site/footprint', body, { params: { lang } })
+  return data
+}
+
 export function blueprintUrl(name) {
   const map = {
     'Cloverleaf': 'cloverleaf.png',

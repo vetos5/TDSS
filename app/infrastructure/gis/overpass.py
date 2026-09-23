@@ -20,6 +20,11 @@ from app.infrastructure.gis.errors import GisUnavailableError
 
 OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
 DEFAULT_TIMEOUT_S = 25.0
+# Overpass (or a filter in front of it) returns 406 Not Acceptable for httpx's default
+# "python-httpx/x.y" User-Agent -- confirmed directly against the live server. Overpass's own
+# fair-use policy also asks clients to identify themselves, so this is correct etiquette, not
+# just a workaround.
+USER_AGENT = "TDSS-diploma-thesis/1.0 (+https://github.com/vetos5/TDSS)"
 CACHE_TTL_DAYS = 30.0
 
 # Rounds a request's cache key to roughly a 100 m grid so nearby map clicks share a cache entry.
@@ -114,7 +119,9 @@ class OverpassClient:
         cache_dir: Path | None = DEFAULT_CACHE_DIR,
         cache_ttl_days: float = CACHE_TTL_DAYS,
     ) -> None:
-        self._client = client or httpx.Client(timeout=DEFAULT_TIMEOUT_S)
+        self._client = client or httpx.Client(
+            timeout=DEFAULT_TIMEOUT_S, headers={"User-Agent": USER_AGENT}
+        )
         self._owns_client = client is None
         self._cache_dir = cache_dir
         self._cache_ttl_days = cache_ttl_days

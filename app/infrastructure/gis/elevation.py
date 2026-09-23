@@ -21,6 +21,8 @@ from app.infrastructure.gis.projection import LocalOrigin, to_latlon
 
 ELEVATION_ENDPOINT = "https://api.opentopodata.org/v1/srtm90m"
 DEFAULT_TIMEOUT_S = 15.0
+# Same courtesy as overpass.py: identify the application rather than sending httpx's default UA.
+USER_AGENT = "TDSS-diploma-thesis/1.0 (+https://github.com/vetos5/TDSS)"
 CACHE_TTL_DAYS = 30.0
 MAX_LOCATIONS_PER_REQUEST = 100
 _CACHE_GRID_DECIMALS = 3
@@ -66,7 +68,9 @@ class ElevationClient:
         cache_dir: Path | None = DEFAULT_CACHE_DIR,
         cache_ttl_days: float = CACHE_TTL_DAYS,
     ) -> None:
-        self._client = client or httpx.Client(timeout=DEFAULT_TIMEOUT_S)
+        self._client = client or httpx.Client(
+            timeout=DEFAULT_TIMEOUT_S, headers={"User-Agent": USER_AGENT}
+        )
         self._owns_client = client is None
         self._cache_dir = cache_dir
         self._cache_ttl_days = cache_ttl_days

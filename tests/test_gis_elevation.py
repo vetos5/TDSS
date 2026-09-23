@@ -105,6 +105,16 @@ def test_mismatched_result_count_raises_gis_unavailable():
         make_client(handler).fetch_grid(KYIV.lat, KYIV.lon, n=5)
 
 
+def test_default_self_constructed_client_sends_a_descriptive_user_agent():
+    client = ElevationClient(cache_dir=None)
+    try:
+        ua = client._client.headers["user-agent"]
+        assert "python-httpx" not in ua
+        assert "TDSS" in ua
+    finally:
+        client.close()
+
+
 def test_caching_avoids_a_second_request(tmp_path):
     calls = []
 

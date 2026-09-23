@@ -129,6 +129,19 @@ def test_malformed_json_raises_gis_unavailable():
         client.fetch_features(**KYIV)
 
 
+def test_default_self_constructed_client_sends_a_descriptive_user_agent():
+    # Confirmed live: Overpass rejects httpx's default "python-httpx/x.y" User-Agent with 406.
+    # Only OverpassClient's own default-constructed httpx.Client needs this (an injected client,
+    # as in every other test here, is the caller's responsibility).
+    client = OverpassClient(cache_dir=None)
+    try:
+        ua = client._client.headers["user-agent"]
+        assert "python-httpx" not in ua
+        assert "TDSS" in ua
+    finally:
+        client.close()
+
+
 def test_caching_avoids_a_second_request(tmp_path):
     calls = []
 

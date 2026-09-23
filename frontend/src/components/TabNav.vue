@@ -9,6 +9,7 @@ const { t } = useLocale()
 
 const tabs = computed(() => [
   { id: 'evaluation', label: t.value.tabEvaluation },
+  { id: 'site', label: t.value.tabSiteAnalysis },
   { id: 'robustness', label: t.value.tabRobustness },
   { id: 'gallery',    label: t.value.tabGallery },
   { id: 'methodology', label: t.value.tabMethodology },

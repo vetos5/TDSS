@@ -9,6 +9,7 @@ import DssEvaluation from './components/DssEvaluation.vue'
 import BlueprintGallery from './components/BlueprintGallery.vue'
 import Methodology from './components/Methodology.vue'
 import RobustnessAnalysis from './components/RobustnessAnalysis.vue'
+import SiteMap from './components/SiteMap.vue'
 
 const { dark, toggle } = useTheme()
 const { locale, t } = useLocale()
@@ -118,6 +119,12 @@ watch(locale, scheduleEvaluation)
             v-show="activeTab === 'evaluation'"
             :data="dss.evalData.value"
             :params="dss.params"
+            :dark="dark"
+          />
+          <SiteMap
+            v-show="activeTab === 'site'"
+            :dss="dss"
+            :active="activeTab === 'site'"
             :dark="dark"
           />
           <RobustnessAnalysis
