@@ -12,7 +12,10 @@ front-end or data source.
 
     DATA  → app.data.interchange_data   (expert constants, no I/O)
     LOGIC → app.application.dss_engine  (THIS FILE — pure maths only)
-    VIEW  → app.ui.main                 (Streamlit UI, no calculations)
+    VIEW  → backend/ + frontend/         (API and Vue UI, no calculations)
+
+Since v5 the arithmetic is delegated to ``app.application.mcda.methods.wsm``;
+this class is kept as the stable WSM interface used by the API and legacy UI.
 
 Academic context (MCDA)
 -----------------------
@@ -60,6 +63,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional
+
+import numpy as np
 
 # Type alias for criterion optimisation direction.
 CriterionDirection = Literal["maximize", "minimize"]
@@ -227,47 +232,33 @@ class DecisionSupportSystem:
             )
         norm_w: Dict[str, float] = {k: v / total_w for k, v in effective_weights.items()}
 
-        # Compute per-criterion min/max across all alternatives.
-        # These anchor values define the normalisation scale.
-        col_min: Dict[str, float] = {}
-        col_max: Dict[str, float] = {}
-        for c in self.criteria:
-            vals = [alt.raw_values.get(c.name, 0.0) for alt in alternatives]
-            col_min[c.name] = min(vals)
-            col_max[c.name] = max(vals)
+        # The maths lives in the multi-method package; this class keeps the original
+        # 4-decimal rounding and ordering contract. Imported here to avoid an import cycle
+        # (mcda.matrix uses the dataclasses defined in this module).
+        from app.application.mcda import DecisionMatrix
+        from app.application.mcda.methods import wsm
+
+        matrix = DecisionMatrix.from_alternatives(alternatives, self.criteria)
+        w = np.array([norm_w[c.name] for c in self.criteria])
+        details = wsm.run(matrix, w).details
 
         results: List[EvaluationResult] = []
-        for alt in alternatives:
-            normalised: Dict[str, float] = {}
-            weighted: Dict[str, float] = {}
-
-            for c in self.criteria:
-                raw = alt.raw_values.get(c.name, 0.0)
-                lo, hi = col_min[c.name], col_max[c.name]
-                span = hi - lo
-
-                if span == 0.0:
-                    # All alternatives are identical on this criterion.
-                    # Assign a neutral mid-point score to avoid any bias.
-                    x_norm = 0.5
-                elif c.direction == "maximize":
-                    # Higher raw value → normalised score closer to 1.
-                    x_norm = (raw - lo) / span
-                else:
-                    # MINIMIZE: invert so lower raw value → score closer to 1.
-                    x_norm = (hi - raw) / span
-
-                normalised[c.name] = round(x_norm, 4)
-                weighted[c.name] = round(x_norm * norm_w[c.name], 4)
-
-            total_score = round(sum(weighted.values()), 4)
+        for i, alt in enumerate(alternatives):
+            normalised = {
+                c.name: round(float(details["normalised"][i, j]), 4)
+                for j, c in enumerate(self.criteria)
+            }
+            weighted = {
+                c.name: round(float(details["weighted"][i, j]), 4)
+                for j, c in enumerate(self.criteria)
+            }
             results.append(
                 EvaluationResult(
                     alternative_name=alt.name,
                     raw_values=dict(alt.raw_values),
                     normalised_values=normalised,
                     weighted_scores=weighted,
-                    total_score=total_score,
+                    total_score=round(sum(weighted.values()), 4),
                 )
             )
 
