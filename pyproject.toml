@@ -34,3 +34,4 @@ select = ["E", "F", "I", "B"]
 [tool.ruff.lint.per-file-ignores]
 # Long bilingual expert-description strings.
 "app/data/interchange_data.py" = ["E501"]
+"app/data/mcda_methods.py" = ["E501"]

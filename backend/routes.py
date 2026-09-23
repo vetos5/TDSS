@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import math
+from typing import Any
+
+import numpy as np
 from fastapi import APIRouter, HTTPException, Query, Response
 
 from app.application.adjustments import apply_project_params
 from app.application.dss_engine import DecisionSupportSystem
+from app.application.evaluation import MultiMethodEvaluation, run_methods, select_weights
+from app.application.mcda import METHODS, DecisionMatrix
 from app.data.interchange_data import (
     ALTERNATIVE_COLORS,
     ALTERNATIVE_COLORS_DARK,
@@ -17,6 +23,7 @@ from app.data.interchange_data import (
     resolve_criterion_labels,
     resolve_interchange_detail,
 )
+from app.data.mcda_methods import resolve_method_info
 from backend.schemas import (
     AdjustmentNote,
     ContextListResponse,
@@ -25,6 +32,11 @@ from backend.schemas import (
     EvaluateResponse,
     EvaluationResultSchema,
     InterchangeDetailSchema,
+    MethodInfoSchema,
+    MethodResultSchema,
+    MethodScore,
+    RankAgreementSchema,
+    WeightingInfo,
 )
 
 router = APIRouter()
@@ -68,6 +80,25 @@ def evaluate(req: EvaluateRequest, lang: str = Query(default="en")):
             ),
         )
 
+    matrix = DecisionMatrix.from_alternatives(alternatives, CRITERIA)
+    wr = req.weighting
+    try:
+        selection = select_weights(
+            matrix,
+            matrix.weights_vector(norm_w),
+            wr.mode,
+            ahp_matrix=wr.ahp_matrix,
+            subjective=wr.subjective,
+            objective=wr.objective,
+            alpha=wr.alpha,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    adjustment_notes += [AdjustmentNote(kind=n.kind, message=n.message) for n in selection.notes]
+    norm_w = {c.name: float(w) for c, w in zip(CRITERIA, selection.weights, strict=True)}
+
+    multi = run_methods(matrix, selection, req.methods)
+
     dss = DecisionSupportSystem(CRITERIA)
     results = dss.evaluate(alternatives, weights=norm_w)
 
@@ -102,7 +133,113 @@ def evaluate(req: EvaluateRequest, lang: str = Query(default="en")):
         criterion_labels=criterion_labels,
         normalised_weights=norm_w,
         adjustments=adjustment_notes,
+        **_multi_method_fields(multi, locale),
     )
+
+
+@router.get("/methods", response_model=list[MethodInfoSchema])
+def list_methods(lang: str = Query(default="en")):
+    locale = lang if lang in ("uk", "en") else "en"
+    return [MethodInfoSchema(id=m, **resolve_method_info(m, locale)) for m in METHODS]
+
+
+# ── Serialisation of engine results ──────────────────────────────────────────
+
+# Method details indexed by criterion rather than by alternative, and alternative × alternative
+# matrices (m × m, which must not be mistaken for an m × n table when m == n).
+_PER_CRITERION_DETAILS = {"ideal", "anti_ideal"}
+_PAIRWISE_DETAILS = {"preference_matrix"}
+
+
+def _num(x: Any) -> float | None:
+    x = float(x)
+    return None if math.isnan(x) else x
+
+
+def _jsonable(x: Any) -> Any:
+    if isinstance(x, np.ndarray):
+        return [_jsonable(v) for v in x.tolist()]
+    if isinstance(x, (bool, np.bool_)):
+        return bool(x)
+    if isinstance(x, (int, float, np.integer, np.floating)):
+        return _num(x)
+    if isinstance(x, list):
+        return [_jsonable(v) for v in x]
+    return x
+
+
+def _method_details(details: dict[str, Any], matrix: DecisionMatrix) -> dict[str, Any]:
+    alts, crits = matrix.alternatives, matrix.criterion_names
+    out: dict[str, Any] = {}
+    for key, val in details.items():
+        if isinstance(val, np.ndarray) and val.ndim == 1:
+            labels = crits if key in _PER_CRITERION_DETAILS else alts
+            out[key] = {k: _num(v) for k, v in zip(labels, val, strict=True)}
+        elif isinstance(val, np.ndarray) and val.ndim == 2 and key not in _PAIRWISE_DETAILS:
+            out[key] = {
+                a: {c: _num(v) for c, v in zip(crits, row, strict=True)}
+                for a, row in zip(alts, val, strict=True)
+            }
+        else:
+            out[key] = _jsonable(val)
+    return out
+
+
+def _weighting_details(details: dict[str, Any], matrix: DecisionMatrix) -> dict[str, Any]:
+    crits = matrix.criterion_names
+    return {
+        key: (
+            {c: _num(v) for c, v in zip(crits, val, strict=True)}
+            if isinstance(val, np.ndarray) and val.ndim == 1
+            else _jsonable(val)
+        )
+        for key, val in details.items()
+    }
+
+
+def _scores(names: tuple[str, ...], scores, utility, ranks) -> list[MethodScore]:
+    rows = [
+        MethodScore(alternative_name=n, score=float(s), utility=float(u), rank=int(r))
+        for n, s, u, r in zip(names, scores, utility, ranks, strict=True)
+    ]
+    return sorted(rows, key=lambda r: (r.rank, names.index(r.alternative_name)))
+
+
+def _multi_method_fields(multi: MultiMethodEvaluation, locale: str) -> dict[str, Any]:
+    names = multi.matrix.alternatives
+    method_results = {
+        m: MethodResultSchema(
+            method=m,
+            label=resolve_method_info(m, locale)["label"],
+            higher_is_better=r.higher_is_better,
+            scores=_scores(names, r.scores, r.utility, r.ranks),
+            details=_method_details(r.details, multi.matrix),
+        )
+        for m, r in multi.results.items()
+    }
+
+    agreement = None
+    if multi.agreement is not None:
+        a = multi.agreement
+        borda = a.consensus_scores
+        span = borda.max() - borda.min()
+        utility = np.ones_like(borda) if span == 0 else (borda - borda.min()) / span
+        agreement = RankAgreementSchema(
+            methods=a.methods,
+            spearman=_jsonable(a.spearman),
+            kendall=_jsonable(a.kendall),
+            consensus=_scores(names, borda, utility, a.consensus_ranks),
+            unanimous_winner=a.unanimous_winner,
+        )
+
+    return {
+        "method_results": method_results,
+        "rank_agreement": agreement,
+        "weighting": WeightingInfo(
+            mode=multi.weights.mode,
+            details=_weighting_details(multi.weights.details, multi.matrix),
+        ),
+    }
 
 
 @router.get("/interchange/{name}", response_model=InterchangeDetailSchema)

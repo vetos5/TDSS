@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class CriterionSchema(BaseModel):
@@ -32,10 +32,40 @@ class ProjectParams(BaseModel):
     env_sensitivity: str = "Medium"
 
 
+MethodId = Literal["wsm", "topsis", "ahp", "promethee", "vikor"]
+WeightingMode = Literal["manual", "entropy", "critic", "ahp", "combined"]
+
+
+class WeightingInput(BaseModel):
+    """How criterion weights are obtained.
+
+    manual   — the slider weights in ``EvaluateRequest.weights``
+    entropy  — Shannon entropy of the (feasible, adjusted) decision matrix
+    critic   — CRITIC contrast/correlation weights
+    ahp      — principal eigenvector of ``ahp_matrix``
+    combined — alpha · subjective + (1 − alpha) · objective
+    """
+
+    mode: WeightingMode = "manual"
+    ahp_matrix: Optional[List[List[float]]] = Field(
+        None, description="4×4 pairwise comparison matrix in criteria order (Saaty 1/9…9)"
+    )
+    subjective: Literal["manual", "ahp"] = "manual"
+    objective: Literal["entropy", "critic"] = "entropy"
+    alpha: float = Field(0.5, ge=0, le=1)
+
+
 class EvaluateRequest(BaseModel):
     context: str
     weights: WeightsInput
     params: ProjectParams
+    methods: List[MethodId] = Field(default_factory=lambda: ["wsm"], min_length=1)
+    weighting: WeightingInput = Field(default_factory=WeightingInput)
+
+    @field_validator("methods")
+    @classmethod
+    def _unique_methods(cls, v: List[str]) -> List[str]:
+        return list(dict.fromkeys(v))
 
 
 class AdjustmentNote(BaseModel):
@@ -57,6 +87,42 @@ class EvaluationResultSchema(BaseModel):
     blueprint_path: str = ""
 
 
+class MethodScore(BaseModel):
+    alternative_name: str
+    score: float
+    utility: float = Field(
+        description="Score rescaled to [0, 1], 1 = best, comparable across methods"
+    )
+    rank: int
+
+
+class MethodResultSchema(BaseModel):
+    method: str
+    label: str
+    higher_is_better: bool
+    scores: List[MethodScore]            # sorted by rank
+    details: Dict[str, Any] = {}
+
+
+class RankAgreementSchema(BaseModel):
+    methods: List[str]
+    spearman: List[List[Optional[float]]]
+    kendall: List[List[Optional[float]]]
+    consensus: List[MethodScore]         # Borda count over all methods, sorted by rank
+    unanimous_winner: bool
+
+
+class WeightingInfo(BaseModel):
+    mode: str
+    details: Dict[str, Any] = {}
+
+
+class MethodInfoSchema(BaseModel):
+    id: str
+    label: str
+    description: str
+
+
 class EvaluateResponse(BaseModel):
     context: str
     results: List[EvaluationResultSchema]
@@ -64,6 +130,9 @@ class EvaluateResponse(BaseModel):
     criterion_labels: Dict[str, str]
     normalised_weights: Dict[str, float]
     adjustments: List[AdjustmentNote] = []
+    method_results: Dict[str, MethodResultSchema] = {}
+    rank_agreement: Optional[RankAgreementSchema] = None
+    weighting: Optional[WeightingInfo] = None
 
 
 class InterchangeDetailSchema(BaseModel):
