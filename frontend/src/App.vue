@@ -8,6 +8,7 @@ import TabNav from './components/TabNav.vue'
 import DssEvaluation from './components/DssEvaluation.vue'
 import BlueprintGallery from './components/BlueprintGallery.vue'
 import Methodology from './components/Methodology.vue'
+import RobustnessAnalysis from './components/RobustnessAnalysis.vue'
 
 const { dark, toggle } = useTheme()
 const { locale, t } = useLocale()
@@ -117,6 +118,12 @@ watch(locale, scheduleEvaluation)
             v-show="activeTab === 'evaluation'"
             :data="dss.evalData.value"
             :params="dss.params"
+            :dark="dark"
+          />
+          <RobustnessAnalysis
+            v-show="activeTab === 'robustness'"
+            :dss="dss"
+            :active="activeTab === 'robustness'"
             :dark="dark"
           />
           <BlueprintGallery

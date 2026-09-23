@@ -66,7 +66,7 @@ def test_sensitivity_payload_shape():
     assert len(s["criteria"]) == 4
     for c in s["criteria"]:
         assert len(c["grid"]) == 51
-        assert set(c["utility"]) == set(data["alternatives"])
+        assert set(c["scores"]) == set(data["alternatives"])
         if c["lower"] is not None:
             assert c["lower"] < c["weight"] and c["winner_below"] in data["alternatives"]
         if c["upper"] is not None:

@@ -183,13 +183,14 @@ class CriterionSensitivitySchema(BaseModel):
     winner_above: Optional[str]
     min_change: Optional[float]
     grid: List[float]
-    utility: Dict[str, List[float]]          # alternative → utility along the grid
+    scores: Dict[str, List[float]]           # alternative → method score along the grid
 
 
 class SensitivitySchema(BaseModel):
     method: str
     label: str
     winner: str
+    higher_is_better: bool
     critical_criterion: Optional[str]
     critical_change: Optional[float]
     criteria: List[CriterionSensitivitySchema]

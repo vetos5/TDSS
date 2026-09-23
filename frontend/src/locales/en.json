@@ -365,9 +365,62 @@
       "title": "CRITIC weights (objective)",
       "desc": "σ_j is the standard deviation of the min-max normalised criterion and r_jk the correlation between criteria. High contrast raises a weight; strong correlation with other criteria (redundancy) lowers it."
     },
+    "smaa": {"title": "SMAA-2 — stochastic acceptability", "desc": "Criterion values are drawn from their uncertainty ranges and weights from a distribution around the chosen weights (or uniformly). The rank acceptability b is the share of N draws in which alternative i takes rank r; central weights are the average weights that make an alternative win."},
+    "sensitivity": {"title": "Weight sensitivity", "desc": "One weight is moved from 0 to 1 while the others keep their proportions. The stability interval is the range of that weight in which the winner does not change; its ends are the rank-reversal thresholds."},
     "agreement": {
       "title": "Rank agreement and consensus",
       "desc": "Spearman's ρ and Kendall's τ measure how similarly two methods rank the alternatives (1 = identical, −1 = reversed). The consensus ranking is a Borda count B_i over all selected methods."
     }
-  }
+  },
+
+  "tabRobustness": "Robustness",
+  "robustnessTitle": "Robustness Analysis",
+  "robustnessDesc": "Monte Carlo simulation (SMAA-2): criterion values and weights are sampled from their uncertainty ranges and every method re-ranks the alternatives on the same draws.",
+  "methodShown": "Method shown",
+  "iterations": "Draws",
+  "weightUncertainty": "Weight uncertainty",
+  "weightModels": {
+    "fixed": "None (fixed weights)",
+    "perturbed": "Around the chosen weights",
+    "uniform": "Any weights (no preference)"
+  },
+  "weightConfidence": "Confidence in weights",
+  "confidenceLow": "Low",
+  "confidenceMedium": "Medium",
+  "confidenceHigh": "High",
+  "simulating": "Simulating…",
+  "drawsDone": "draws",
+  "valueRanges": "Value uncertainty ranges",
+  "valueRangesDesc": "How far each true value may lie below or above the expert estimate. Triangular: the estimate is most likely; uniform: every value in the range is equally likely.",
+  "rangeLow": "Below estimate",
+  "rangeHigh": "Above estimate",
+  "distribution": "Distribution",
+  "distTriangular": "Triangular",
+  "distUniform": "Uniform",
+  "resetDefaults": "Reset to defaults",
+  "likelyWinner": "Most likely winner",
+  "firstPlaceShare": "of draws rank it first",
+  "mostSensitive": "Most sensitive weight",
+  "weightChangeFlips": "weight change that removes the lead of",
+  "noSingleFlip": "No change of a single weight alters the winner.",
+  "constraintRisk": "Constraint risk",
+  "overBudget": "P(over budget)",
+  "overLand": "P(over land limit)",
+  "rankAcceptabilityTitle": "Rank acceptability",
+  "rankAcceptabilityDesc": "Share of draws in which each alternative takes each rank. Holistic acceptability weighs rank 1 fully and the last rank not at all; the confidence factor is how often the alternative wins with its own central weights.",
+  "rankWord": "Rank",
+  "holistic": "Holistic",
+  "confidenceFactor": "Confidence",
+  "firstByMethodTitle": "Probability of ranking first, by method",
+  "firstByMethodDesc": "Same draws for every method, so differences come from the method itself.",
+  "stabilityTitle": "Weight stability intervals",
+  "stabilityDesc": "Dot: current weight. Whisker: range in which the winner stays first while the other weights keep their proportions. Labels name who takes over past each end.",
+  "currentWeight": "Current weight",
+  "stableRange": "Winner unchanged",
+  "criterionWeight": "weight",
+  "sweepTitle": "Weight sweep",
+  "sweepDesc": "Score of each alternative as one weight moves from 0 to 1 (the other weights keep their proportions). Dashed: current weight; red dotted: rank-reversal thresholds.",
+
+  "methodScore": "Method score (higher is better)",
+  "methodLoss": "VIKOR Q (lower is better, axis flipped)"
 }

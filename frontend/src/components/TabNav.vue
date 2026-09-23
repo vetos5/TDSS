@@ -9,13 +9,14 @@ const { t } = useLocale()
 
 const tabs = computed(() => [
   { id: 'evaluation', label: t.value.tabEvaluation },
+  { id: 'robustness', label: t.value.tabRobustness },
   { id: 'gallery',    label: t.value.tabGallery },
   { id: 'methodology', label: t.value.tabMethodology },
 ])
 </script>
 
 <template>
-  <div class="flex border-b mb-6" :class="dark ? 'border-slate-700' : 'border-slate-200'">
+  <div class="flex border-b mb-6 overflow-x-auto whitespace-nowrap" :class="dark ? 'border-slate-700' : 'border-slate-200'">
     <button v-for="tab in tabs" :key="tab.id"
             @click="$emit('update', tab.id)"
             class="px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px"

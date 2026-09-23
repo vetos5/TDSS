@@ -238,6 +238,7 @@ def robustness(req: RobustnessRequest, lang: str = Query(default="en")):
             method=m,
             label=label(m),
             winner=names[sa.winner],
+            higher_is_better=sa.higher_is_better,
             critical_criterion=critical.criterion if critical else None,
             critical_change=critical.min_change if critical else None,
             criteria=[
@@ -250,7 +251,7 @@ def robustness(req: RobustnessRequest, lang: str = Query(default="en")):
                     winner_above=name_of(c.winner_above),
                     min_change=c.min_change,
                     grid=c.grid.tolist(),
-                    utility={n: c.utility[:, i].tolist() for i, n in enumerate(names)},
+                    scores={n: c.scores[:, i].tolist() for i, n in enumerate(names)},
                 )
                 for c in sa.criteria
             ],

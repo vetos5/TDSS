@@ -39,7 +39,8 @@ class CriterionSensitivity:
     criterion: str
     weight: float
     grid: np.ndarray                 # t values
-    utility: np.ndarray              # len(grid) × m, 1 = best at that t
+    scores: np.ndarray               # len(grid) × m, the method's own score at each t
+    utility: np.ndarray              # len(grid) × m, scores rescaled to [0, 1] at each t
     ranks: np.ndarray                # len(grid) × m
     lower: float | None              # t⁻: winner changes just below this weight (None: never)
     upper: float | None              # t⁺: winner changes just above this weight (None: never)
@@ -64,6 +65,7 @@ class CriterionSensitivity:
 class SensitivityAnalysis:
     method: str
     winner: int
+    higher_is_better: bool
     criteria: list[CriterionSensitivity]
 
     @property
@@ -108,6 +110,7 @@ def analyse_sensitivity(
     out: list[CriterionSensitivity] = []
     for j, criterion in enumerate(matrix.criteria):
         results = [method(matrix, reweight(weights, j, t)) for t in grid]
+        scores = np.array([r.scores for r in results])
         utility = np.array([r.utility for r in results])
         ranks = np.array([r.ranks for r in results])
         w0 = float(weights[j])
@@ -135,6 +138,7 @@ def analyse_sensitivity(
             criterion=criterion.name,
             weight=w0,
             grid=grid,
+            scores=scores,
             utility=utility,
             ranks=ranks,
             lower=lower,
@@ -142,4 +146,6 @@ def analyse_sensitivity(
             winner_below=below,
             winner_above=above,
         ))
-    return SensitivityAnalysis(method=method_name, winner=winner, criteria=out)
+    return SensitivityAnalysis(
+        method=method_name, winner=winner, higher_is_better=base.higher_is_better, criteria=out
+    )

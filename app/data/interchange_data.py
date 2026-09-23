@@ -268,26 +268,32 @@ BLUEPRINT_PATHS: Dict[str, str] = {
 # WCAG AA contrast-compliant colour palette (one distinct colour per alternative).
 # Light-mode colours are saturated/dark; dark-mode colours are bright/neon for
 # readability on dark card backgrounds.
+# Categorical slots validated for colour-vision deficiency (dataviz reference palette):
+# within each context the alternatives take slots 1-3 (blue, orange, aqua), so any two
+# alternatives shown together stay distinguishable. Dark mode uses the same hues stepped
+# for the dark surface.
 ALTERNATIVE_COLORS: Dict[str, str] = {
-    "Cloverleaf":              "#0f766e",
-    "Turbine":                 "#0369a1",
-    "Stack (4-Level)":         "#1d4ed8",
-    "Diamond":                 "#ea580c",
-    "SPUI":                    "#d97706",
-    "DDI":                     "#b45309",
-    "Trumpet":                 "#7c3aed",
-    "Directional T":           "#6d28d9",
+    # System (Highway + Highway)
+    "Cloverleaf":              "#2a78d6",
+    "Turbine":                 "#eb6834",
+    "Stack (4-Level)":         "#1baf7a",
+    # Service (Highway + Urban)
+    "Diamond":                 "#2a78d6",
+    "SPUI":                    "#eb6834",
+    "DDI":                     "#1baf7a",
+    # T-Type (3 Directions)
+    "Trumpet":                 "#2a78d6",
+    "Directional T":           "#eb6834",
 }
-
 ALTERNATIVE_COLORS_DARK: Dict[str, str] = {
-    "Cloverleaf":              "#5eead4",   # Teal-300
-    "Turbine":                 "#7dd3fc",   # Sky-300
-    "Stack (4-Level)":         "#93c5fd",   # Blue-300
-    "Diamond":                 "#fdba74",   # Orange-300
-    "SPUI":                    "#fcd34d",   # Amber-300
-    "DDI":                     "#fbbf24",   # Amber-400
-    "Trumpet":                 "#c4b5fd",   # Violet-300
-    "Directional T":           "#a78bfa",   # Violet-400
+    "Cloverleaf":              "#3987e5",
+    "Turbine":                 "#d95926",
+    "Stack (4-Level)":         "#199e70",
+    "Diamond":                 "#3987e5",
+    "SPUI":                    "#d95926",
+    "DDI":                     "#199e70",
+    "Trumpet":                 "#3987e5",
+    "Directional T":           "#d95926",
 }
 
 # ---------------------------------------------------------------------------

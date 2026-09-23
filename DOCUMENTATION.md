@@ -17,6 +17,8 @@
    - 3.6 [Multi-Method Ranking (v5)](#36-multi-method-ranking-v5)
    - 3.7 [Criterion Weighting (v5)](#37-criterion-weighting-v5)
    - 3.8 [Rank Agreement and Consensus (v5)](#38-rank-agreement-and-consensus-v5)
+   - 3.9 [Uncertainty Analysis — SMAA-2 (v5)](#39-uncertainty-analysis--smaa-2-v5)
+   - 3.10 [Weight Sensitivity (v5)](#310-weight-sensitivity-v5)
 4. [Decision Alternatives](#4-decision-alternatives)
 5. [Evaluation Criteria](#5-evaluation-criteria)
 6. [Backend (FastAPI)](#6-backend-fastapi)
@@ -269,6 +271,35 @@ Objective weights are computed on the **adjusted, feasible** matrix, so they res
 
 When two or more methods run, the response includes Spearman's \(\rho\) and Kendall's \(\tau_b\) for every pair of methods (1 = identical rankings, −1 = reversed; `null` when undefined), and a **Borda consensus**: alternative \(i\) receives \(B_i = \sum_k (m - \text{rank}_k(i))\) points. `unanimous_winner` is true when all methods rank the same alternative first.
 
+### 3.9 Uncertainty Analysis — SMAA-2 (v5)
+
+Expert criterion values are point estimates. SMAA-2 (Lahdelma & Salminen, 2001) treats them, and the weights, as random variables and ranks the alternatives in each of \(N\) Monte Carlo draws.
+
+**Value uncertainty.** Each criterion has a multiplicative range \([l \cdot x, h \cdot x]\) with a triangular distribution (mode at the estimate \(x\)) or a uniform one. Defaults (`app/data/uncertainty_defaults.py`, editable per request):
+
+| Criterion | Range | Rationale |
+|---|---|---|
+| Construction cost | −10 % … +50 % | Right-skewed: road projects overrun far more than they underrun (Flyvbjerg et al., 2002: ≈ 20 % average overrun) |
+| Land area | −10 % … +20 % | Final alignment and mitigation requirements |
+| Throughput | −15 % … +15 % | Driver population, heavy vehicles, terminal control |
+| Safety index | −15 % … +15 % | Expert-judgement uncertainty |
+
+**Weight uncertainty.** `fixed` (the chosen weights), `perturbed` — \(w \sim \text{Dirichlet}(\kappa w)\), mean \(w\), spread shrinking with the concentration \(\kappa\) (UI: low 20, medium 100, high 500) — or `uniform` on the weight simplex (no preference information).
+
+**Outputs**, per method, all methods sharing the same draws (common random numbers):
+
+$$b_i^r = \frac{1}{N}\sum_{k=1}^{N} \mathbb{1}[\text{rank}_k(i) = r], \qquad a_i^h = \sum_r \frac{m-r}{m-1}\, b_i^r$$
+
+- rank acceptability \(b_i^r\) and holistic acceptability \(a_i^h\);
+- central weight vector \(w_i^c = E[w \mid \text{rank}(i) = 1]\) and confidence factor \(p_i^c = P(\text{rank}(i) = 1 \mid w = w_i^c)\);
+- constraint risk: \(P(\text{cost} > B)\) and \(P(\text{land} > L)\) per alternative, using the sampled values.
+
+Draws are seeded (default 42), so results are reproducible. SMAA runs on the deterministically feasible set; the constraint risk shows how likely a feasible alternative is to break the budget or land limit in practice.
+
+### 3.10 Weight Sensitivity (v5)
+
+For criterion \(j\), the weight is set to \(t \in [0, 1]\) and the other weights are rescaled proportionally, \(w_k(t) = w_k (1-t)/(1-w_j)\). Along a 51-point grid the engine records every alternative's score (the weight sweep). The **stability interval** \([t^-, t^+] \ni w_j\) is the range in which the current winner stays first; its ends are rank-reversal thresholds, found by grid search and refined by bisection to \(10^{-4}\). The criterion with the smallest \(\min(|w_j - t^-|, |t^+ - w_j|)\) is reported as the most sensitive. A tie for first place does not count as a reversal.
+
 ---
 
 ## 4. Decision Alternatives
@@ -490,6 +521,24 @@ Additional response fields:
 
 Additional errors: `400` for an invalid AHP matrix; `422` for an unknown method id.
 
+#### `POST /api/robustness` (v5)
+
+Same body as `/api/evaluate` (methods default to all five), plus:
+
+```json
+{
+  "uncertainty": {
+    "iterations": 1000,
+    "seed": 42,
+    "weight_model": "perturbed",
+    "concentration": 100,
+    "values": { "construction_cost_mln": { "low": 0.9, "high": 1.5, "distribution": "triangular" } }
+  }
+}
+```
+
+Response: `alternatives`, `colors`, `weights`, the effective `value_uncertainty`, `smaa.<method>.alternatives[]` (`rank_acceptability`, `holistic_acceptability`, `confidence`, `central_weights`; sorted by holistic acceptability), `exceedance.<alternative>` (probability of exceeding budget / land), and `sensitivity.<method>` (`winner`, `higher_is_better`, `critical_criterion`, `critical_change`, `criteria[]` with `weight`, `lower`, `upper`, `winner_below`, `winner_above`, `grid`, `scores`). Limits: 100 ≤ iterations ≤ 10 000; 1,000 draws over five methods take about 0.5 s.
+
 ---
 
 ### 6.3 DSS Engine
@@ -569,6 +618,8 @@ graph LR
 | `weighting.py` | `entropy`, `critic`, `ahp` (eigenvector + CR), `combine` |
 | `methods/` | `wsm`, `topsis`, `ahp`, `promethee`, `vikor`; each `run(matrix, weights, **opts) -> MethodResult` |
 | `comparison.py` | `rank_agreement()` — Spearman, Kendall, Borda consensus |
+| `smaa.py` | `run_smaa()`, `ValueUncertainty`, `WeightUncertainty` — SMAA-2 on shared draws |
+| `sensitivity.py` | `analyse_sensitivity()`, `reweight()` — sweeps and stability intervals |
 | `__init__.py` | `METHODS` registry and `evaluate(matrix, weights, methods, options)` |
 
 `app/application/evaluation.py` resolves the weighting mode (`select_weights`) and runs the methods (`run_methods`). The API layer only maps these results to JSON.
@@ -977,6 +1028,8 @@ E:\Uni\Course_Work\
 10. **Opricovic, S., Tzeng, G.-H.** (2004). Compromise solution by MCDM methods: a comparative analysis of VIKOR and TOPSIS. *European Journal of Operational Research*, 156(2), 445–455.
 11. **Diakoulaki, D., Mavrotas, G., Papayannakis, L.** (1995). Determining objective weights in multiple criteria problems: the CRITIC method. *Computers & Operations Research*, 22(7), 763–770.
 12. **Shannon, C. E.** (1948). A mathematical theory of communication. *Bell System Technical Journal*, 27, 379–423.
+13. **Lahdelma, R., Salminen, P.** (2001). SMAA-2: Stochastic multicriteria acceptability analysis for group decision making. *Operations Research*, 49(3), 444–454.
+14. **Flyvbjerg, B., Holm, M. S., Buhl, S.** (2002). Underestimating costs in public works projects: error or lie? *Journal of the American Planning Association*, 68(3), 279–295.
 
 ---
 

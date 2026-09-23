@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import PlotlyChart from './PlotlyChart.vue'
 import { useLocale } from '../composables/useLocale.js'
+import { METHOD_COLORS, SURFACE, divergingScale } from '../chartPalette.js'
 
 const props = defineProps({
   data: Object,
@@ -10,11 +11,6 @@ const props = defineProps({
 
 const { t } = useLocale()
 const corrKind = ref('spearman')
-
-const METHOD_COLORS = {
-  light: { wsm: '#0f766e', topsis: '#1d4ed8', ahp: '#7c3aed', promethee: '#ea580c', vikor: '#be123c' },
-  dark:  { wsm: '#2dd4bf', topsis: '#60a5fa', ahp: '#a78bfa', promethee: '#fb923c', vikor: '#fb7185' },
-}
 
 const methodIds = computed(() => Object.keys(props.data?.method_results ?? {}))
 const agreement = computed(() => props.data?.rank_agreement)
@@ -45,7 +41,7 @@ function rankStyle(rank) {
   // 1 = strong teal, last = faint.
   const share = nAlts.value > 1 ? 1 - (rank - 1) / (nAlts.value - 1) : 1
   const alpha = (0.12 + 0.5 * share).toFixed(2)
-  return { background: props.dark ? `rgba(45, 212, 191, ${alpha})` : `rgba(15, 118, 110, ${alpha})` }
+  return { background: props.dark ? `rgba(57, 135, 229, ${alpha})` : `rgba(42, 120, 214, ${alpha})` }
 }
 
 const compromise = computed(() => {
@@ -76,7 +72,7 @@ const utilityChart = computed(() => {
         name: methodLabel(id),
         x: names,
         y: names.map(n => scores.find(s => s.alternative_name === n)?.utility),
-        marker: { color: methodColor(id) },
+        marker: { color: methodColor(id), cornerradius: 4, line: { color: SURFACE[props.dark ? 'dark' : 'light'], width: 2 } },
         hovertemplate: `<b>%{x}</b><br>${methodLabel(id)}: %{y:.3f}<extra></extra>`,
       }
     }),
@@ -102,7 +98,9 @@ const corrChart = computed(() => {
       z,
       zmin: -1,
       zmax: 1,
-      colorscale: [[0, '#be123c'], [0.5, props.dark ? '#1e293b' : '#f8fafc'], [1, '#0f766e']],
+      colorscale: divergingScale(props.dark),
+      xgap: 2,
+      ygap: 2,
       text: z.map(row => row.map(v => (v == null ? '—' : v.toFixed(2)))),
       texttemplate: '%{text}',
       hovertemplate: '%{y} × %{x}: %{text}<extra></extra>',
@@ -153,7 +151,8 @@ const panelClass = computed(() => props.dark
           </thead>
           <tbody>
             <tr v-for="row in rows" :key="row.name" class="border-t" :class="dark ? 'border-slate-700' : 'border-black/5'">
-              <td class="px-3 py-2 font-semibold" :style="{ color: altColor(row.name) }">{{ row.name }}</td>
+              <td class="px-3 py-2 font-semibold">
+<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(row.name) }" aria-hidden="true"></span>{{ row.name }}</td>
               <td v-for="id in methodIds" :key="id" class="px-3 py-2 text-center font-medium tabular-nums"
                   :class="dark ? 'text-slate-100' : 'text-slate-900'" :style="rankStyle(row.ranks[id])">
                 #{{ row.ranks[id] }}

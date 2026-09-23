@@ -12,6 +12,11 @@ export async function evaluate(context, weights, params, lang = 'en', extra = {}
   return data
 }
 
+export async function robustness(body, lang = 'en') {
+  const { data } = await api.post('/robustness', body, { params: { lang } })
+  return data
+}
+
 export async function fetchInterchangeDetail(name, lang = 'en') {
   const { data } = await api.get(`/interchange/${encodeURIComponent(name)}`, {
     params: { lang, _t: Date.now() },

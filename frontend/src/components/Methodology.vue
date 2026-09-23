@@ -34,6 +34,14 @@ const THEORY = [
   { key: 'critic', formulas: [
     'C<sub>j</sub> = σ<sub>j</sub> Σ<sub>k</sub> (1 − r<sub>jk</sub>) ,  w<sub>j</sub> = C<sub>j</sub> / Σ<sub>k</sub> C<sub>k</sub>',
   ] },
+  { key: 'smaa', formulas: [
+    'b<sub>i</sub><sup>r</sup> = P(rank(i) = r) ≈ (1/N) Σ<sub>k</sub> 𝟙[rank<sub>k</sub>(i) = r]',
+    'a<sub>i</sub><sup>h</sup> = Σ<sub>r</sub> (m − r)/(m − 1) · b<sub>i</sub><sup>r</sup> ,  w<sub>i</sub><sup>c</sup> = E[w | rank(i) = 1]',
+  ] },
+  { key: 'sensitivity', formulas: [
+    'w<sub>k</sub>(t) = w<sub>k</sub> (1 − t) / (1 − w<sub>j</sub>) ,  k ≠ j',
+    'w<sub>j</sub> ∈ [t<sup>−</sup>, t<sup>+</sup>] ⇒ rank<sub>1</sub> = const',
+  ] },
   { key: 'agreement', formulas: [
     'ρ = 1 − 6 Σ d<sub>i</sub>² / (m (m² − 1))',
     'B<sub>i</sub> = Σ<sub>k</sub> (m − rank<sub>k</sub>(i))',
@@ -188,6 +196,8 @@ function altColor(name) {
         <li>Brans, J. P., Vincke, Ph. (1985). A preference ranking organisation method. <em>Management Science</em>, 31(6), 647–656.</li>
         <li>Opricovic, S., Tzeng, G.-H. (2004). Compromise solution by MCDM methods: a comparative analysis of VIKOR and TOPSIS. <em>European Journal of Operational Research</em>, 156(2), 445–455.</li>
         <li>Diakoulaki, D., Mavrotas, G., Papayannakis, L. (1995). Determining objective weights in multiple criteria problems: the CRITIC method. <em>Computers &amp; Operations Research</em>, 22(7), 763–770.</li>
+        <li>Lahdelma, R., Salminen, P. (2001). SMAA-2: Stochastic multicriteria acceptability analysis for group decision making. <em>Operations Research</em>, 49(3), 444–454.</li>
+        <li>Flyvbjerg, B., Holm, M. S., Buhl, S. (2002). Underestimating costs in public works projects: error or lie? <em>Journal of the American Planning Association</em>, 68(3), 279–295.</li>
         <li>Shannon, C. E. (1948). A mathematical theory of communication. <em>Bell System Technical Journal</em>, 27, 379–423.</li>
       </ul>
     </div>
@@ -228,7 +238,8 @@ function altColor(name) {
                 }">
             {{ RANK_BADGES[res.rank]?.icon }} {{ t.ordinals[res.rank - 1] }}
           </span>
-          <span class="flex-1 font-bold text-sm" :style="{ color: altColor(res.alternative_name) }">
+          <span class="flex-1 font-bold text-sm">
+<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>
             {{ res.alternative_name }}
           </span>
           <span class="font-bold text-sm" :class="dark ? 'text-slate-100' : 'text-slate-900'">

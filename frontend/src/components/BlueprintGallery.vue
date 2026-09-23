@@ -57,7 +57,8 @@ function isFeasible(rv) {
              :class="dark ? 'bg-teal-900/20 border-teal-600' : 'bg-teal-50 border-teal-600'">
           <p class="text-[0.65rem] font-semibold uppercase tracking-wider mb-1"
              :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ t.recommended }}</p>
-          <p class="text-lg font-extrabold mb-0.5" :style="{ color: altColor(winner.alternative_name) }">
+          <p class="text-lg font-extrabold mb-0.5">
+<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(winner.alternative_name) }" aria-hidden="true"></span>
             {{ winner.alternative_name }}
           </p>
           <p class="text-2xl font-bold mb-3" :class="dark ? 'text-slate-100' : 'text-slate-900'">
@@ -73,7 +74,8 @@ function isFeasible(rv) {
       </div>
 
       <div class="md:col-span-5">
-        <p class="font-semibold mb-1" :style="{ color: altColor(winner.alternative_name) }">
+        <p class="font-semibold mb-1">
+<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(winner.alternative_name) }" aria-hidden="true"></span>
           {{ winner.alternative_name }} — {{ t.criterionLabel }} {{ t.directionCol }}
         </p>
         <p class="text-sm mb-3" :class="dark ? 'text-slate-300' : 'text-slate-600'">
@@ -124,7 +126,8 @@ function isFeasible(rv) {
           {{ RANK_BADGES[res.rank]?.icon }} {{ t.ordinals[res.rank - 1] }}
         </span>
 
-        <p class="font-bold text-sm mb-0.5" :style="{ color: altColor(res.alternative_name) }">{{ res.alternative_name }}</p>
+        <p class="font-bold text-sm mb-0.5">
+<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>{{ res.alternative_name }}</p>
         <p class="text-xs mb-2" :class="dark ? 'text-slate-300' : 'text-slate-600'">
           WSM: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ res.total_score.toFixed(4) }}</strong>
         </p>

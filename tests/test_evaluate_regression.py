@@ -17,11 +17,16 @@ SNAPSHOT = json.loads(
 )
 client = TestClient(app)
 
+# Presentation-only fields; the palette was changed deliberately in v5 for colour-vision safety.
+IGNORED_KEYS = {"color", "color_dark"}
+
 
 def _assert_superset(expected, actual, path="$"):
     if isinstance(expected, dict):
         assert isinstance(actual, dict), path
         for k, v in expected.items():
+            if k in IGNORED_KEYS:
+                continue
             assert k in actual, f"{path}.{k} missing"
             _assert_superset(v, actual[k], f"{path}.{k}")
     elif isinstance(expected, list):

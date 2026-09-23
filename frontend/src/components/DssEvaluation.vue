@@ -301,7 +301,8 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
             </span>
 
             <!-- Alternative name -->
-            <p class="font-semibold text-sm mb-3 tracking-tight" :style="{ color: altColor(res.alternative_name) }">
+            <p class="font-semibold text-sm mb-3 tracking-tight">
+<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>
               {{ res.alternative_name }}
             </p>
 
@@ -358,7 +359,8 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
               ]">
           {{ RANK_BADGES[selResult.rank]?.icon }} {{ t.ordinals[selResult.rank - 1] }}
         </span>
-        <span class="text-lg font-bold" :style="{ color: altColor(selResult.alternative_name) }">
+        <span class="text-lg font-bold">
+<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(selResult.alternative_name) }" aria-hidden="true"></span>
           {{ t.detailedAnalysis }}: {{ selResult.alternative_name }}
         </span>
       </div>
@@ -509,7 +511,8 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
           <tr v-for="res in data.results" :key="res.alternative_name"
               class="border-t" :class="dark ? 'border-slate-700 hover:bg-slate-800' : 'border-black/5 hover:bg-white/60'">
             <td class="px-4 py-2 font-medium" :class="dark ? '' : 'text-slate-900'">#{{ res.rank }}</td>
-            <td class="px-4 py-2 font-semibold" :style="{ color: altColor(res.alternative_name) }">{{ res.alternative_name }}</td>
+            <td class="px-4 py-2 font-semibold">
+<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>{{ res.alternative_name }}</td>
             <td class="px-4 py-2" :class="dark ? '' : 'text-slate-700'">${{ res.raw_values.construction_cost_mln.toFixed(1) }} M</td>
             <td class="px-4 py-2" :class="dark ? '' : 'text-slate-700'">{{ res.raw_values.land_area_hectares.toFixed(1) }} ha</td>
             <td class="px-4 py-2" :class="dark ? '' : 'text-slate-700'">{{ Math.round(res.raw_values.throughput_vph).toLocaleString() }}</td>
@@ -547,7 +550,8 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
           <tr v-for="res in data.results" :key="res.alternative_name"
               class="border-t" :class="dark ? 'border-slate-700 hover:bg-slate-800' : 'border-black/5 hover:bg-white/60'">
             <td class="px-4 py-2 font-medium" :class="dark ? '' : 'text-slate-900'">#{{ res.rank }}</td>
-            <td class="px-4 py-2 font-semibold" :style="{ color: altColor(res.alternative_name) }">{{ res.alternative_name }}</td>
+            <td class="px-4 py-2 font-semibold">
+<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>{{ res.alternative_name }}</td>
             <td v-for="crit in data.criteria" :key="crit.name" class="px-4 py-2" :class="dark ? '' : 'text-slate-700'">
               {{ res.normalised_values[crit.name]?.toFixed(3) }} → {{ res.weighted_scores[crit.name]?.toFixed(3) }}
             </td>

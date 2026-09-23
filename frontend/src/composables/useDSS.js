@@ -104,6 +104,7 @@ export function useDSS() {
     weighting,
     ahpJudgements,
     usesAhp,
+    weightingPayload,
     normalizedWeights,
     loadContexts,
     runEvaluation,
