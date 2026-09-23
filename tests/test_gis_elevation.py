@@ -5,6 +5,7 @@ import pytest
 
 from app.infrastructure.gis.elevation import (
     ELEVATION_ENDPOINT,
+    RETRIES,
     ElevationClient,
     grid_points,
 )
@@ -113,6 +114,46 @@ def test_default_self_constructed_client_sends_a_descriptive_user_agent():
         assert "TDSS" in ua
     finally:
         client.close()
+
+
+# ── Retry ─────────────────────────────────────────────────────────────────────
+
+def test_retries_a_transient_error_before_succeeding():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(504, text="gateway timeout")
+        return ok_response(25)
+
+    grid = make_client(handler).fetch_grid(KYIV.lat, KYIV.lon, n=5)
+    assert len(calls) == 2
+    assert grid.elevations() == [100.0 + i for i in range(25)]
+
+
+def test_does_not_retry_a_non_transient_error():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(400, text="bad request")
+
+    with pytest.raises(GisUnavailableError):
+        make_client(handler).fetch_grid(KYIV.lat, KYIV.lon, n=5)
+    assert len(calls) == 1
+
+
+def test_raises_after_retries_exhausted():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(503, text="busy")
+
+    with pytest.raises(GisUnavailableError, match="after 2 attempts"):
+        make_client(handler).fetch_grid(KYIV.lat, KYIV.lon, n=5)
+    assert len(calls) == RETRIES
 
 
 def test_caching_avoids_a_second_request(tmp_path):

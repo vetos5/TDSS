@@ -8,6 +8,8 @@ import pytest
 from app.infrastructure.gis.errors import GisUnavailableError
 from app.infrastructure.gis.overpass import (
     OVERPASS_ENDPOINT,
+    OVERPASS_MIRROR_ENDPOINTS,
+    RETRIES_PER_ENDPOINT,
     OverpassClient,
     build_query,
     parse_features,
@@ -140,6 +142,81 @@ def test_default_self_constructed_client_sends_a_descriptive_user_agent():
         assert "TDSS" in ua
     finally:
         client.close()
+
+
+# ── Retry and mirror fallback ─────────────────────────────────────────────────
+
+def test_retries_a_transient_error_before_succeeding():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(504, text="gateway timeout")
+        return httpx.Response(200, json=SAMPLE_RAW)
+
+    client = make_client(handler)
+    features = client.fetch_features(**KYIV)
+    assert len(calls) == 2
+    assert len(features.roads) == 2
+
+
+def test_does_not_retry_a_non_transient_error():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(400, text="bad query")
+
+    client = make_client(handler)
+    with pytest.raises(GisUnavailableError):
+        client.fetch_features(**KYIV)
+    assert len(calls) == 1  # no retry, no mirror fallback -- a 400 will fail the same way again
+
+
+def test_falls_back_to_the_mirror_after_primary_endpoint_exhausts_retries():
+    seen_urls = []
+
+    def handler(request):
+        seen_urls.append(str(request.url))
+        if request.url.host == "overpass-api.de":
+            return httpx.Response(504, text="gateway timeout")
+        return httpx.Response(200, json=SAMPLE_RAW)
+
+    client = make_client(handler)
+    features = client.fetch_features(**KYIV)
+    assert len(features.roads) == 2
+    # RETRIES_PER_ENDPOINT attempts against the primary, then the mirror succeeds.
+    assert sum("overpass-api.de" in u for u in seen_urls) == RETRIES_PER_ENDPOINT
+    assert any("kumi.systems" in u for u in seen_urls)
+
+
+def test_raises_after_all_endpoints_and_retries_are_exhausted():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(503, text="busy")
+
+    client = make_client(handler)
+    with pytest.raises(GisUnavailableError, match="unavailable after retrying"):
+        client.fetch_features(**KYIV)
+    assert len(calls) == len(OVERPASS_MIRROR_ENDPOINTS) * RETRIES_PER_ENDPOINT
+
+
+def test_timeout_is_retried_then_can_still_succeed():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        if len(calls) < 2:
+            raise httpx.TimeoutException("timed out", request=request)
+        return httpx.Response(200, json=SAMPLE_RAW)
+
+    client = make_client(handler)
+    features = client.fetch_features(**KYIV)
+    assert len(features.roads) == 2
+    assert len(calls) == 2
 
 
 def test_caching_avoids_a_second_request(tmp_path):

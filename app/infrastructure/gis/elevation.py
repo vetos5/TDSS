@@ -15,11 +15,16 @@ from typing import Any
 
 import httpx
 
+from app.infrastructure.gis import retry
 from app.infrastructure.gis.cache import DEFAULT_CACHE_DIR, cached_get
 from app.infrastructure.gis.errors import GisUnavailableError
 from app.infrastructure.gis.projection import LocalOrigin, to_latlon
 
 ELEVATION_ENDPOINT = "https://api.opentopodata.org/v1/srtm90m"
+# No known public mirror, unlike Overpass -- but a short retry still smooths over a transient
+# blip without needing one.
+RETRIES = 2
+RETRY_BACKOFF_S = 1.5
 DEFAULT_TIMEOUT_S = 15.0
 # Same courtesy as overpass.py: identify the application rather than sending httpx's default UA.
 USER_AGENT = "TDSS-diploma-thesis/1.0 (+https://github.com/vetos5/TDSS)"
@@ -94,20 +99,27 @@ class ElevationClient:
 
         def _fetch() -> dict[str, Any]:
             locations = "|".join(f"{plat:.6f},{plon:.6f}" for plat, plon in points)
-            try:
-                response = self._client.get(ELEVATION_ENDPOINT, params={"locations": locations})
-                response.raise_for_status()
-                payload = response.json()
-            except httpx.TimeoutException as exc:
-                raise GisUnavailableError(
-                    "Elevation API timed out; try again shortly."
-                ) from exc
-            except (httpx.HTTPError, ValueError) as exc:
-                raise GisUnavailableError(f"Elevation API request failed: {exc}") from exc
-            if payload.get("status") != "OK":
-                detail = payload.get("error", "unknown status")
-                raise GisUnavailableError(f"Elevation API error: {detail}")
-            return payload
+            last_exc: httpx.HTTPError | None = None
+            for attempt in range(RETRIES):
+                try:
+                    response = self._client.get(
+                        ELEVATION_ENDPOINT, params={"locations": locations}
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    if payload.get("status") != "OK":
+                        detail = payload.get("error", "unknown status")
+                        raise GisUnavailableError(f"Elevation API error: {detail}")
+                    return payload
+                except (httpx.HTTPError, ValueError) as exc:
+                    if isinstance(exc, ValueError) or not retry.is_transient(exc):
+                        raise GisUnavailableError(f"Elevation API request failed: {exc}") from exc
+                    last_exc = exc
+                    if attempt + 1 < RETRIES:
+                        retry.sleep(RETRY_BACKOFF_S * (2**attempt))
+            raise GisUnavailableError(
+                f"Elevation API timed out after {RETRIES} attempts; try again shortly."
+            ) from last_exc
 
         payload = cached_get(key, self._cache_ttl_days, _fetch, cache_dir=self._cache_dir)
         results = payload["results"]

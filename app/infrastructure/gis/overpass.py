@@ -15,10 +15,18 @@ from typing import Any
 
 import httpx
 
+from app.infrastructure.gis import retry
 from app.infrastructure.gis.cache import DEFAULT_CACHE_DIR, cached_get
 from app.infrastructure.gis.errors import GisUnavailableError
 
 OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
+# The public Overpass server is shared infrastructure and can return a transient 502/503/504
+# under load (observed directly: a real request during development hit a 504 that succeeded on
+# retry). A second, independently-run mirror plus a short retry-with-backoff on each smooths
+# this over instead of surfacing it to the planner as a hard failure.
+OVERPASS_MIRROR_ENDPOINTS = (OVERPASS_ENDPOINT, "https://overpass.kumi.systems/api/interpreter")
+RETRIES_PER_ENDPOINT = 2
+RETRY_BACKOFF_S = 1.5  # doubles each retry: 1.5s, 3s
 DEFAULT_TIMEOUT_S = 25.0
 # Overpass (or a filter in front of it) returns 406 Not Acceptable for httpx's default
 # "python-httpx/x.y" User-Agent -- confirmed directly against the live server. Overpass's own
@@ -136,16 +144,25 @@ class OverpassClient:
 
         def _fetch() -> dict[str, Any]:
             query = build_query(lat, lon, radius_m)
-            try:
-                response = self._client.post(OVERPASS_ENDPOINT, data={"data": query})
-                response.raise_for_status()
-                return response.json()
-            except httpx.TimeoutException as exc:
-                raise GisUnavailableError(
-                    "Overpass API timed out; it can be briefly busy -- try again shortly."
-                ) from exc
-            except (httpx.HTTPError, ValueError) as exc:
-                raise GisUnavailableError(f"Overpass API request failed: {exc}") from exc
+            last_exc: httpx.HTTPError | None = None
+            for endpoint in OVERPASS_MIRROR_ENDPOINTS:
+                for attempt in range(RETRIES_PER_ENDPOINT):
+                    try:
+                        response = self._client.post(endpoint, data={"data": query})
+                        response.raise_for_status()
+                        return response.json()
+                    except (httpx.HTTPError, ValueError) as exc:
+                        if isinstance(exc, ValueError) or not retry.is_transient(exc):
+                            raise GisUnavailableError(
+                                f"Overpass API request failed: {exc}"
+                            ) from exc
+                        last_exc = exc
+                        if attempt + 1 < RETRIES_PER_ENDPOINT:
+                            retry.sleep(RETRY_BACKOFF_S * (2**attempt))
+            raise GisUnavailableError(
+                f"Overpass API is unavailable after retrying {len(OVERPASS_MIRROR_ENDPOINTS)} "
+                f"endpoints; it can be briefly busy -- try again shortly. Last error: {last_exc}"
+            ) from last_exc
 
         raw = cached_get(key, self._cache_ttl_days, _fetch, cache_dir=self._cache_dir)
         return parse_features(raw)
