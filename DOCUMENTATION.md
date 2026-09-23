@@ -19,6 +19,7 @@
    - 3.8 [Rank Agreement and Consensus (v5)](#38-rank-agreement-and-consensus-v5)
    - 3.9 [Uncertainty Analysis — SMAA-2 (v5)](#39-uncertainty-analysis--smaa-2-v5)
    - 3.10 [Weight Sensitivity (v5)](#310-weight-sensitivity-v5)
+   - 3.11 [GIS Site Analysis and Footprint Placement (v5, Phase 3)](#311-gis-site-analysis-and-footprint-placement-v5-phase-3)
 4. [Decision Alternatives](#4-decision-alternatives)
 5. [Evaluation Criteria](#5-evaluation-criteria)
 6. [Backend (FastAPI)](#6-backend-fastapi)
@@ -27,6 +28,7 @@
    - 6.3 [DSS Engine](#63-dss-engine)
    - 6.4 [Data Layer](#64-data-layer)
    - 6.5 [MCDA Package (v5)](#65-mcda-package-v5)
+   - 6.6 [GIS Infrastructure (v5, Phase 3)](#66-gis-infrastructure-v5-phase-3)
 7. [Frontend (Vue 3)](#7-frontend-vue-3)
    - 7.1 [Project Setup](#71-project-setup)
    - 7.2 [Component Tree](#72-component-tree)
@@ -302,6 +304,25 @@ For criterion \(j\), the weight is set to \(t \in [0, 1]\) and the other weights
 
 ---
 
+### 3.11 GIS Site Analysis and Footprint Placement (v5, Phase 3)
+
+The planner clicks a point on the map instead of typing project parameters in by hand. Data comes from two free HTTP APIs — **Overpass API** (OpenStreetMap roads, buildings, water, protected/residential land) and **Open Topo Data** (SRTM 90 m elevation, sampled on a 5×5 grid around the point) — fetched and cached by `app/infrastructure/gis/`. A downloaded-DEM approach (`rasterio`/GDAL) was deliberately avoided: both live APIs were confirmed reachable, and a raster toolchain is a heavy, fragile dependency for a diploma-scope tool.
+
+**Site classification** (`app/application/site_analysis.py`), pure functions of already-fetched data:
+
+- **Context.** Major roads (tertiary class and above) are grouped into direction *corridors* — ways within `CORRIDOR_BEARING_TOLERANCE_DEG` (30°) of each other's bearing, mod 180° since a road has no inherent direction. Three or more corridors → T-Type; two corridors both motorway/trunk → System; one motorway/trunk plus a lower class → Service. Fewer than two corridors is flagged low-confidence and falls back to the most common case (Service), always with an explanatory note — the classifier is meant to be checked, not trusted blindly.
+- **Terrain.** The steepest grade (%) between any two elevation-grid points adjacent in the same row or column, classified against the same Flat/Rolling/Mountainous bands as §3.4 (AASHTO Green Book).
+- **Environmental sensitivity.** Any protected-area feature present → Critical; water within `WATER_HIGH_SENSITIVITY_DISTANCE_M` (150 m) → High; residential land covering more than `RESIDENTIAL_MEDIUM_SENSITIVITY_SHARE` (15 %) of the search circle → Medium; else Low.
+- **Free land.** Search-circle area minus building and water polygon area (shoelace formula on each closed OSM way, projected to local metres).
+
+All thresholds live in `app/data/site_analysis_defaults.py`, documented and overridable, in the same spirit as `uncertainty_defaults.py`.
+
+**Footprint placement** (`app/application/footprint.py`) reuses the five existing geometry generators (`app/infrastructure/generators.py`) unchanged. A real bug in those generators shaped the design: each one scales both local axes by the same flat `0.0005` degrees/metre constant when placed at a real `center_lon`/`center_lat` — but at Kyiv's latitude (~50.45°N) a degree of longitude spans only \(\cos(50.45°) \approx 0.638\) of a degree of latitude, so that uniform scale compresses east–west distances by roughly 36 %. Rather than fix the generators (used elsewhere for the legacy Streamlit "engineering view", which never geo-references them), footprint placement instantiates a generator at the origin (`center_lon=0, center_lat=0`), multiplies its raw output by `METRES_PER_COORD` (`app/domain/geometry.py`) to recover true local metres, rotates by a bearing (the direction from the clicked point to a second, optional click), and projects to the real site with a **latitude-corrected** equirectangular projection (`app/infrastructure/gis/projection.py`) — verified against the haversine formula to well under 1 % error at interchange scale. Only 4 of the 8 catalogue alternatives have a generator today (Cloverleaf, DDI, SPUI, Turbine); the other 4 (Stack, Diamond, Trumpet, Directional T) report `available: false` until a generator is written for them.
+
+**Right-of-way estimate.** The footprint's buffered polygon (half the road width either side of each centreline) is intersected with OSM building polygons in the same local-metre plane, giving a demolished-area and cost figure per building affected. This is **display-only**: it is inherently per-alternative, while `ProjectParams` adjustments (§3.4) apply one cost scalar across every alternative uniformly, so folding it into the WSM/MCDA scoring would break that contract. Wiring a per-alternative cost override into the ranking is a natural extension once saved projects/scenarios exist (roadmap module 5), not part of this phase.
+
+---
+
 ## 4. Decision Alternatives
 
 The system evaluates 8 interchange types organised into 3 functional context categories.
@@ -541,6 +562,24 @@ Response: `alternatives`, `colors`, `weights`, the effective `value_uncertainty`
 
 ---
 
+#### `POST /api/site/analyse` (v5, Phase 3)
+
+```json
+{ "lat": 50.4501, "lon": 30.5234, "radius_m": 500 }
+```
+
+`bearing_lat`/`bearing_lon` (an optional second point) are accepted but only used by `/api/site/footprint`. Response: `context`, `context_confident`, `corridors[]` (`bearing_deg`, `rank`, `way_count`), `terrain`, `max_grade_pct`, `env_sensitivity`, `nearest_water_m`, `residential_share`, `land_limit_ha`, `building_count`, `building_area_m2`, `water_area_m2`, `notes[]` (low-confidence explanations), and `osm_features` — a real GeoJSON `FeatureCollection` ([lon, lat] order, `properties.category` ∈ road/building/water/protected/residential) the frontend hands straight to Leaflet's `L.geoJSON()`. Returns `503` if Overpass or the elevation API is unreachable (`GisUnavailableError`) — every value this endpoint fills in can still be set manually, so this is never fatal to using the app.
+
+#### `POST /api/site/footprint` (v5, Phase 3)
+
+```json
+{ "alternative_name": "Cloverleaf", "lat": 50.4501, "lon": 30.5234, "bearing_lat": 50.4510, "bearing_lon": 30.5240 }
+```
+
+Response: `available` (`false` with a `message` for the 4 alternatives without a generator — no network call is made in that case), `segments[]` (`id`, `width_m`, `coords` as plain `[lat, lon]` pairs — Leaflet-only, not GIS-interop GeoJSON), and `right_of_way` (`buildings_affected`, `demolished_area_m2`, `estimated_cost_usd`; overridable `demolition_cost_per_sqm`, default in `app/data/site_analysis_defaults.py`).
+
+---
+
 ### 6.3 DSS Engine
 
 `app/application/dss_engine.py` holds the core dataclasses and the `DecisionSupportSystem` WSM interface. Since v5 its arithmetic is delegated to `app.application.mcda.methods.wsm`, while the class keeps the v4 rounding and ordering contract. It has no knowledge of HTTP, data files, or UI concerns.
@@ -633,6 +672,22 @@ agreement = rank_agreement(results)
 
 ---
 
+### 6.6 GIS Infrastructure (v5, Phase 3)
+
+`app/infrastructure/gis/` — external data access, no domain logic:
+
+| Module | Contents |
+|---|---|
+| `projection.py` | `to_local`/`to_latlon` (latitude-corrected equirectangular), `rotate()`, `bearing()`, `haversine_m()` for validation |
+| `overpass.py` | `OverpassClient.fetch_features()` — one Overpass QL query, classified into `OsmFeatures` |
+| `elevation.py` | `ElevationClient.fetch_grid()` — batched n×n Open Topo Data request |
+| `cache.py` | `cached_get()` — 30-day disk cache both clients use under `.cache/gis/` |
+| `errors.py` | `GisUnavailableError` — the one failure mode the API layer maps to HTTP 503 |
+
+`app/application/site_analysis.py` (classification) and `app/application/footprint.py` (placement + right-of-way) consume these — see §3.11. Both GIS clients are FastAPI `Depends()` in `backend/site_routes.py`; tests override them with fakes via `app.dependency_overrides`, so the test suite never touches the network. One production note found and fixed during development: Overpass (or a filter in front of it) returns 406 for httpx's default `python-httpx/x.y` User-Agent — both clients send a descriptive one instead.
+
+---
+
 ## 7. Frontend (Vue 3)
 
 ### 7.1 Project Setup
@@ -663,21 +718,29 @@ graph TD
     SB["Sidebar.vue\n(Fixed left panel)"]
     TN["TabNav.vue\n(Tab switcher)"]
     DE["DssEvaluation.vue\n(Main results view)"]
+    MC["MethodComparison.vue\n(Rank table, consensus)"]
+    RA["RobustnessAnalysis.vue\n(SMAA, sensitivity)"]
+    SM["SiteMap.vue\n(GIS site picker, footprint)"]
     BG["BlueprintGallery.vue\n(Blueprint grid)"]
-    ME["Methodology.vue\n(WSM documentation)"]
+    ME["Methodology.vue\n(Formula documentation)"]
     PC["PlotlyChart.vue\n(Chart wrapper)"]
-    LM["LeafletMap.vue\n(Satellite map)"]
+    LM["LeafletMap.vue\n(Satellite map, detail panel)"]
 
     APP --> SB
     APP --> TN
     APP --> DE
+    APP --> RA
+    APP --> SM
     APP --> BG
     APP --> ME
+    DE --> MC
     DE --> PC
     DE --> LM
+    MC --> PC
+    RA --> PC
 ```
 
-All components except `PlotlyChart` and `LeafletMap` are displayed via `v-show` (kept in DOM; no re-mount cost on tab switch).
+All components except `PlotlyChart`, `LeafletMap` and `SiteMap` are displayed via `v-show` (kept in DOM; no re-mount cost on tab switch) with no special handling needed. `SiteMap` also uses `v-show` but holds a Leaflet map, which breaks if initialised in a hidden (`display:none`) container -- it takes an `active` prop and calls `map.invalidateSize()` when the tab actually becomes visible (see §3.11 / §7.4).
 
 ---
 
@@ -829,6 +892,12 @@ Initialises a Leaflet map with **Esri World Imagery** satellite tiles. Adds a na
 
 ---
 
+#### `SiteMap.vue` — GIS Site Analysis (v5, Phase 3)
+
+Leaflet map for the Site Analysis tab (§3.11). A click places a draggable marker (the interchange centre); "Set direction" arms a second click that places a bearing marker and draws a dashed line between them. "Analyse site" calls `/api/site/analyse` and renders the returned GeoJSON as a styled overlay (conventional cartographic colours — blue water, green protected land — not the chart categorical palette, since this is a basemap legend, not a chart). Picking an interchange type calls `/api/site/footprint` and overlays its real-scale segments plus a right-of-way summary. "Apply to project parameters" writes the inferred terrain/environment/land into `useDSS`'s `params`, confirming first if the inferred context differs (switching it changes which alternatives are being compared). Takes an `active` prop and calls `map.invalidateSize()` when the tab becomes visible — required because the tab is `v-show`'d, not `v-if`'d, so the map would otherwise initialise in a hidden, zero-size container.
+
+---
+
 ## 8. Data Flow
 
 The complete request/response cycle for a user interaction:
@@ -949,27 +1018,35 @@ uvicorn backend.main:app --port 8000
 ## 12. File & Directory Reference
 
 ```
-E:\Uni\Course_Work\
+TDSS/
 │
 ├── pyproject.toml              PEP 621 project: tdss 5.0.0-dev, Python >=3.11, ruff/pytest config
-├── requirements.txt            Pip dependencies
-├── .gitignore
+├── requirements.txt            Pip dependencies (httpx included -- Overpass/elevation clients)
+├── .gitignore                  Includes .cache/ (GIS response cache)
 │
 ├── app/                        Shared application logic (used by backend AND legacy)
 │   ├── application/
 │   │   ├── dss_engine.py       Criterion, Alternative, DecisionSupportSystem (WSM interface)
 │   │   ├── adjustments.py      Site adjustments + feasibility filter
 │   │   ├── evaluation.py       Weighting-mode resolution, multi-method run
-│   │   └── mcda/               Multi-method MCDA engine (see §6.5)
+│   │   ├── site_analysis.py    Context/terrain/environment/land inference (§3.11)
+│   │   ├── footprint.py        Real-scale footprint placement + right-of-way (§3.11)
+│   │   └── mcda/                Multi-method MCDA engine (see §6.5), incl. smaa.py, sensitivity.py
+│   ├── infrastructure/
+│   │   ├── generators.py       5 procedural interchange geometry generators
+│   │   └── gis/                 Overpass/elevation clients + cache (see §6.6)
 │   └── data/
 │       ├── interchange_data.py All expert constants (8 interchanges, 3 contexts, 4 criteria)
 │       ├── adjustment_rules.py Terrain / environment / speed / capacity factors
-│       └── mcda_methods.py     EN/UK method labels
+│       ├── mcda_methods.py     EN/UK method labels
+│       ├── uncertainty_defaults.py     SMAA value-uncertainty defaults
+│       └── site_analysis_defaults.py   GIS classification thresholds (§3.11)
 │
-├── backend/                    FastAPI REST API (v4)
+├── backend/                    FastAPI REST API (v5)
 │   ├── __init__.py
-│   ├── main.py                 App factory: CORS, static files, router mount
-│   ├── routes.py               Route handlers and JSON mapping of engine results
+│   ├── main.py                 App factory: CORS, static files, router mounts
+│   ├── routes.py               Evaluate/robustness route handlers + JSON mapping
+│   ├── site_routes.py          /api/site/analyse, /api/site/footprint (§6.6)
 │   └── schemas.py              Pydantic request/response models
 │
 ├── assets/
@@ -983,27 +1060,35 @@ E:\Uni\Course_Work\
 │       ├── trumpet.png/svg
 │       └── directional_t.png/svg
 │
-├── frontend/                   Vue 3 SPA (v4)
+├── frontend/                   Vue 3 SPA (v5)
 │   ├── package.json            npm project: vue, vite, tailwind, plotly, leaflet, axios
 │   ├── vite.config.js          Vite config + dev proxy (/api, /blueprints → :8000)
 │   ├── index.html              SPA entry HTML
 │   └── src/
 │       ├── main.js             createApp + mount
 │       ├── App.vue             Root: orchestration, debounced watcher, layout
-│       ├── api.js              Axios client (fetchContexts, evaluate, fetchInterchangeDetail)
+│       ├── api.js              Axios client (evaluate, robustness, analyseSite, getFootprint, ...)
+│       ├── chartPalette.js     Colour-vision-safe chart palette (methods, ranks, diverging)
 │       ├── style.css           Tailwind base + custom slider CSS + theme tokens
 │       ├── composables/
-│       │   ├── useDSS.js       Global reactive state: weights, params, evalData
+│       │   ├── useDSS.js       Global reactive state: methods, weighting, weights, params, evalData
+│       │   ├── useRobustness.js    SMAA/sensitivity request state (Robustness tab)
+│       │   ├── useSiteAnalysis.js  Click-to-place state, /api/site/* calls (Site Analysis tab)
 │       │   ├── useLocale.js    EN/UA i18n string store
 │       │   └── useTheme.js     Dark/light mode toggle
 │       └── components/
-│           ├── Sidebar.vue     Left panel: context selector, sliders, param inputs
-│           ├── TabNav.vue      Tab bar: Evaluation / Gallery / Methodology
-│           ├── DssEvaluation.vue  Main results: ranking, detail, charts, tables
+│           ├── Sidebar.vue     Left panel: context, methods, weighting mode, sliders, params
+│           ├── MethodSelector.vue    MCDA method toggle chips
+│           ├── WeightingControls.vue Weighting mode + AHP pairwise editor
+│           ├── TabNav.vue      Tab bar: Evaluation / Site Analysis / Robustness / Gallery / Methodology
+│           ├── DssEvaluation.vue     Main results: ranking, detail, charts, tables
+│           ├── MethodComparison.vue  Rank table, consensus, agreement heatmap
+│           ├── RobustnessAnalysis.vue  SMAA rank acceptability, sensitivity views
+│           ├── SiteMap.vue     Leaflet site picker, GIS overlay, footprint (§3.11, §6.6)
 │           ├── BlueprintGallery.vue  Blueprint schematic grid
-│           ├── Methodology.vue    WSM formula docs + live weight/ranking panel
+│           ├── Methodology.vue    Formula docs (WSM, TOPSIS, AHP, PROMETHEE, VIKOR, SMAA, ...)
 │           ├── PlotlyChart.vue    Plotly.react() wrapper
-│           └── LeafletMap.vue     Leaflet satellite map (Esri World Imagery)
+│           └── LeafletMap.vue     Leaflet satellite map (Esri World Imagery, detail panel)
 │
 └── legacy/
     ├── README.md               Legacy disclaimer
@@ -1030,6 +1115,8 @@ E:\Uni\Course_Work\
 12. **Shannon, C. E.** (1948). A mathematical theory of communication. *Bell System Technical Journal*, 27, 379–423.
 13. **Lahdelma, R., Salminen, P.** (2001). SMAA-2: Stochastic multicriteria acceptability analysis for group decision making. *Operations Research*, 49(3), 444–454.
 14. **Flyvbjerg, B., Holm, M. S., Buhl, S.** (2002). Underestimating costs in public works projects: error or lie? *Journal of the American Planning Association*, 68(3), 279–295.
+15. **OpenStreetMap contributors.** Overpass API — road, building, water and land-use data, queried live at `overpass-api.de/api/interpreter`. Data © OpenStreetMap contributors, ODbL.
+16. **Open Topo Data.** SRTM 90 m elevation dataset, queried live at `api.opentopodata.org/v1/srtm90m`.
 
 ---
 
