@@ -36,3 +36,5 @@ select = ["E", "F", "I", "B"]
 # Long bilingual expert-description strings.
 "app/data/interchange_data.py" = ["E501"]
 "app/data/mcda_methods.py" = ["E501"]
+# FastAPI's Depends() in argument defaults is the framework's own dependency-injection idiom.
+"backend/site_routes.py" = ["B008"]

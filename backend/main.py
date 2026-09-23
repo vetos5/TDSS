@@ -6,6 +6,8 @@ Exposes REST endpoints consumed by the Vue 3 frontend:
   - GET  /api/contexts        — list available interchange contexts
   - GET  /api/interchange/:name — detailed info for one interchange
   - GET  /api/blueprints/:name  — serve blueprint images
+  - POST /api/site/analyse    — infer context/terrain/environment/land from GIS data
+  - POST /api/site/footprint  — place a real-scale interchange footprint + right-of-way estimate
 """
 
 from __future__ import annotations
@@ -17,13 +19,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.routes import router
+from backend.site_routes import router as site_router
 
 _ROOT = Path(__file__).resolve().parents[1]
 
 app = FastAPI(
     title="TDSS API",
     description="Transport Interchange Decision Support System — MCDA/WSM Engine",
-    version="4.0.0",
+    version="5.0.0-dev",
 )
 
 app.add_middleware(
@@ -35,6 +38,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api")
+app.include_router(site_router, prefix="/api/site")
 
 blueprints_dir = _ROOT / "assets" / "blueprints"
 if blueprints_dir.exists():

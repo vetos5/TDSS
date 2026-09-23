@@ -225,3 +225,71 @@ class InterchangeDetailSchema(BaseModel):
 
 class ContextListResponse(BaseModel):
     contexts: List[str]
+
+
+# ── Phase 3: GIS site analysis ────────────────────────────────────────────────
+# osm_features is real GeoJSON (a FeatureCollection, [lon, lat] coordinate order) so the frontend
+# can hand it straight to Leaflet's L.geoJSON(); footprint segments below use plain [lat, lon]
+# pairs instead, since they are Leaflet-only internal data, not meant for external GIS interop.
+
+
+class SiteAnalyseRequest(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    bearing_lat: Optional[float] = Field(None, ge=-90, le=90)
+    bearing_lon: Optional[float] = Field(None, ge=-180, le=180)
+    radius_m: float = Field(500.0, gt=0, le=2000)
+
+
+class RoadCorridorSchema(BaseModel):
+    bearing_deg: float
+    rank: int
+    way_count: int
+
+
+class SiteAnalyseResponse(BaseModel):
+    context: str
+    context_confident: bool
+    corridors: List[RoadCorridorSchema]
+    terrain: str
+    max_grade_pct: Optional[float]
+    env_sensitivity: str
+    nearest_water_m: Optional[float]
+    residential_share: float
+    land_limit_ha: float
+    building_count: int
+    building_area_m2: float
+    water_area_m2: float
+    notes: List[str]
+    radius_m: float
+    osm_features: Dict[str, Any]  # GeoJSON FeatureCollection, for direct display on the map
+
+
+class FootprintRequest(BaseModel):
+    alternative_name: str
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    bearing_lat: Optional[float] = Field(None, ge=-90, le=90)
+    bearing_lon: Optional[float] = Field(None, ge=-180, le=180)
+    radius_m: float = Field(500.0, gt=0, le=2000)
+    demolition_cost_per_sqm: Optional[float] = Field(None, gt=0)
+
+
+class FootprintSegmentSchema(BaseModel):
+    id: str
+    width_m: float
+    coords: List[List[float]]  # [[lat, lon], ...]
+
+
+class RightOfWaySchema(BaseModel):
+    buildings_affected: int
+    demolished_area_m2: float
+    estimated_cost_usd: float
+
+
+class FootprintResponse(BaseModel):
+    available: bool
+    alternative_name: str
+    message: Optional[str] = None
+    segments: List[FootprintSegmentSchema] = []
+    right_of_way: Optional[RightOfWaySchema] = None
