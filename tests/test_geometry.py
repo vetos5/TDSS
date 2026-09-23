@@ -1,15 +1,8 @@
 """Smoke tests for the parametric geometry engine."""
 
-import sys
-import os
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from app.domain.geometry import ControlPoint, RoadSegment, RoadNetwork
 from app.application.traffic_engine import TrafficState, bpr_travel_time, stress_to_rgba
+from app.domain.geometry import ControlPoint, RoadNetwork, RoadSegment
 from app.infrastructure.generators import CloverleafGenerator, DDIGenerator, RoundaboutGenerator
-
-
 
 
 def test_straight_segment():

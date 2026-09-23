@@ -12,7 +12,7 @@ from typing import Dict, List, Tuple
 
 from pydantic import BaseModel, Field
 
-from app.domain.geometry import RoadNetwork, RoadSegment
+from app.domain.geometry import RoadNetwork
 
 
 def bpr_travel_time(

@@ -14,7 +14,6 @@ from shapely.ops import unary_union
 
 from app.domain.geometry import METRES_PER_COORD, RoadNetwork
 
-
 UNIT_COST_ASPHALT_PER_SQ_M = 500.0
 UNIT_COST_BRIDGE_PER_SQ_M = 3500.0
 

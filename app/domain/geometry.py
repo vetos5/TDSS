@@ -14,7 +14,7 @@ from typing import List, Tuple
 import numpy as np
 from pydantic import BaseModel, Field, model_validator
 from scipy.interpolate import CubicSpline
-from shapely.geometry import LineString, Point
+from shapely.geometry import LineString
 
 METRES_PER_COORD = 2000.0
 
@@ -48,7 +48,9 @@ class RoadSegment(BaseModel):
     num_lanes: int = Field(default=2, ge=1, le=8)
     lane_width_meters: float = Field(default=3.5, gt=0, le=10.0)
     speed_limit_kmh: float = Field(default=60.0, ge=5)
-    is_bridge: bool = Field(default=False, description="True if segment is elevated (higher construction cost)")
+    is_bridge: bool = Field(
+        default=False, description="True if segment is elevated (higher construction cost)"
+    )
 
     _geometry_cache: LineString | None = None
 
@@ -76,7 +78,7 @@ class RoadSegment(BaseModel):
             t_vals = np.linspace(0, 1, steps)
             interp_x = xs[0] + t_vals * (xs[1] - xs[0])
             interp_y = ys[0] + t_vals * (ys[1] - ys[0])
-            return list(zip(interp_x.tolist(), interp_y.tolist()))
+            return list(zip(interp_x.tolist(), interp_y.tolist(), strict=True))
 
         cumulative_dist = np.zeros(len(pts))
         for i in range(1, len(pts)):
@@ -93,7 +95,7 @@ class RoadSegment(BaseModel):
         interp_x = cs_x(t_fine)
         interp_y = cs_y(t_fine)
 
-        return list(zip(interp_x.tolist(), interp_y.tolist()))
+        return list(zip(interp_x.tolist(), interp_y.tolist(), strict=True))
 
     def road_width(self) -> float:
         """Total paved width in metres."""

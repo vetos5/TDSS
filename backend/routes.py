@@ -18,7 +18,6 @@ from app.data.interchange_data import (
     resolve_criterion_labels,
     resolve_interchange_detail,
 )
-
 from backend.schemas import (
     AdjustmentNote,
     ContextListResponse,

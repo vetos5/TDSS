@@ -61,7 +61,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional
 
-
 # Type alias for criterion optimisation direction.
 CriterionDirection = Literal["maximize", "minimize"]
 
