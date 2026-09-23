@@ -1,0 +1,90 @@
+"""
+Thresholds used to classify a site from OpenStreetMap + elevation data.
+
+See ``app.application.site_analysis``.
+
+These are documented modelling assumptions, not measured constants — the user can always override
+the resulting terrain/environmental-sensitivity/context in the UI, exactly as with the manual
+project parameters they replace. Keeping them here (rather than buried in classification code)
+makes them one place to defend, cite or recalibrate.
+"""
+
+from __future__ import annotations
+
+from typing import Dict
+
+# ---------------------------------------------------------------------------
+# Terrain, from the grid's steepest adjacent-point grade (%).
+# ---------------------------------------------------------------------------
+# AASHTO's Green Book (A Policy on Geometric Design of Highways and Streets) describes terrain
+# qualitatively by how much it constrains alignment and sight distance, without one universal
+# numeric cutoff. The percent-grade bands below are the commonly cited approximation of that
+# description used across transportation-engineering references, and match the terrain classes
+# already in this app's UI (Flat / Rolling / Mountainous, see app/data/adjustment_rules.py).
+TERRAIN_FLAT_MAX_GRADE_PCT = 3.0        # <= this  -> "Flat"
+TERRAIN_ROLLING_MAX_GRADE_PCT = 8.0      # <= this (and > flat) -> "Rolling"; above -> "Mountainous"
+
+# ---------------------------------------------------------------------------
+# Road classification (OSM `highway` tag -> a design-relevance rank).
+# ---------------------------------------------------------------------------
+# Ways below MIN_MAJOR_ROAD_RANK (service roads, tracks, footpaths, cycleways, ...) are excluded
+# from context inference: they are not the crossing roads an interchange is designed around.
+ROAD_CLASS_RANK: Dict[str, int] = {
+    "motorway": 4, "motorway_link": 4,
+    "trunk": 4, "trunk_link": 4,
+    "primary": 3, "primary_link": 3,
+    "secondary": 2, "secondary_link": 2,
+    "tertiary": 1, "tertiary_link": 1,
+}
+MIN_MAJOR_ROAD_RANK = 1  # tertiary and above
+HIGHWAY_RANK = 4         # motorway / trunk -- the "highway" side of every context
+
+# Roads are grouped into corridors by direction; two ways within this many degrees of each other
+# (mod 180 deg, since a road has no inherent direction) are treated as the same corridor.
+CORRIDOR_BEARING_TOLERANCE_DEG = 30.0
+
+# ---------------------------------------------------------------------------
+# Environmental sensitivity.
+# ---------------------------------------------------------------------------
+# Any OSM protected-area / nature-reserve feature within the search radius -> "Critical":
+# permitting is assumed to dominate regardless of anything else found.
+# A water feature closer than this to the site centre -> "High" (plausible wetland/crossing risk).
+WATER_HIGH_SENSITIVITY_DISTANCE_M = 150.0
+# Residential land covering more than this share of the search circle -> "Medium" (utility
+# relocation, noise mitigation, more right-of-way negotiation than open land).
+RESIDENTIAL_MEDIUM_SENSITIVITY_SHARE = 0.15
+
+# ---------------------------------------------------------------------------
+# Right-of-way / demolition cost.
+# ---------------------------------------------------------------------------
+# No authoritative single source for this (it varies hugely by country and by site) -- a
+# placeholder the user should calibrate against local land/demolition cost data before relying on
+# the estimate for anything beyond a rough order of magnitude.
+DEFAULT_DEMOLITION_COST_PER_SQM_USD = 150.0
+
+# ---------------------------------------------------------------------------
+# Site sampling defaults.
+# ---------------------------------------------------------------------------
+DEFAULT_RADIUS_M = 500.0
+DEFAULT_ELEVATION_GRID_N = 5  # 5x5 = 25 points, one Open Topo Data request
+
+
+def terrain_class(max_grade_pct: float) -> str:
+    if max_grade_pct <= TERRAIN_FLAT_MAX_GRADE_PCT:
+        return "Flat"
+    if max_grade_pct <= TERRAIN_ROLLING_MAX_GRADE_PCT:
+        return "Rolling"
+    return "Mountainous"
+
+
+def road_rank(tags: Dict[str, str]) -> int:
+    """Design-relevance rank of a way's `highway` tag; 0 if unranked or missing."""
+    return ROAD_CLASS_RANK.get(tags.get("highway", ""), 0)
+
+
+CONTEXT_SYSTEM = "System (Highway + Highway)"
+CONTEXT_SERVICE = "Service (Highway + Urban)"
+CONTEXT_TTYPE = "T-Type (3 Directions)"
+# Used when too few distinct road corridors were found to classify with any confidence -- the
+# most common real-world case, but always paired with a low-confidence note (see site_analysis.py).
+DEFAULT_CONTEXT_FALLBACK = CONTEXT_SERVICE
