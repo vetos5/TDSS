@@ -9,6 +9,37 @@ const props = defineProps({
 
 const { t } = useLocale()
 
+// Formulas are notation, shared by both locales; the prose comes from t.methodTheory.
+const THEORY = [
+  { key: 'topsis', formulas: [
+    'r<sub>ij</sub> = x<sub>ij</sub> / ‖x<sub>j</sub>‖₂ ,  v<sub>ij</sub> = w<sub>j</sub> r<sub>ij</sub>',
+    'C<sub>i</sub> = D<sub>i</sub><sup>−</sup> / (D<sub>i</sub><sup>+</sup> + D<sub>i</sub><sup>−</sup>)',
+  ] },
+  { key: 'ahp', formulas: [
+    'A w = λ<sub>max</sub> w',
+    'CI = (λ<sub>max</sub> − n) / (n − 1) ,  CR = CI / RI<sub>n</sub> &lt; 0.10',
+    'P<sub>i</sub> = Σ<sub>j</sub> w<sub>j</sub> p<sub>ij</sub>',
+  ] },
+  { key: 'promethee', formulas: [
+    'π(a, b) = Σ<sub>j</sub> w<sub>j</sub> P<sub>j</sub>(a, b)',
+    'φ(a) = φ<sup>+</sup>(a) − φ<sup>−</sup>(a)',
+  ] },
+  { key: 'vikor', formulas: [
+    'S<sub>i</sub> = Σ<sub>j</sub> w<sub>j</sub> (f<sub>j</sub><sup>*</sup> − f<sub>ij</sub>) / (f<sub>j</sub><sup>*</sup> − f<sub>j</sub><sup>−</sup>) ,  R<sub>i</sub> = max<sub>j</sub>(…)',
+    'Q<sub>i</sub> = v (S<sub>i</sub> − S<sup>*</sup>)/(S<sup>−</sup> − S<sup>*</sup>) + (1 − v)(R<sub>i</sub> − R<sup>*</sup>)/(R<sup>−</sup> − R<sup>*</sup>)',
+  ] },
+  { key: 'entropy', formulas: [
+    'e<sub>j</sub> = −(1 / ln m) Σ<sub>i</sub> p<sub>ij</sub> ln p<sub>ij</sub> ,  w<sub>j</sub> = (1 − e<sub>j</sub>) / Σ<sub>k</sub>(1 − e<sub>k</sub>)',
+  ] },
+  { key: 'critic', formulas: [
+    'C<sub>j</sub> = σ<sub>j</sub> Σ<sub>k</sub> (1 − r<sub>jk</sub>) ,  w<sub>j</sub> = C<sub>j</sub> / Σ<sub>k</sub> C<sub>k</sub>',
+  ] },
+  { key: 'agreement', formulas: [
+    'ρ = 1 − 6 Σ d<sub>i</sub>² / (m (m² − 1))',
+    'B<sub>i</sub> = Σ<sub>k</sub> (m − rank<sub>k</sub>(i))',
+  ] },
+]
+
 const RANK_BADGES = { 1: { bg: '#fbbf24', fg: '#78350f', icon: '🏆' }, 2: { bg: '#cbd5e1', fg: '#1e293b', icon: '🥈' }, 3: { bg: '#d6a06c', fg: '#422006', icon: '🥉' } }
 
 function altColor(name) {
@@ -92,6 +123,22 @@ function altColor(name) {
 
       <hr class="my-6" :class="dark ? 'border-slate-700' : 'border-slate-200'" />
 
+      <h2 class="text-xl font-bold mb-2" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.methodsTheoryTitle }}</h2>
+      <p class="mb-4" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.methodsTheoryIntro }}</p>
+
+      <div v-for="item in THEORY" :key="item.key" class="mb-5">
+        <h3 class="text-base font-semibold mb-1" :class="dark ? 'text-slate-200' : 'text-slate-800'">
+          {{ t.methodTheory[item.key].title }}
+        </h3>
+        <p class="text-sm" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.methodTheory[item.key].desc }}</p>
+        <div v-for="(f, i) in item.formulas" :key="i"
+             class="rounded-xl border p-3 my-2 text-center font-mono text-sm"
+             :class="dark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'"
+             v-html="f"></div>
+      </div>
+
+      <hr class="my-6" :class="dark ? 'border-slate-700' : 'border-slate-200'" />
+
       <h2 class="text-xl font-bold mb-4" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.criteriaDataTitle }}</h2>
 
       <div class="overflow-x-auto rounded-xl border mb-6"
@@ -136,6 +183,12 @@ function altColor(name) {
         <li>FHWA (2023). <em>Interchange Justification Report Guidelines.</em></li>
         <li>PIARC (2019). <em>Road Safety Manual.</em></li>
         <li>AASHTO (2022). <em>Highway Safety Manual, 2nd Edition.</em></li>
+        <li>Hwang, C. L., Yoon, K. (1981). <em>Multiple Attribute Decision Making: Methods and Applications.</em> Springer.</li>
+        <li>Saaty, T. L. (1980). <em>The Analytic Hierarchy Process.</em> McGraw-Hill.</li>
+        <li>Brans, J. P., Vincke, Ph. (1985). A preference ranking organisation method. <em>Management Science</em>, 31(6), 647–656.</li>
+        <li>Opricovic, S., Tzeng, G.-H. (2004). Compromise solution by MCDM methods: a comparative analysis of VIKOR and TOPSIS. <em>European Journal of Operational Research</em>, 156(2), 445–455.</li>
+        <li>Diakoulaki, D., Mavrotas, G., Papayannakis, L. (1995). Determining objective weights in multiple criteria problems: the CRITIC method. <em>Computers &amp; Operations Research</em>, 22(7), 763–770.</li>
+        <li>Shannon, C. E. (1948). A mathematical theory of communication. <em>Bell System Technical Journal</em>, 27, 379–423.</li>
       </ul>
     </div>
 

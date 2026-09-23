@@ -336,5 +336,38 @@
   "spearman": "Spearman ρ",
   "kendall": "Kendall τ",
   "vikorCompromise": "VIKOR compromise set",
-  "agreementNeedsTwo": "Select at least two methods to compare rankings."
+  "agreementNeedsTwo": "Select at least two methods to compare rankings.",
+
+  "methodsTheoryTitle": "Other MCDA Methods and Weighting",
+  "methodsTheoryIntro": "Every selected method ranks the same adjusted decision matrix with the same weights, so their results can be compared directly.",
+  "methodTheory": {
+    "topsis": {
+      "title": "TOPSIS",
+      "desc": "Columns are vector-normalised and weighted. Each alternative is scored by its relative closeness to the ideal point (best value of every criterion) and its distance from the anti-ideal point."
+    },
+    "ahp": {
+      "title": "AHP — Analytic Hierarchy Process",
+      "desc": "Criterion weights are the principal eigenvector of the expert pairwise comparison matrix A; judgements are accepted when the consistency ratio CR is below 0.10. Alternatives are compared by value ratios, giving local priorities p_ij that are synthesised with the weights."
+    },
+    "promethee": {
+      "title": "PROMETHEE II",
+      "desc": "For every pair of alternatives the difference on each criterion is turned into a preference degree P_j ∈ [0, 1] (V-shape function over the criterion's range by default). The net flow φ = leaving flow − entering flow gives a complete ranking."
+    },
+    "vikor": {
+      "title": "VIKOR",
+      "desc": "S measures group utility and R the worst individual regret. Q blends them with v = 0.5; lower Q is better. If the leader's advantage or stability is not acceptable, VIKOR reports a compromise set instead of a single winner."
+    },
+    "entropy": {
+      "title": "Entropy weights (objective)",
+      "desc": "p_ij = x_ij / Σ_i x_ij. A criterion whose values barely differ between alternatives has entropy close to 1 and receives little weight."
+    },
+    "critic": {
+      "title": "CRITIC weights (objective)",
+      "desc": "σ_j is the standard deviation of the min-max normalised criterion and r_jk the correlation between criteria. High contrast raises a weight; strong correlation with other criteria (redundancy) lowers it."
+    },
+    "agreement": {
+      "title": "Rank agreement and consensus",
+      "desc": "Spearman's ρ and Kendall's τ measure how similarly two methods rank the alternatives (1 = identical, −1 = reversed). The consensus ranking is a Borda count B_i over all selected methods."
+    }
+  }
 }

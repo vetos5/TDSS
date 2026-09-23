@@ -1,4 +1,4 @@
-# TDSS v4 — Transport Interchange Decision Support System
+# TDSS v5 — Transport Interchange Decision Support System
 
 > **Academic / Engineering Tool** — Multi-Criteria Decision Analysis for Highway Interchange Selection
 
@@ -14,6 +14,9 @@
    - 3.3 [Weight Normalisation](#33-weight-normalisation)
    - 3.4 [Parameter Adjustment Model](#34-parameter-adjustment-model)
    - 3.5 [Feasibility Constraints](#35-feasibility-constraints)
+   - 3.6 [Multi-Method Ranking (v5)](#36-multi-method-ranking-v5)
+   - 3.7 [Criterion Weighting (v5)](#37-criterion-weighting-v5)
+   - 3.8 [Rank Agreement and Consensus (v5)](#38-rank-agreement-and-consensus-v5)
 4. [Decision Alternatives](#4-decision-alternatives)
 5. [Evaluation Criteria](#5-evaluation-criteria)
 6. [Backend (FastAPI)](#6-backend-fastapi)
@@ -21,6 +24,7 @@
    - 6.2 [API Endpoints](#62-api-endpoints)
    - 6.3 [DSS Engine](#63-dss-engine)
    - 6.4 [Data Layer](#64-data-layer)
+   - 6.5 [MCDA Package (v5)](#65-mcda-package-v5)
 7. [Frontend (Vue 3)](#7-frontend-vue-3)
    - 7.1 [Project Setup](#71-project-setup)
    - 7.2 [Component Tree](#72-component-tree)
@@ -58,7 +62,8 @@ The system applies **Multi-Criteria Decision Analysis (MCDA)** via the **Weighte
 | Version | Stack | Location |
 |---|---|---|
 | v3 | Python · Streamlit · Folium | `legacy/streamlit_ui/` |
-| **v4** | **Python · FastAPI · Vue 3 · Vite · Tailwind CSS** | `backend/` + `frontend/` |
+| v4 | Python · FastAPI · Vue 3 · Vite · Tailwind CSS | `backend/` + `frontend/` |
+| **v5** | **v4 + multi-method MCDA engine (WSM, TOPSIS, AHP, PROMETHEE II, VIKOR), objective/AHP weighting, rank agreement** | `app/application/mcda/` |
 
 ---
 
@@ -217,6 +222,52 @@ Two hard constraints are enforced **before** the WSM computation. Alternatives t
 $$\text{feasible}(i) = \begin{cases} \text{true} & \text{if } \text{cost}'_i \leq B \text{ AND } \text{land}'_i \leq L \\ \text{false} & \text{otherwise} \end{cases}$$
 
 where \(B\) = budget limit (M USD) and \(L\) = land limit (ha). If no alternatives survive the feasibility filter, the API returns HTTP 422.
+
+### 3.6 Multi-Method Ranking (v5)
+
+Since v5 the same adjusted, feasible decision matrix can be ranked by five methods. Each method receives identical weights, so differences in the rankings come from the method alone. The WSM result (§3.1) is still returned in `results`; the other methods appear in `method_results`.
+
+| Method | Score | Better | Key idea |
+|---|---|---|---|
+| WSM | \(S_i = \sum_j w_j \bar{x}_{ij}\) | higher | Weighted sum of min-max normalised values |
+| TOPSIS | \(C_i = D_i^- / (D_i^+ + D_i^-)\) | higher | Closeness to the ideal point after vector normalisation |
+| AHP | \(P_i = \sum_j w_j p_{ij}\) | higher | Ratio-scale local priorities (distributive mode) |
+| PROMETHEE II | \(\varphi(a) = \varphi^+(a) - \varphi^-(a)\) | higher | Pairwise outranking with preference functions |
+| VIKOR | \(Q_i\) | lower | Compromise between group utility \(S\) and individual regret \(R\) |
+
+**TOPSIS.** \(r_{ij} = x_{ij} / \lVert x_j \rVert_2\), \(v_{ij} = w_j r_{ij}\). The ideal \(A^+\) takes the best \(v_{ij}\) per criterion (max for benefit, min for cost) and the anti-ideal \(A^-\) the worst. \(D_i^\pm\) are Euclidean distances to them.
+
+**AHP.** For criterion \(j\) the alternatives are compared by value ratios \(a_{ik} = x_{ij}/x_{kj}\) (inverted for cost criteria). Such a matrix is perfectly consistent, so its principal eigenvector equals the sum-normalised column \(p_{ij} = x_{ij} / \sum_k x_{kj}\) (or \(x_{ij}^{-1} / \sum_k x_{kj}^{-1}\) for cost). This equivalence is verified in the tests.
+
+**PROMETHEE II.** \(d_j(a,b) = g_j(a) - g_j(b)\) (sign flipped for cost) is mapped to \(P_j(a,b) \in [0,1]\). The default preference function is the V-shape (type III) with \(p\) equal to the criterion's range; "usual" (type I) and "linear" (type V, thresholds \(q, p\)) are also implemented.
+
+$$\pi(a,b) = \sum_j w_j P_j(a,b), \quad \varphi^+(a) = \frac{1}{m-1}\sum_b \pi(a,b), \quad \varphi^-(a) = \frac{1}{m-1}\sum_b \pi(b,a)$$
+
+**VIKOR.** With \(f_j^*\) the best and \(f_j^-\) the worst value of criterion \(j\):
+
+$$S_i = \sum_j w_j \frac{f_j^* - f_{ij}}{f_j^* - f_j^-}, \quad R_i = \max_j w_j \frac{f_j^* - f_{ij}}{f_j^* - f_j^-}, \quad Q_i = v\frac{S_i - S^*}{S^- - S^*} + (1-v)\frac{R_i - R^*}{R^- - R^*}$$
+
+with \(v = 0.5\). The leader \(a_1\) is a stable compromise when \(Q(a_2) - Q(a_1) \ge 1/(m-1)\) (acceptable advantage) and \(a_1\) is also best by \(S\) or \(R\) (acceptable stability). Otherwise the response lists a compromise set.
+
+**Ties** share the lower rank (1, 1, 3). Every method is invariant to a change of units of any criterion, and an alternative that dominates all others always ranks first; both properties are tested for all five methods.
+
+### 3.7 Criterion Weighting (v5)
+
+`weighting.mode` selects how weights are obtained:
+
+| Mode | Weights |
+|---|---|
+| `manual` | Slider values, normalised (§3.3) |
+| `entropy` | \(e_j = -\frac{1}{\ln m}\sum_i p_{ij}\ln p_{ij}\), \(p_{ij} = x_{ij}/\sum_i x_{ij}\); \(w_j = (1-e_j)/\sum_k(1-e_k)\) |
+| `critic` | \(C_j = \sigma_j \sum_k (1 - r_{jk})\) on the min-max normalised matrix; \(w_j = C_j / \sum_k C_k\) |
+| `ahp` | Principal eigenvector of the 4×4 pairwise matrix \(A\); \(CR = CI/RI_n\), \(CI = (\lambda_{max} - n)/(n-1)\) |
+| `combined` | \(w = \alpha\, w_{subj} + (1-\alpha)\, w_{obj}\), subjective = manual or AHP, objective = entropy or CRITIC |
+
+Objective weights are computed on the **adjusted, feasible** matrix, so they respond to site conditions. They need at least two alternatives; with one, manual weights are used and a `weighting` note is returned. An AHP matrix with \(CR \ge 0.10\) is still used, with a warning note. A malformed AHP matrix (wrong size, non-positive, not reciprocal) returns HTTP 400.
+
+### 3.8 Rank Agreement and Consensus (v5)
+
+When two or more methods run, the response includes Spearman's \(\rho\) and Kendall's \(\tau_b\) for every pair of methods (1 = identical rankings, −1 = reversed; `null` when undefined), and a **Borda consensus**: alternative \(i\) receives \(B_i = \sum_k (m - \text{rank}_k(i))\) points. `unanimous_winner` is true when all methods rank the same alternative first.
 
 ---
 
@@ -403,11 +454,49 @@ Serves static blueprint images from `assets/blueprints/`. Available filenames:
 | Trumpet | `trumpet.png` | `trumpet.svg` |
 | Directional T | `directional_t.png` | `directional_t.svg` |
 
+#### `GET /api/methods` (v5)
+
+Lists the available MCDA methods with localised labels (`?lang=en|uk`).
+
+```json
+[{ "id": "topsis", "label": "TOPSIS", "description": "Relative closeness to the ideal and distance from the anti-ideal." }, ...]
+```
+
+#### `POST /api/evaluate` — v5 extensions
+
+Two optional request fields; omitting them reproduces v4 exactly (a snapshot test guards this):
+
+```json
+{
+  "methods": ["wsm", "topsis", "ahp", "promethee", "vikor"],
+  "weighting": {
+    "mode": "combined",
+    "subjective": "ahp",
+    "objective": "critic",
+    "alpha": 0.6,
+    "ahp_matrix": [[1, 3, 1, 2], [0.333, 1, 0.5, 1], [1, 2, 1, 1], [0.5, 1, 1, 1]]
+  }
+}
+```
+
+Additional response fields:
+
+| Field | Content |
+|---|---|
+| `normalised_weights` | The weights actually used (after the weighting mode) |
+| `method_results.<id>` | `label`, `higher_is_better`, `scores[]` (`alternative_name`, `score`, `utility` ∈ [0, 1], `rank`), `details` (intermediate values, e.g. TOPSIS `d_plus`, VIKOR `S`/`R`/`Q`/`compromise_set`) |
+| `rank_agreement` | `methods`, `spearman`, `kendall` (k × k), `consensus[]` (Borda), `unanimous_winner`; `null` for a single method |
+| `weighting` | `mode` and its details (entropy values, CRITIC σ/correlation, AHP λmax/CI/CR) |
+
+Additional errors: `400` for an invalid AHP matrix; `422` for an unknown method id.
+
 ---
 
 ### 6.3 DSS Engine
 
-`app/application/dss_engine.py` is a **pure-Python, zero-dependency** implementation of the WSM algorithm. It has no knowledge of HTTP, data files, or UI concerns.
+`app/application/dss_engine.py` holds the core dataclasses and the `DecisionSupportSystem` WSM interface. Since v5 its arithmetic is delegated to `app.application.mcda.methods.wsm`, while the class keeps the v4 rounding and ordering contract. It has no knowledge of HTTP, data files, or UI concerns.
+
+Site adjustments (§3.4–3.5) live in `app/application/adjustments.py` (`apply_site_adjustments`, `filter_feasible`) with their constants in `app/data/adjustment_rules.py`.
 
 ```mermaid
 flowchart TD
@@ -467,6 +556,28 @@ graph LR
     IDATA --> COL["ALTERNATIVE_COLORS\nlight + dark hex"]
     IDATA --> DETAIL["DETAILED_INTERCHANGE_INFO\nlat/lon, pros/cons,\nengineering_desc"]
     IDATA --> HELPER["get_alternatives_for_context()"]
+```
+
+### 6.5 MCDA Package (v5)
+
+`app/application/mcda/` is pure NumPy/SciPy with no I/O:
+
+| Module | Contents |
+|---|---|
+| `matrix.py` | `DecisionMatrix` (alternatives × criteria, validated), `weights_vector()` |
+| `normalisation.py` | `minmax`, `vector`, `sum_`, `max_` |
+| `weighting.py` | `entropy`, `critic`, `ahp` (eigenvector + CR), `combine` |
+| `methods/` | `wsm`, `topsis`, `ahp`, `promethee`, `vikor`; each `run(matrix, weights, **opts) -> MethodResult` |
+| `comparison.py` | `rank_agreement()` — Spearman, Kendall, Borda consensus |
+| `__init__.py` | `METHODS` registry and `evaluate(matrix, weights, methods, options)` |
+
+`app/application/evaluation.py` resolves the weighting mode (`select_weights`) and runs the methods (`run_methods`). The API layer only maps these results to JSON.
+
+```python
+from app.application.mcda import DecisionMatrix, evaluate, rank_agreement
+m = DecisionMatrix.from_alternatives(alternatives, CRITERIA)
+results = evaluate(m, m.weights_vector(weights), ["wsm", "topsis", "vikor"])
+agreement = rank_agreement(results)
 ```
 
 ---
@@ -726,7 +837,7 @@ Supported string categories: app title/subtitle, tab labels, sidebar labels, cri
 
 The `legacy/streamlit_ui/` directory contains the v3 implementation of TDSS, preserved as historical reference. It uses the **same** `app/application/dss_engine.py` and `app/data/interchange_data.py` modules but renders the entire UI in Python via Streamlit and Folium.
 
-**Key difference from v4:** The legacy UI does not apply the `_apply_project_params` adjustment rules — it runs bare WSM without terrain, environmental, speed, or traffic adjustments.
+**Key difference from v4:** The legacy UI does not apply the `apply_project_params` adjustment rules — it runs bare WSM without terrain, environmental, speed, or traffic adjustments.
 
 ```bash
 # Run legacy v3 (from project root)
@@ -748,7 +859,7 @@ streamlit run legacy/streamlit_ui/main.py
 **Terminal 1 — Backend:**
 ```bash
 # From project root
-pip install -r requirements.txt
+pip install -r requirements-dev.txt     # runtime + pytest/ruff/httpx
 uvicorn backend.main:app --reload --port 8000
 ```
 
@@ -760,7 +871,14 @@ npm run dev
 # Opens at http://localhost:5173
 ```
 
-The Vite dev server automatically proxies `/api/*` and `/blueprints/*` requests to `http://localhost:8000`.
+The Vite dev server proxies `/api/*` and `/blueprints/*` to `http://localhost:8000`; set `TDSS_API=http://localhost:<port>` to use another backend port.
+
+### Tests
+
+```bash
+pytest -q          # engine, weighting, API and v4-snapshot regression tests
+ruff check .
+```
 
 ### Production Build
 
@@ -782,20 +900,25 @@ uvicorn backend.main:app --port 8000
 ```
 E:\Uni\Course_Work\
 │
-├── pyproject.toml              Poetry project: tdss v4.0.0, Python ^3.11
+├── pyproject.toml              PEP 621 project: tdss 5.0.0-dev, Python >=3.11, ruff/pytest config
 ├── requirements.txt            Pip dependencies
 ├── .gitignore
 │
 ├── app/                        Shared application logic (used by backend AND legacy)
 │   ├── application/
-│   │   └── dss_engine.py       Pure WSM engine (Criterion, Alternative, DecisionSupportSystem)
+│   │   ├── dss_engine.py       Criterion, Alternative, DecisionSupportSystem (WSM interface)
+│   │   ├── adjustments.py      Site adjustments + feasibility filter
+│   │   ├── evaluation.py       Weighting-mode resolution, multi-method run
+│   │   └── mcda/               Multi-method MCDA engine (see §6.5)
 │   └── data/
-│       └── interchange_data.py All expert constants (8 interchanges, 3 contexts, 4 criteria)
+│       ├── interchange_data.py All expert constants (8 interchanges, 3 contexts, 4 criteria)
+│       ├── adjustment_rules.py Terrain / environment / speed / capacity factors
+│       └── mcda_methods.py     EN/UK method labels
 │
 ├── backend/                    FastAPI REST API (v4)
 │   ├── __init__.py
 │   ├── main.py                 App factory: CORS, static files, router mount
-│   ├── routes.py               Route handlers + _apply_project_params() adjustment engine
+│   ├── routes.py               Route handlers and JSON mapping of engine results
 │   └── schemas.py              Pydantic request/response models
 │
 ├── assets/
@@ -848,7 +971,13 @@ E:\Uni\Course_Work\
 4. **FHWA** (2023). *Interchange Safety Analysis Tool (ISAT): Reference Manual.* U.S. Federal Highway Administration.
 5. **PIARC** (2019). *Road Safety Manual.* World Road Association.
 6. **AASHTO** (2022). *A Policy on Geometric Design of Highways and Streets ("Green Book"), 7th Edition.*
+7. **Hwang, C. L., Yoon, K.** (1981). *Multiple Attribute Decision Making: Methods and Applications.* Springer.
+8. **Saaty, T. L.** (1980). *The Analytic Hierarchy Process.* McGraw-Hill.
+9. **Brans, J. P., Vincke, Ph.** (1985). A preference ranking organisation method. *Management Science*, 31(6), 647–656.
+10. **Opricovic, S., Tzeng, G.-H.** (2004). Compromise solution by MCDM methods: a comparative analysis of VIKOR and TOPSIS. *European Journal of Operational Research*, 156(2), 445–455.
+11. **Diakoulaki, D., Mavrotas, G., Papayannakis, L.** (1995). Determining objective weights in multiple criteria problems: the CRITIC method. *Computers & Operations Research*, 22(7), 763–770.
+12. **Shannon, C. E.** (1948). A mathematical theory of communication. *Bell System Technical Journal*, 27, 379–423.
 
 ---
 
-*Documentation generated for TDSS v4.0.0 — Transport Interchange Decision Support System.*
+*Documentation for TDSS v5 (in development) — Transport Interchange Decision Support System.*
