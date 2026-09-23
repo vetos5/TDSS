@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Dict, List
-
 from fastapi import APIRouter, HTTPException, Query, Response
 
-from app.application.dss_engine import Alternative, DecisionSupportSystem
+from app.application.adjustments import apply_project_params
+from app.application.dss_engine import DecisionSupportSystem
 from app.data.interchange_data import (
     ALTERNATIVE_COLORS,
     ALTERNATIVE_COLORS_DARK,
@@ -29,158 +28,6 @@ from backend.schemas import (
 )
 
 router = APIRouter()
-
-_TERRAIN_COST_FACTOR: Dict[str, float] = {
-    "Flat":        1.00,
-    "Rolling":     1.25,
-    "Mountainous": 1.70,
-}
-
-_ENV_LAND_FACTOR: Dict[str, float] = {
-    "Low":      1.00,
-    "Medium":   1.10,
-    "High":     1.30,
-    "Critical": 1.60,
-}
-
-_LOOP_RAMP_ALTERNATIVES = {"Cloverleaf", "Trumpet"}
-_LOOP_RAMP_MAX_SAFE_SPEED = 80
-_SPEED_PENALTY_PER_20KMH = 0.10
-
-
-def _apply_project_params(
-    alternatives: List[Alternative],
-    params,
-) -> tuple[List[Alternative], List[AdjustmentNote]]:
-    terrain        = params.terrain
-    env_sens       = params.env_sensitivity
-    design_speed   = params.design_speed
-    aadt           = params.aadt
-    peak_factor    = params.peak_factor
-    budget         = params.budget
-    land_limit     = params.land_limit
-
-    terrain_factor = _TERRAIN_COST_FACTOR.get(terrain, 1.0)
-    env_factor     = _ENV_LAND_FACTOR.get(env_sens, 1.0)
-    peak_hour_demand = aadt * (peak_factor / 100.0)
-
-    notes: List[AdjustmentNote] = []
-    adjusted: List[Alternative] = []
-
-    if terrain_factor != 1.0:
-        notes.append(AdjustmentNote(
-            kind="terrain",
-            message=(
-                f"Terrain '{terrain}': construction costs scaled ×{terrain_factor:.2f} "
-                f"(FHWA cost factor)."
-            ),
-        ))
-
-    if env_factor != 1.0:
-        notes.append(AdjustmentNote(
-            kind="env_sensitivity",
-            message=(
-                f"Env. sensitivity '{env_sens}': effective land area scaled ×{env_factor:.2f} "
-                f"to reflect mitigation / permitting overhead."
-            ),
-        ))
-
-    speed_penalty_applied = False
-    capacity_warnings: List[str] = []
-
-    for alt in alternatives:
-        new_values = dict(alt.raw_values)
-
-        if terrain_factor != 1.0:
-            new_values["construction_cost_mln"] = round(
-                alt.raw_values["construction_cost_mln"] * terrain_factor, 2
-            )
-
-        if env_factor != 1.0:
-            new_values["land_area_hectares"] = round(
-                alt.raw_values["land_area_hectares"] * env_factor, 2
-            )
-
-        if alt.name in _LOOP_RAMP_ALTERNATIVES and design_speed > _LOOP_RAMP_MAX_SAFE_SPEED:
-            excess_increments = (design_speed - _LOOP_RAMP_MAX_SAFE_SPEED) / 20.0
-            raw_penalty = excess_increments * _SPEED_PENALTY_PER_20KMH
-            penalty_frac = min(raw_penalty, 0.40)
-            original_safety = alt.raw_values["safety_index"]
-            new_values["safety_index"] = round(
-                max(original_safety * (1 - penalty_frac), 1.0), 2
-            )
-            if not speed_penalty_applied:
-                notes.append(AdjustmentNote(
-                    kind="design_speed",
-                    message=(
-                        f"Design speed {design_speed} km/h exceeds loop-ramp threshold "
-                        f"({_LOOP_RAMP_MAX_SAFE_SPEED} km/h): safety index reduced by up to "
-                        f"{penalty_frac * 100:.0f} % for loop-ramp alternatives "
-                        f"({', '.join(sorted(_LOOP_RAMP_ALTERNATIVES))})."
-                    ),
-                ))
-                speed_penalty_applied = True
-
-        throughput = alt.raw_values["throughput_vph"]
-        if peak_hour_demand > throughput:
-            over_ratio = peak_hour_demand / throughput
-            over_pct = (over_ratio - 1.0) * 100
-            capacity_penalty = min((over_ratio - 1.0) * 0.5, 0.40)
-            new_values["throughput_vph"] = round(
-                throughput * (1 - capacity_penalty), 0
-            )
-            capacity_warnings.append(
-                f"{alt.name} (capacity {int(throughput):,} vph < demand "
-                f"{int(peak_hour_demand):,} vph, {over_pct:.0f} % over)"
-            )
-
-        adjusted.append(Alternative(
-            name=alt.name,
-            raw_values=new_values,
-            description=alt.description,
-        ))
-
-    if capacity_warnings:
-        notes.append(AdjustmentNote(
-            kind="traffic_demand",
-            message=(
-                f"Peak-hour demand {int(peak_hour_demand):,} vph "
-                f"(AADT {aadt:,} × {peak_factor}%) exceeds rated capacity for: "
-                + "; ".join(capacity_warnings)
-                + ". Effective throughput score reduced proportionally."
-            ),
-        ))
-
-    infeasible = []
-    for alt in adjusted:
-        over_budget = alt.raw_values["construction_cost_mln"] > budget
-        over_land   = alt.raw_values["land_area_hectares"] > land_limit
-        if over_budget or over_land:
-            reasons = []
-            if over_budget:
-                reasons.append(
-                    f"cost ${alt.raw_values['construction_cost_mln']:.1f}M > budget ${budget:.0f}M"
-                )
-            if over_land:
-                reasons.append(
-                    f"land {alt.raw_values['land_area_hectares']:.1f} ha > limit {land_limit:.0f} ha"
-                )
-            infeasible.append(f"{alt.name} ({', '.join(reasons)})")
-
-    if infeasible:
-        notes.append(AdjustmentNote(
-            kind="feasibility",
-            message=(
-                "Hard constraints exceeded — the following alternatives are marked infeasible "
-                "and excluded from ranking: " + "; ".join(infeasible) + "."
-            ),
-        ))
-        infeasible_names = {a.name for a in adjusted
-                            if a.raw_values["construction_cost_mln"] > budget
-                            or a.raw_values["land_area_hectares"] > land_limit}
-        adjusted = [a for a in adjusted if a.name not in infeasible_names]
-
-    return adjusted, notes
 
 
 @router.get("/contexts", response_model=ContextListResponse)
@@ -209,7 +56,8 @@ def evaluate(req: EvaluateRequest, lang: str = Query(default="en")):
         norm_w = {k: v / total_w for k, v in weights.items()}
 
     base_alternatives = get_alternatives_for_context(req.context)
-    alternatives, adjustment_notes = _apply_project_params(base_alternatives, req.params)
+    alternatives, notes = apply_project_params(base_alternatives, req.params)
+    adjustment_notes = [AdjustmentNote(kind=n.kind, message=n.message) for n in notes]
 
     if not alternatives:
         raise HTTPException(

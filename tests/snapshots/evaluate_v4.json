@@ -1,0 +1,2854 @@
+{
+ "Service (Highway + Urban)|default|cost_heavy": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Medium': effective land area scaled ×1.10 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Diamond (capacity 2,500 vph < demand 4,500 vph, 80 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "Service (Highway + Urban)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.7000000000000001,
+    "land_area_hectares": 0.10000000000000002,
+    "safety_index": 0.10000000000000002,
+    "throughput_vph": 0.10000000000000002
+   },
+   "results": [
+    {
+     "alternative_name": "Diamond",
+     "blueprint_path": "assets/blueprints/diamond.png",
+     "color": "#ea580c",
+     "color_dark": "#fdba74",
+     "description": "Standard diamond interchange with four ramp terminals controlled by signals or roundabouts at the arterial crossings. Cost-effective and compact, but at-grade signal crossings introduce delay and limit peak throughput.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.5,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 10.0,
+      "land_area_hectares": 5.5,
+      "safety_index": 5.0,
+      "throughput_vph": 1500.0
+     },
+     "total_score": 0.75,
+     "weighted_scores": {
+      "construction_cost_mln": 0.7,
+      "land_area_hectares": 0.05,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "DDI",
+     "blueprint_path": "assets/blueprints/ddi.png",
+     "color": "#b45309",
+     "color_dark": "#fbbf24",
+     "description": "Diverging Diamond Interchange: traffic crosses to the opposite side of the road at two signalised crossovers, eliminating left-turn conflicts. High throughput and a strong safety record in recent North American and European deployments.",
+     "normalised_values": {
+      "construction_cost_mln": 0.2,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 18.0,
+      "land_area_hectares": 6.6,
+      "safety_index": 9.0,
+      "throughput_vph": 5500.0
+     },
+     "total_score": 0.34,
+     "weighted_scores": {
+      "construction_cost_mln": 0.14,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.1,
+      "throughput_vph": 0.1
+     }
+    },
+    {
+     "alternative_name": "SPUI",
+     "blueprint_path": "assets/blueprints/spui.png",
+     "color": "#d97706",
+     "color_dark": "#fcd34d",
+     "description": "Single Point Urban Interchange: all ramp movements converge at one signalised intersection. Combines near-cloverleaf throughput with a compact urban footprint, optimal for constrained corridors where land acquisition cost is critical.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.5,
+      "throughput_vph": 0.75
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 20.0,
+      "land_area_hectares": 4.4,
+      "safety_index": 7.0,
+      "throughput_vph": 4500.0
+     },
+     "total_score": 0.225,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.05,
+      "throughput_vph": 0.075
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "Service (Highway + Urban)|default|default": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Medium': effective land area scaled ×1.10 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Diamond (capacity 2,500 vph < demand 4,500 vph, 80 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "Service (Highway + Urban)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.3,
+    "land_area_hectares": 0.2,
+    "safety_index": 0.25,
+    "throughput_vph": 0.25
+   },
+   "results": [
+    {
+     "alternative_name": "DDI",
+     "blueprint_path": "assets/blueprints/ddi.png",
+     "color": "#b45309",
+     "color_dark": "#fbbf24",
+     "description": "Diverging Diamond Interchange: traffic crosses to the opposite side of the road at two signalised crossovers, eliminating left-turn conflicts. High throughput and a strong safety record in recent North American and European deployments.",
+     "normalised_values": {
+      "construction_cost_mln": 0.2,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 18.0,
+      "land_area_hectares": 6.6,
+      "safety_index": 9.0,
+      "throughput_vph": 5500.0
+     },
+     "total_score": 0.56,
+     "weighted_scores": {
+      "construction_cost_mln": 0.06,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.25,
+      "throughput_vph": 0.25
+     }
+    },
+    {
+     "alternative_name": "SPUI",
+     "blueprint_path": "assets/blueprints/spui.png",
+     "color": "#d97706",
+     "color_dark": "#fcd34d",
+     "description": "Single Point Urban Interchange: all ramp movements converge at one signalised intersection. Combines near-cloverleaf throughput with a compact urban footprint, optimal for constrained corridors where land acquisition cost is critical.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.5,
+      "throughput_vph": 0.75
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 20.0,
+      "land_area_hectares": 4.4,
+      "safety_index": 7.0,
+      "throughput_vph": 4500.0
+     },
+     "total_score": 0.5125,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.2,
+      "safety_index": 0.125,
+      "throughput_vph": 0.1875
+     }
+    },
+    {
+     "alternative_name": "Diamond",
+     "blueprint_path": "assets/blueprints/diamond.png",
+     "color": "#ea580c",
+     "color_dark": "#fdba74",
+     "description": "Standard diamond interchange with four ramp terminals controlled by signals or roundabouts at the arterial crossings. Cost-effective and compact, but at-grade signal crossings introduce delay and limit peak throughput.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.5,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 10.0,
+      "land_area_hectares": 5.5,
+      "safety_index": 5.0,
+      "throughput_vph": 1500.0
+     },
+     "total_score": 0.4,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "Service (Highway + Urban)|heavy_demand|cost_heavy": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "terrain",
+     "message": "Terrain 'Rolling': construction costs scaled ×1.25 (FHWA cost factor)."
+    },
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Medium': effective land area scaled ×1.10 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 10,800 vph (AADT 90,000 × 12%) exceeds rated capacity for: Diamond (capacity 2,500 vph < demand 10,800 vph, 332 % over); SPUI (capacity 4,500 vph < demand 10,800 vph, 140 % over); DDI (capacity 5,500 vph < demand 10,800 vph, 96 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "Service (Highway + Urban)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.7000000000000001,
+    "land_area_hectares": 0.10000000000000002,
+    "safety_index": 0.10000000000000002,
+    "throughput_vph": 0.10000000000000002
+   },
+   "results": [
+    {
+     "alternative_name": "Diamond",
+     "blueprint_path": "assets/blueprints/diamond.png",
+     "color": "#ea580c",
+     "color_dark": "#fdba74",
+     "description": "Standard diamond interchange with four ramp terminals controlled by signals or roundabouts at the arterial crossings. Cost-effective and compact, but at-grade signal crossings introduce delay and limit peak throughput.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.5,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 12.5,
+      "land_area_hectares": 5.5,
+      "safety_index": 5.0,
+      "throughput_vph": 1500.0
+     },
+     "total_score": 0.75,
+     "weighted_scores": {
+      "construction_cost_mln": 0.7,
+      "land_area_hectares": 0.05,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "DDI",
+     "blueprint_path": "assets/blueprints/ddi.png",
+     "color": "#b45309",
+     "color_dark": "#fbbf24",
+     "description": "Diverging Diamond Interchange: traffic crosses to the opposite side of the road at two signalised crossovers, eliminating left-turn conflicts. High throughput and a strong safety record in recent North American and European deployments.",
+     "normalised_values": {
+      "construction_cost_mln": 0.2,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 22.5,
+      "land_area_hectares": 6.6,
+      "safety_index": 9.0,
+      "throughput_vph": 3300.0
+     },
+     "total_score": 0.34,
+     "weighted_scores": {
+      "construction_cost_mln": 0.14,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.1,
+      "throughput_vph": 0.1
+     }
+    },
+    {
+     "alternative_name": "SPUI",
+     "blueprint_path": "assets/blueprints/spui.png",
+     "color": "#d97706",
+     "color_dark": "#fcd34d",
+     "description": "Single Point Urban Interchange: all ramp movements converge at one signalised intersection. Combines near-cloverleaf throughput with a compact urban footprint, optimal for constrained corridors where land acquisition cost is critical.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.5,
+      "throughput_vph": 0.6667
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 25.0,
+      "land_area_hectares": 4.4,
+      "safety_index": 7.0,
+      "throughput_vph": 2700.0
+     },
+     "total_score": 0.2167,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.05,
+      "throughput_vph": 0.0667
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "Service (Highway + Urban)|heavy_demand|default": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "terrain",
+     "message": "Terrain 'Rolling': construction costs scaled ×1.25 (FHWA cost factor)."
+    },
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Medium': effective land area scaled ×1.10 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 10,800 vph (AADT 90,000 × 12%) exceeds rated capacity for: Diamond (capacity 2,500 vph < demand 10,800 vph, 332 % over); SPUI (capacity 4,500 vph < demand 10,800 vph, 140 % over); DDI (capacity 5,500 vph < demand 10,800 vph, 96 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "Service (Highway + Urban)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.3,
+    "land_area_hectares": 0.2,
+    "safety_index": 0.25,
+    "throughput_vph": 0.25
+   },
+   "results": [
+    {
+     "alternative_name": "DDI",
+     "blueprint_path": "assets/blueprints/ddi.png",
+     "color": "#b45309",
+     "color_dark": "#fbbf24",
+     "description": "Diverging Diamond Interchange: traffic crosses to the opposite side of the road at two signalised crossovers, eliminating left-turn conflicts. High throughput and a strong safety record in recent North American and European deployments.",
+     "normalised_values": {
+      "construction_cost_mln": 0.2,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 22.5,
+      "land_area_hectares": 6.6,
+      "safety_index": 9.0,
+      "throughput_vph": 3300.0
+     },
+     "total_score": 0.56,
+     "weighted_scores": {
+      "construction_cost_mln": 0.06,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.25,
+      "throughput_vph": 0.25
+     }
+    },
+    {
+     "alternative_name": "SPUI",
+     "blueprint_path": "assets/blueprints/spui.png",
+     "color": "#d97706",
+     "color_dark": "#fcd34d",
+     "description": "Single Point Urban Interchange: all ramp movements converge at one signalised intersection. Combines near-cloverleaf throughput with a compact urban footprint, optimal for constrained corridors where land acquisition cost is critical.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.5,
+      "throughput_vph": 0.6667
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 25.0,
+      "land_area_hectares": 4.4,
+      "safety_index": 7.0,
+      "throughput_vph": 2700.0
+     },
+     "total_score": 0.4917,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.2,
+      "safety_index": 0.125,
+      "throughput_vph": 0.1667
+     }
+    },
+    {
+     "alternative_name": "Diamond",
+     "blueprint_path": "assets/blueprints/diamond.png",
+     "color": "#ea580c",
+     "color_dark": "#fdba74",
+     "description": "Standard diamond interchange with four ramp terminals controlled by signals or roundabouts at the arterial crossings. Cost-effective and compact, but at-grade signal crossings introduce delay and limit peak throughput.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.5,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 12.5,
+      "land_area_hectares": 5.5,
+      "safety_index": 5.0,
+      "throughput_vph": 1500.0
+     },
+     "total_score": 0.4,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "Service (Highway + Urban)|mountain_critical_fast|cost_heavy": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "terrain",
+     "message": "Terrain 'Mountainous': construction costs scaled ×1.70 (FHWA cost factor)."
+    },
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Critical': effective land area scaled ×1.60 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Diamond (capacity 2,500 vph < demand 4,500 vph, 80 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "Service (Highway + Urban)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.7000000000000001,
+    "land_area_hectares": 0.10000000000000002,
+    "safety_index": 0.10000000000000002,
+    "throughput_vph": 0.10000000000000002
+   },
+   "results": [
+    {
+     "alternative_name": "Diamond",
+     "blueprint_path": "assets/blueprints/diamond.png",
+     "color": "#ea580c",
+     "color_dark": "#fdba74",
+     "description": "Standard diamond interchange with four ramp terminals controlled by signals or roundabouts at the arterial crossings. Cost-effective and compact, but at-grade signal crossings introduce delay and limit peak throughput.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.5,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 17.0,
+      "land_area_hectares": 8.0,
+      "safety_index": 5.0,
+      "throughput_vph": 1500.0
+     },
+     "total_score": 0.75,
+     "weighted_scores": {
+      "construction_cost_mln": 0.7,
+      "land_area_hectares": 0.05,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "DDI",
+     "blueprint_path": "assets/blueprints/ddi.png",
+     "color": "#b45309",
+     "color_dark": "#fbbf24",
+     "description": "Diverging Diamond Interchange: traffic crosses to the opposite side of the road at two signalised crossovers, eliminating left-turn conflicts. High throughput and a strong safety record in recent North American and European deployments.",
+     "normalised_values": {
+      "construction_cost_mln": 0.2,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 30.6,
+      "land_area_hectares": 9.6,
+      "safety_index": 9.0,
+      "throughput_vph": 5500.0
+     },
+     "total_score": 0.34,
+     "weighted_scores": {
+      "construction_cost_mln": 0.14,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.1,
+      "throughput_vph": 0.1
+     }
+    },
+    {
+     "alternative_name": "SPUI",
+     "blueprint_path": "assets/blueprints/spui.png",
+     "color": "#d97706",
+     "color_dark": "#fcd34d",
+     "description": "Single Point Urban Interchange: all ramp movements converge at one signalised intersection. Combines near-cloverleaf throughput with a compact urban footprint, optimal for constrained corridors where land acquisition cost is critical.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.5,
+      "throughput_vph": 0.75
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 34.0,
+      "land_area_hectares": 6.4,
+      "safety_index": 7.0,
+      "throughput_vph": 4500.0
+     },
+     "total_score": 0.225,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.05,
+      "throughput_vph": 0.075
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "Service (Highway + Urban)|mountain_critical_fast|default": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "terrain",
+     "message": "Terrain 'Mountainous': construction costs scaled ×1.70 (FHWA cost factor)."
+    },
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Critical': effective land area scaled ×1.60 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Diamond (capacity 2,500 vph < demand 4,500 vph, 80 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "Service (Highway + Urban)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.3,
+    "land_area_hectares": 0.2,
+    "safety_index": 0.25,
+    "throughput_vph": 0.25
+   },
+   "results": [
+    {
+     "alternative_name": "DDI",
+     "blueprint_path": "assets/blueprints/ddi.png",
+     "color": "#b45309",
+     "color_dark": "#fbbf24",
+     "description": "Diverging Diamond Interchange: traffic crosses to the opposite side of the road at two signalised crossovers, eliminating left-turn conflicts. High throughput and a strong safety record in recent North American and European deployments.",
+     "normalised_values": {
+      "construction_cost_mln": 0.2,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 30.6,
+      "land_area_hectares": 9.6,
+      "safety_index": 9.0,
+      "throughput_vph": 5500.0
+     },
+     "total_score": 0.56,
+     "weighted_scores": {
+      "construction_cost_mln": 0.06,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.25,
+      "throughput_vph": 0.25
+     }
+    },
+    {
+     "alternative_name": "SPUI",
+     "blueprint_path": "assets/blueprints/spui.png",
+     "color": "#d97706",
+     "color_dark": "#fcd34d",
+     "description": "Single Point Urban Interchange: all ramp movements converge at one signalised intersection. Combines near-cloverleaf throughput with a compact urban footprint, optimal for constrained corridors where land acquisition cost is critical.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.5,
+      "throughput_vph": 0.75
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 34.0,
+      "land_area_hectares": 6.4,
+      "safety_index": 7.0,
+      "throughput_vph": 4500.0
+     },
+     "total_score": 0.5125,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.2,
+      "safety_index": 0.125,
+      "throughput_vph": 0.1875
+     }
+    },
+    {
+     "alternative_name": "Diamond",
+     "blueprint_path": "assets/blueprints/diamond.png",
+     "color": "#ea580c",
+     "color_dark": "#fdba74",
+     "description": "Standard diamond interchange with four ramp terminals controlled by signals or roundabouts at the arterial crossings. Cost-effective and compact, but at-grade signal crossings introduce delay and limit peak throughput.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.5,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 17.0,
+      "land_area_hectares": 8.0,
+      "safety_index": 5.0,
+      "throughput_vph": 1500.0
+     },
+     "total_score": 0.4,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "Service (Highway + Urban)|tight_budget|cost_heavy": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Diamond (capacity 2,500 vph < demand 4,500 vph, 80 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "Service (Highway + Urban)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.7000000000000001,
+    "land_area_hectares": 0.10000000000000002,
+    "safety_index": 0.10000000000000002,
+    "throughput_vph": 0.10000000000000002
+   },
+   "results": [
+    {
+     "alternative_name": "Diamond",
+     "blueprint_path": "assets/blueprints/diamond.png",
+     "color": "#ea580c",
+     "color_dark": "#fdba74",
+     "description": "Standard diamond interchange with four ramp terminals controlled by signals or roundabouts at the arterial crossings. Cost-effective and compact, but at-grade signal crossings introduce delay and limit peak throughput.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.5,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 10.0,
+      "land_area_hectares": 5.0,
+      "safety_index": 5.0,
+      "throughput_vph": 1500.0
+     },
+     "total_score": 0.75,
+     "weighted_scores": {
+      "construction_cost_mln": 0.7,
+      "land_area_hectares": 0.05,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "DDI",
+     "blueprint_path": "assets/blueprints/ddi.png",
+     "color": "#b45309",
+     "color_dark": "#fbbf24",
+     "description": "Diverging Diamond Interchange: traffic crosses to the opposite side of the road at two signalised crossovers, eliminating left-turn conflicts. High throughput and a strong safety record in recent North American and European deployments.",
+     "normalised_values": {
+      "construction_cost_mln": 0.2,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 18.0,
+      "land_area_hectares": 6.0,
+      "safety_index": 9.0,
+      "throughput_vph": 5500.0
+     },
+     "total_score": 0.34,
+     "weighted_scores": {
+      "construction_cost_mln": 0.14,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.1,
+      "throughput_vph": 0.1
+     }
+    },
+    {
+     "alternative_name": "SPUI",
+     "blueprint_path": "assets/blueprints/spui.png",
+     "color": "#d97706",
+     "color_dark": "#fcd34d",
+     "description": "Single Point Urban Interchange: all ramp movements converge at one signalised intersection. Combines near-cloverleaf throughput with a compact urban footprint, optimal for constrained corridors where land acquisition cost is critical.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.5,
+      "throughput_vph": 0.75
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 20.0,
+      "land_area_hectares": 4.0,
+      "safety_index": 7.0,
+      "throughput_vph": 4500.0
+     },
+     "total_score": 0.225,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.05,
+      "throughput_vph": 0.075
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "Service (Highway + Urban)|tight_budget|default": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Diamond (capacity 2,500 vph < demand 4,500 vph, 80 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "Service (Highway + Urban)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.3,
+    "land_area_hectares": 0.2,
+    "safety_index": 0.25,
+    "throughput_vph": 0.25
+   },
+   "results": [
+    {
+     "alternative_name": "DDI",
+     "blueprint_path": "assets/blueprints/ddi.png",
+     "color": "#b45309",
+     "color_dark": "#fbbf24",
+     "description": "Diverging Diamond Interchange: traffic crosses to the opposite side of the road at two signalised crossovers, eliminating left-turn conflicts. High throughput and a strong safety record in recent North American and European deployments.",
+     "normalised_values": {
+      "construction_cost_mln": 0.2,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 18.0,
+      "land_area_hectares": 6.0,
+      "safety_index": 9.0,
+      "throughput_vph": 5500.0
+     },
+     "total_score": 0.56,
+     "weighted_scores": {
+      "construction_cost_mln": 0.06,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.25,
+      "throughput_vph": 0.25
+     }
+    },
+    {
+     "alternative_name": "SPUI",
+     "blueprint_path": "assets/blueprints/spui.png",
+     "color": "#d97706",
+     "color_dark": "#fcd34d",
+     "description": "Single Point Urban Interchange: all ramp movements converge at one signalised intersection. Combines near-cloverleaf throughput with a compact urban footprint, optimal for constrained corridors where land acquisition cost is critical.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.5,
+      "throughput_vph": 0.75
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 20.0,
+      "land_area_hectares": 4.0,
+      "safety_index": 7.0,
+      "throughput_vph": 4500.0
+     },
+     "total_score": 0.5125,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.2,
+      "safety_index": 0.125,
+      "throughput_vph": 0.1875
+     }
+    },
+    {
+     "alternative_name": "Diamond",
+     "blueprint_path": "assets/blueprints/diamond.png",
+     "color": "#ea580c",
+     "color_dark": "#fdba74",
+     "description": "Standard diamond interchange with four ramp terminals controlled by signals or roundabouts at the arterial crossings. Cost-effective and compact, but at-grade signal crossings introduce delay and limit peak throughput.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.5,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 10.0,
+      "land_area_hectares": 5.0,
+      "safety_index": 5.0,
+      "throughput_vph": 1500.0
+     },
+     "total_score": 0.4,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "System (Highway + Highway)|default|cost_heavy": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Medium': effective land area scaled ×1.10 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "design_speed",
+     "message": "Design speed 100 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 10 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Cloverleaf (capacity 4,000 vph < demand 4,500 vph, 12 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "System (Highway + Highway)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.7000000000000001,
+    "land_area_hectares": 0.10000000000000002,
+    "safety_index": 0.10000000000000002,
+    "throughput_vph": 0.10000000000000002
+   },
+   "results": [
+    {
+     "alternative_name": "Cloverleaf",
+     "blueprint_path": "assets/blueprints/cloverleaf.png",
+     "color": "#0f766e",
+     "color_dark": "#5eead4",
+     "description": "Grade-separated 4-loop interchange. High capacity and free-flow operations with no traffic signals, but loop ramp geometry creates large land requirements and weaving sections between successive on/off ramps reduce safety at high volumes.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.3846,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 15.0,
+      "land_area_hectares": 22.0,
+      "safety_index": 3.6,
+      "throughput_vph": 3750.0
+     },
+     "total_score": 0.7385,
+     "weighted_scores": {
+      "construction_cost_mln": 0.7,
+      "land_area_hectares": 0.0385,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "Turbine",
+     "blueprint_path": "assets/blueprints/turbine.png",
+     "color": "#0369a1",
+     "color_dark": "#7dd3fc",
+     "description": "Directional interchange with semi-direct ramps arranged in a turbine pattern. Eliminates weaving conflicts, delivers superior throughput and safety, but requires significant right-of-way and construction investment.",
+     "normalised_values": {
+      "construction_cost_mln": 0.5385,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.8148,
+      "throughput_vph": 0.7333
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 45.0,
+      "land_area_hectares": 27.5,
+      "safety_index": 8.0,
+      "throughput_vph": 6500.0
+     },
+     "total_score": 0.5317,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3769,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.0815,
+      "throughput_vph": 0.0733
+     }
+    },
+    {
+     "alternative_name": "Stack (4-Level)",
+     "blueprint_path": "assets/blueprints/stack.png",
+     "color": "#1d4ed8",
+     "color_dark": "#93c5fd",
+     "description": "Four-level fully directional grade-separated interchange. The highest-capacity and safest system interchange type; all movements are direct with no weaving or signal delay, at the cost of maximum construction complexity.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 80.0,
+      "land_area_hectares": 13.2,
+      "safety_index": 9.0,
+      "throughput_vph": 7500.0
+     },
+     "total_score": 0.3,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.1,
+      "throughput_vph": 0.1
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "System (Highway + Highway)|default|default": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Medium': effective land area scaled ×1.10 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "design_speed",
+     "message": "Design speed 100 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 10 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Cloverleaf (capacity 4,000 vph < demand 4,500 vph, 12 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "System (Highway + Highway)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.3,
+    "land_area_hectares": 0.2,
+    "safety_index": 0.25,
+    "throughput_vph": 0.25
+   },
+   "results": [
+    {
+     "alternative_name": "Stack (4-Level)",
+     "blueprint_path": "assets/blueprints/stack.png",
+     "color": "#1d4ed8",
+     "color_dark": "#93c5fd",
+     "description": "Four-level fully directional grade-separated interchange. The highest-capacity and safest system interchange type; all movements are direct with no weaving or signal delay, at the cost of maximum construction complexity.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 80.0,
+      "land_area_hectares": 13.2,
+      "safety_index": 9.0,
+      "throughput_vph": 7500.0
+     },
+     "total_score": 0.7,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.2,
+      "safety_index": 0.25,
+      "throughput_vph": 0.25
+     }
+    },
+    {
+     "alternative_name": "Turbine",
+     "blueprint_path": "assets/blueprints/turbine.png",
+     "color": "#0369a1",
+     "color_dark": "#7dd3fc",
+     "description": "Directional interchange with semi-direct ramps arranged in a turbine pattern. Eliminates weaving conflicts, delivers superior throughput and safety, but requires significant right-of-way and construction investment.",
+     "normalised_values": {
+      "construction_cost_mln": 0.5385,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.8148,
+      "throughput_vph": 0.7333
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 45.0,
+      "land_area_hectares": 27.5,
+      "safety_index": 8.0,
+      "throughput_vph": 6500.0
+     },
+     "total_score": 0.5485,
+     "weighted_scores": {
+      "construction_cost_mln": 0.1615,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.2037,
+      "throughput_vph": 0.1833
+     }
+    },
+    {
+     "alternative_name": "Cloverleaf",
+     "blueprint_path": "assets/blueprints/cloverleaf.png",
+     "color": "#0f766e",
+     "color_dark": "#5eead4",
+     "description": "Grade-separated 4-loop interchange. High capacity and free-flow operations with no traffic signals, but loop ramp geometry creates large land requirements and weaving sections between successive on/off ramps reduce safety at high volumes.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.3846,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 15.0,
+      "land_area_hectares": 22.0,
+      "safety_index": 3.6,
+      "throughput_vph": 3750.0
+     },
+     "total_score": 0.3769,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3,
+      "land_area_hectares": 0.0769,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "System (Highway + Highway)|heavy_demand|cost_heavy": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "terrain",
+     "message": "Terrain 'Rolling': construction costs scaled ×1.25 (FHWA cost factor)."
+    },
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Medium': effective land area scaled ×1.10 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "design_speed",
+     "message": "Design speed 100 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 10 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 10,800 vph (AADT 90,000 × 12%) exceeds rated capacity for: Cloverleaf (capacity 4,000 vph < demand 10,800 vph, 170 % over); Turbine (capacity 6,500 vph < demand 10,800 vph, 66 % over); Stack (4-Level) (capacity 7,500 vph < demand 10,800 vph, 44 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "System (Highway + Highway)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.7000000000000001,
+    "land_area_hectares": 0.10000000000000002,
+    "safety_index": 0.10000000000000002,
+    "throughput_vph": 0.10000000000000002
+   },
+   "results": [
+    {
+     "alternative_name": "Cloverleaf",
+     "blueprint_path": "assets/blueprints/cloverleaf.png",
+     "color": "#0f766e",
+     "color_dark": "#5eead4",
+     "description": "Grade-separated 4-loop interchange. High capacity and free-flow operations with no traffic signals, but loop ramp geometry creates large land requirements and weaving sections between successive on/off ramps reduce safety at high volumes.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.3846,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 18.75,
+      "land_area_hectares": 22.0,
+      "safety_index": 3.6,
+      "throughput_vph": 2400.0
+     },
+     "total_score": 0.7385,
+     "weighted_scores": {
+      "construction_cost_mln": 0.7,
+      "land_area_hectares": 0.0385,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "Turbine",
+     "blueprint_path": "assets/blueprints/turbine.png",
+     "color": "#0369a1",
+     "color_dark": "#7dd3fc",
+     "description": "Directional interchange with semi-direct ramps arranged in a turbine pattern. Eliminates weaving conflicts, delivers superior throughput and safety, but requires significant right-of-way and construction investment.",
+     "normalised_values": {
+      "construction_cost_mln": 0.5385,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.8148,
+      "throughput_vph": 0.5652
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 56.25,
+      "land_area_hectares": 27.5,
+      "safety_index": 8.0,
+      "throughput_vph": 4350.0
+     },
+     "total_score": 0.5149,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3769,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.0815,
+      "throughput_vph": 0.0565
+     }
+    },
+    {
+     "alternative_name": "Stack (4-Level)",
+     "blueprint_path": "assets/blueprints/stack.png",
+     "color": "#1d4ed8",
+     "color_dark": "#93c5fd",
+     "description": "Four-level fully directional grade-separated interchange. The highest-capacity and safest system interchange type; all movements are direct with no weaving or signal delay, at the cost of maximum construction complexity.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 100.0,
+      "land_area_hectares": 13.2,
+      "safety_index": 9.0,
+      "throughput_vph": 5850.0
+     },
+     "total_score": 0.3,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.1,
+      "throughput_vph": 0.1
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "System (Highway + Highway)|heavy_demand|default": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "terrain",
+     "message": "Terrain 'Rolling': construction costs scaled ×1.25 (FHWA cost factor)."
+    },
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Medium': effective land area scaled ×1.10 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "design_speed",
+     "message": "Design speed 100 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 10 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 10,800 vph (AADT 90,000 × 12%) exceeds rated capacity for: Cloverleaf (capacity 4,000 vph < demand 10,800 vph, 170 % over); Turbine (capacity 6,500 vph < demand 10,800 vph, 66 % over); Stack (4-Level) (capacity 7,500 vph < demand 10,800 vph, 44 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "System (Highway + Highway)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.3,
+    "land_area_hectares": 0.2,
+    "safety_index": 0.25,
+    "throughput_vph": 0.25
+   },
+   "results": [
+    {
+     "alternative_name": "Stack (4-Level)",
+     "blueprint_path": "assets/blueprints/stack.png",
+     "color": "#1d4ed8",
+     "color_dark": "#93c5fd",
+     "description": "Four-level fully directional grade-separated interchange. The highest-capacity and safest system interchange type; all movements are direct with no weaving or signal delay, at the cost of maximum construction complexity.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 100.0,
+      "land_area_hectares": 13.2,
+      "safety_index": 9.0,
+      "throughput_vph": 5850.0
+     },
+     "total_score": 0.7,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.2,
+      "safety_index": 0.25,
+      "throughput_vph": 0.25
+     }
+    },
+    {
+     "alternative_name": "Turbine",
+     "blueprint_path": "assets/blueprints/turbine.png",
+     "color": "#0369a1",
+     "color_dark": "#7dd3fc",
+     "description": "Directional interchange with semi-direct ramps arranged in a turbine pattern. Eliminates weaving conflicts, delivers superior throughput and safety, but requires significant right-of-way and construction investment.",
+     "normalised_values": {
+      "construction_cost_mln": 0.5385,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.8148,
+      "throughput_vph": 0.5652
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 56.25,
+      "land_area_hectares": 27.5,
+      "safety_index": 8.0,
+      "throughput_vph": 4350.0
+     },
+     "total_score": 0.5065,
+     "weighted_scores": {
+      "construction_cost_mln": 0.1615,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.2037,
+      "throughput_vph": 0.1413
+     }
+    },
+    {
+     "alternative_name": "Cloverleaf",
+     "blueprint_path": "assets/blueprints/cloverleaf.png",
+     "color": "#0f766e",
+     "color_dark": "#5eead4",
+     "description": "Grade-separated 4-loop interchange. High capacity and free-flow operations with no traffic signals, but loop ramp geometry creates large land requirements and weaving sections between successive on/off ramps reduce safety at high volumes.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.3846,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 18.75,
+      "land_area_hectares": 22.0,
+      "safety_index": 3.6,
+      "throughput_vph": 2400.0
+     },
+     "total_score": 0.3769,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3,
+      "land_area_hectares": 0.0769,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "System (Highway + Highway)|mountain_critical_fast|cost_heavy": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "terrain",
+     "message": "Terrain 'Mountainous': construction costs scaled ×1.70 (FHWA cost factor)."
+    },
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Critical': effective land area scaled ×1.60 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "design_speed",
+     "message": "Design speed 130 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 25 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Cloverleaf (capacity 4,000 vph < demand 4,500 vph, 12 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "System (Highway + Highway)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.7000000000000001,
+    "land_area_hectares": 0.10000000000000002,
+    "safety_index": 0.10000000000000002,
+    "throughput_vph": 0.10000000000000002
+   },
+   "results": [
+    {
+     "alternative_name": "Cloverleaf",
+     "blueprint_path": "assets/blueprints/cloverleaf.png",
+     "color": "#0f766e",
+     "color_dark": "#5eead4",
+     "description": "Grade-separated 4-loop interchange. High capacity and free-flow operations with no traffic signals, but loop ramp geometry creates large land requirements and weaving sections between successive on/off ramps reduce safety at high volumes.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.3846,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 25.5,
+      "land_area_hectares": 32.0,
+      "safety_index": 3.0,
+      "throughput_vph": 3750.0
+     },
+     "total_score": 0.7385,
+     "weighted_scores": {
+      "construction_cost_mln": 0.7,
+      "land_area_hectares": 0.0385,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "Turbine",
+     "blueprint_path": "assets/blueprints/turbine.png",
+     "color": "#0369a1",
+     "color_dark": "#7dd3fc",
+     "description": "Directional interchange with semi-direct ramps arranged in a turbine pattern. Eliminates weaving conflicts, delivers superior throughput and safety, but requires significant right-of-way and construction investment.",
+     "normalised_values": {
+      "construction_cost_mln": 0.5385,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.8333,
+      "throughput_vph": 0.7333
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 76.5,
+      "land_area_hectares": 40.0,
+      "safety_index": 8.0,
+      "throughput_vph": 6500.0
+     },
+     "total_score": 0.5335,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3769,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.0833,
+      "throughput_vph": 0.0733
+     }
+    },
+    {
+     "alternative_name": "Stack (4-Level)",
+     "blueprint_path": "assets/blueprints/stack.png",
+     "color": "#1d4ed8",
+     "color_dark": "#93c5fd",
+     "description": "Four-level fully directional grade-separated interchange. The highest-capacity and safest system interchange type; all movements are direct with no weaving or signal delay, at the cost of maximum construction complexity.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 136.0,
+      "land_area_hectares": 19.2,
+      "safety_index": 9.0,
+      "throughput_vph": 7500.0
+     },
+     "total_score": 0.3,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.1,
+      "throughput_vph": 0.1
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "System (Highway + Highway)|mountain_critical_fast|default": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "terrain",
+     "message": "Terrain 'Mountainous': construction costs scaled ×1.70 (FHWA cost factor)."
+    },
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Critical': effective land area scaled ×1.60 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "design_speed",
+     "message": "Design speed 130 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 25 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Cloverleaf (capacity 4,000 vph < demand 4,500 vph, 12 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "System (Highway + Highway)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.3,
+    "land_area_hectares": 0.2,
+    "safety_index": 0.25,
+    "throughput_vph": 0.25
+   },
+   "results": [
+    {
+     "alternative_name": "Stack (4-Level)",
+     "blueprint_path": "assets/blueprints/stack.png",
+     "color": "#1d4ed8",
+     "color_dark": "#93c5fd",
+     "description": "Four-level fully directional grade-separated interchange. The highest-capacity and safest system interchange type; all movements are direct with no weaving or signal delay, at the cost of maximum construction complexity.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 136.0,
+      "land_area_hectares": 19.2,
+      "safety_index": 9.0,
+      "throughput_vph": 7500.0
+     },
+     "total_score": 0.7,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.2,
+      "safety_index": 0.25,
+      "throughput_vph": 0.25
+     }
+    },
+    {
+     "alternative_name": "Turbine",
+     "blueprint_path": "assets/blueprints/turbine.png",
+     "color": "#0369a1",
+     "color_dark": "#7dd3fc",
+     "description": "Directional interchange with semi-direct ramps arranged in a turbine pattern. Eliminates weaving conflicts, delivers superior throughput and safety, but requires significant right-of-way and construction investment.",
+     "normalised_values": {
+      "construction_cost_mln": 0.5385,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.8333,
+      "throughput_vph": 0.7333
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 76.5,
+      "land_area_hectares": 40.0,
+      "safety_index": 8.0,
+      "throughput_vph": 6500.0
+     },
+     "total_score": 0.5531,
+     "weighted_scores": {
+      "construction_cost_mln": 0.1615,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.2083,
+      "throughput_vph": 0.1833
+     }
+    },
+    {
+     "alternative_name": "Cloverleaf",
+     "blueprint_path": "assets/blueprints/cloverleaf.png",
+     "color": "#0f766e",
+     "color_dark": "#5eead4",
+     "description": "Grade-separated 4-loop interchange. High capacity and free-flow operations with no traffic signals, but loop ramp geometry creates large land requirements and weaving sections between successive on/off ramps reduce safety at high volumes.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 0.3846,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 3,
+     "raw_values": {
+      "construction_cost_mln": 25.5,
+      "land_area_hectares": 32.0,
+      "safety_index": 3.0,
+      "throughput_vph": 3750.0
+     },
+     "total_score": 0.3769,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3,
+      "land_area_hectares": 0.0769,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "System (Highway + Highway)|tight_budget|cost_heavy": {
+  "body": {
+   "detail": "All alternatives in this context are infeasible under the current budget and land limits. Increase the budget or land limit and try again."
+  },
+  "status": 422
+ },
+ "System (Highway + Highway)|tight_budget|default": {
+  "body": {
+   "detail": "All alternatives in this context are infeasible under the current budget and land limits. Increase the budget or land limit and try again."
+  },
+  "status": 422
+ },
+ "T-Type (3 Directions)|default|cost_heavy": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Medium': effective land area scaled ×1.10 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "design_speed",
+     "message": "Design speed 100 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 10 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Trumpet (capacity 3,500 vph < demand 4,500 vph, 29 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "T-Type (3 Directions)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.7000000000000001,
+    "land_area_hectares": 0.10000000000000002,
+    "safety_index": 0.10000000000000002,
+    "throughput_vph": 0.10000000000000002
+   },
+   "results": [
+    {
+     "alternative_name": "Trumpet",
+     "blueprint_path": "assets/blueprints/trumpet.png",
+     "color": "#7c3aed",
+     "color_dark": "#c4b5fd",
+     "description": "Three-leg interchange with a loop ramp for one turning movement and direct ramps for the other two. Common for highway termini; cost-effective with a moderate footprint and good safety characteristics.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 12.0,
+      "land_area_hectares": 11.0,
+      "safety_index": 6.3,
+      "throughput_vph": 3000.0
+     },
+     "total_score": 0.8,
+     "weighted_scores": {
+      "construction_cost_mln": 0.7,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "Directional T",
+     "blueprint_path": "assets/blueprints/directional_t.png",
+     "color": "#6d28d9",
+     "color_dark": "#a78bfa",
+     "description": "Three-leg directional interchange using semi-direct flyover ramps. Achieves maximum throughput and safety for T-junctions at the cost of higher construction expense and right-of-way requirements.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 35.0,
+      "land_area_hectares": 16.5,
+      "safety_index": 9.0,
+      "throughput_vph": 5000.0
+     },
+     "total_score": 0.2,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.1,
+      "throughput_vph": 0.1
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "T-Type (3 Directions)|default|default": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Medium': effective land area scaled ×1.10 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "design_speed",
+     "message": "Design speed 100 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 10 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Trumpet (capacity 3,500 vph < demand 4,500 vph, 29 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "T-Type (3 Directions)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.3,
+    "land_area_hectares": 0.2,
+    "safety_index": 0.25,
+    "throughput_vph": 0.25
+   },
+   "results": [
+    {
+     "alternative_name": "Trumpet",
+     "blueprint_path": "assets/blueprints/trumpet.png",
+     "color": "#7c3aed",
+     "color_dark": "#c4b5fd",
+     "description": "Three-leg interchange with a loop ramp for one turning movement and direct ramps for the other two. Common for highway termini; cost-effective with a moderate footprint and good safety characteristics.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 12.0,
+      "land_area_hectares": 11.0,
+      "safety_index": 6.3,
+      "throughput_vph": 3000.0
+     },
+     "total_score": 0.5,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3,
+      "land_area_hectares": 0.2,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "Directional T",
+     "blueprint_path": "assets/blueprints/directional_t.png",
+     "color": "#6d28d9",
+     "color_dark": "#a78bfa",
+     "description": "Three-leg directional interchange using semi-direct flyover ramps. Achieves maximum throughput and safety for T-junctions at the cost of higher construction expense and right-of-way requirements.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 35.0,
+      "land_area_hectares": 16.5,
+      "safety_index": 9.0,
+      "throughput_vph": 5000.0
+     },
+     "total_score": 0.5,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.25,
+      "throughput_vph": 0.25
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "T-Type (3 Directions)|heavy_demand|cost_heavy": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "terrain",
+     "message": "Terrain 'Rolling': construction costs scaled ×1.25 (FHWA cost factor)."
+    },
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Medium': effective land area scaled ×1.10 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "design_speed",
+     "message": "Design speed 100 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 10 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 10,800 vph (AADT 90,000 × 12%) exceeds rated capacity for: Trumpet (capacity 3,500 vph < demand 10,800 vph, 209 % over); Directional T (capacity 5,000 vph < demand 10,800 vph, 116 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "T-Type (3 Directions)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.7000000000000001,
+    "land_area_hectares": 0.10000000000000002,
+    "safety_index": 0.10000000000000002,
+    "throughput_vph": 0.10000000000000002
+   },
+   "results": [
+    {
+     "alternative_name": "Trumpet",
+     "blueprint_path": "assets/blueprints/trumpet.png",
+     "color": "#7c3aed",
+     "color_dark": "#c4b5fd",
+     "description": "Three-leg interchange with a loop ramp for one turning movement and direct ramps for the other two. Common for highway termini; cost-effective with a moderate footprint and good safety characteristics.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 15.0,
+      "land_area_hectares": 11.0,
+      "safety_index": 6.3,
+      "throughput_vph": 2100.0
+     },
+     "total_score": 0.8,
+     "weighted_scores": {
+      "construction_cost_mln": 0.7,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "Directional T",
+     "blueprint_path": "assets/blueprints/directional_t.png",
+     "color": "#6d28d9",
+     "color_dark": "#a78bfa",
+     "description": "Three-leg directional interchange using semi-direct flyover ramps. Achieves maximum throughput and safety for T-junctions at the cost of higher construction expense and right-of-way requirements.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 43.75,
+      "land_area_hectares": 16.5,
+      "safety_index": 9.0,
+      "throughput_vph": 3000.0
+     },
+     "total_score": 0.2,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.1,
+      "throughput_vph": 0.1
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "T-Type (3 Directions)|heavy_demand|default": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "terrain",
+     "message": "Terrain 'Rolling': construction costs scaled ×1.25 (FHWA cost factor)."
+    },
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Medium': effective land area scaled ×1.10 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "design_speed",
+     "message": "Design speed 100 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 10 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 10,800 vph (AADT 90,000 × 12%) exceeds rated capacity for: Trumpet (capacity 3,500 vph < demand 10,800 vph, 209 % over); Directional T (capacity 5,000 vph < demand 10,800 vph, 116 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "T-Type (3 Directions)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.3,
+    "land_area_hectares": 0.2,
+    "safety_index": 0.25,
+    "throughput_vph": 0.25
+   },
+   "results": [
+    {
+     "alternative_name": "Trumpet",
+     "blueprint_path": "assets/blueprints/trumpet.png",
+     "color": "#7c3aed",
+     "color_dark": "#c4b5fd",
+     "description": "Three-leg interchange with a loop ramp for one turning movement and direct ramps for the other two. Common for highway termini; cost-effective with a moderate footprint and good safety characteristics.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 15.0,
+      "land_area_hectares": 11.0,
+      "safety_index": 6.3,
+      "throughput_vph": 2100.0
+     },
+     "total_score": 0.5,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3,
+      "land_area_hectares": 0.2,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "Directional T",
+     "blueprint_path": "assets/blueprints/directional_t.png",
+     "color": "#6d28d9",
+     "color_dark": "#a78bfa",
+     "description": "Three-leg directional interchange using semi-direct flyover ramps. Achieves maximum throughput and safety for T-junctions at the cost of higher construction expense and right-of-way requirements.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 43.75,
+      "land_area_hectares": 16.5,
+      "safety_index": 9.0,
+      "throughput_vph": 3000.0
+     },
+     "total_score": 0.5,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.25,
+      "throughput_vph": 0.25
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "T-Type (3 Directions)|mountain_critical_fast|cost_heavy": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "terrain",
+     "message": "Terrain 'Mountainous': construction costs scaled ×1.70 (FHWA cost factor)."
+    },
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Critical': effective land area scaled ×1.60 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "design_speed",
+     "message": "Design speed 130 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 25 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Trumpet (capacity 3,500 vph < demand 4,500 vph, 29 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "T-Type (3 Directions)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.7000000000000001,
+    "land_area_hectares": 0.10000000000000002,
+    "safety_index": 0.10000000000000002,
+    "throughput_vph": 0.10000000000000002
+   },
+   "results": [
+    {
+     "alternative_name": "Trumpet",
+     "blueprint_path": "assets/blueprints/trumpet.png",
+     "color": "#7c3aed",
+     "color_dark": "#c4b5fd",
+     "description": "Three-leg interchange with a loop ramp for one turning movement and direct ramps for the other two. Common for highway termini; cost-effective with a moderate footprint and good safety characteristics.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 20.4,
+      "land_area_hectares": 16.0,
+      "safety_index": 5.25,
+      "throughput_vph": 3000.0
+     },
+     "total_score": 0.8,
+     "weighted_scores": {
+      "construction_cost_mln": 0.7,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "Directional T",
+     "blueprint_path": "assets/blueprints/directional_t.png",
+     "color": "#6d28d9",
+     "color_dark": "#a78bfa",
+     "description": "Three-leg directional interchange using semi-direct flyover ramps. Achieves maximum throughput and safety for T-junctions at the cost of higher construction expense and right-of-way requirements.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 59.5,
+      "land_area_hectares": 24.0,
+      "safety_index": 9.0,
+      "throughput_vph": 5000.0
+     },
+     "total_score": 0.2,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.1,
+      "throughput_vph": 0.1
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "T-Type (3 Directions)|mountain_critical_fast|default": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "terrain",
+     "message": "Terrain 'Mountainous': construction costs scaled ×1.70 (FHWA cost factor)."
+    },
+    {
+     "kind": "env_sensitivity",
+     "message": "Env. sensitivity 'Critical': effective land area scaled ×1.60 to reflect mitigation / permitting overhead."
+    },
+    {
+     "kind": "design_speed",
+     "message": "Design speed 130 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 25 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Trumpet (capacity 3,500 vph < demand 4,500 vph, 29 % over). Effective throughput score reduced proportionally."
+    }
+   ],
+   "context": "T-Type (3 Directions)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.3,
+    "land_area_hectares": 0.2,
+    "safety_index": 0.25,
+    "throughput_vph": 0.25
+   },
+   "results": [
+    {
+     "alternative_name": "Trumpet",
+     "blueprint_path": "assets/blueprints/trumpet.png",
+     "color": "#7c3aed",
+     "color_dark": "#c4b5fd",
+     "description": "Three-leg interchange with a loop ramp for one turning movement and direct ramps for the other two. Common for highway termini; cost-effective with a moderate footprint and good safety characteristics.",
+     "normalised_values": {
+      "construction_cost_mln": 1.0,
+      "land_area_hectares": 1.0,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 20.4,
+      "land_area_hectares": 16.0,
+      "safety_index": 5.25,
+      "throughput_vph": 3000.0
+     },
+     "total_score": 0.5,
+     "weighted_scores": {
+      "construction_cost_mln": 0.3,
+      "land_area_hectares": 0.2,
+      "safety_index": 0.0,
+      "throughput_vph": 0.0
+     }
+    },
+    {
+     "alternative_name": "Directional T",
+     "blueprint_path": "assets/blueprints/directional_t.png",
+     "color": "#6d28d9",
+     "color_dark": "#a78bfa",
+     "description": "Three-leg directional interchange using semi-direct flyover ramps. Achieves maximum throughput and safety for T-junctions at the cost of higher construction expense and right-of-way requirements.",
+     "normalised_values": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.0,
+      "safety_index": 1.0,
+      "throughput_vph": 1.0
+     },
+     "rank": 2,
+     "raw_values": {
+      "construction_cost_mln": 59.5,
+      "land_area_hectares": 24.0,
+      "safety_index": 9.0,
+      "throughput_vph": 5000.0
+     },
+     "total_score": 0.5,
+     "weighted_scores": {
+      "construction_cost_mln": 0.0,
+      "land_area_hectares": 0.0,
+      "safety_index": 0.25,
+      "throughput_vph": 0.25
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "T-Type (3 Directions)|tight_budget|cost_heavy": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "design_speed",
+     "message": "Design speed 100 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 10 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Trumpet (capacity 3,500 vph < demand 4,500 vph, 29 % over). Effective throughput score reduced proportionally."
+    },
+    {
+     "kind": "feasibility",
+     "message": "Hard constraints exceeded — the following alternatives are marked infeasible and excluded from ranking: Directional T (cost $35.0M > budget $20M, land 15.0 ha > limit 12 ha)."
+    }
+   ],
+   "context": "T-Type (3 Directions)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.7000000000000001,
+    "land_area_hectares": 0.10000000000000002,
+    "safety_index": 0.10000000000000002,
+    "throughput_vph": 0.10000000000000002
+   },
+   "results": [
+    {
+     "alternative_name": "Trumpet",
+     "blueprint_path": "assets/blueprints/trumpet.png",
+     "color": "#7c3aed",
+     "color_dark": "#c4b5fd",
+     "description": "Three-leg interchange with a loop ramp for one turning movement and direct ramps for the other two. Common for highway termini; cost-effective with a moderate footprint and good safety characteristics.",
+     "normalised_values": {
+      "construction_cost_mln": 0.5,
+      "land_area_hectares": 0.5,
+      "safety_index": 0.5,
+      "throughput_vph": 0.5
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 12.0,
+      "land_area_hectares": 10.0,
+      "safety_index": 6.3,
+      "throughput_vph": 3000.0
+     },
+     "total_score": 0.5,
+     "weighted_scores": {
+      "construction_cost_mln": 0.35,
+      "land_area_hectares": 0.05,
+      "safety_index": 0.05,
+      "throughput_vph": 0.05
+     }
+    }
+   ]
+  },
+  "status": 200
+ },
+ "T-Type (3 Directions)|tight_budget|default": {
+  "body": {
+   "adjustments": [
+    {
+     "kind": "design_speed",
+     "message": "Design speed 100 km/h exceeds loop-ramp threshold (80 km/h): safety index reduced by up to 10 % for loop-ramp alternatives (Cloverleaf, Trumpet)."
+    },
+    {
+     "kind": "traffic_demand",
+     "message": "Peak-hour demand 4,500 vph (AADT 45,000 × 10%) exceeds rated capacity for: Trumpet (capacity 3,500 vph < demand 4,500 vph, 29 % over). Effective throughput score reduced proportionally."
+    },
+    {
+     "kind": "feasibility",
+     "message": "Hard constraints exceeded — the following alternatives are marked infeasible and excluded from ranking: Directional T (cost $35.0M > budget $20M, land 15.0 ha > limit 12 ha)."
+    }
+   ],
+   "context": "T-Type (3 Directions)",
+   "criteria": [
+    {
+     "direction": "minimize",
+     "name": "construction_cost_mln",
+     "unit": "M USD",
+     "weight": 0.3
+    },
+    {
+     "direction": "minimize",
+     "name": "land_area_hectares",
+     "unit": "ha",
+     "weight": 0.2
+    },
+    {
+     "direction": "maximize",
+     "name": "throughput_vph",
+     "unit": "veh/hr",
+     "weight": 0.25
+    },
+    {
+     "direction": "maximize",
+     "name": "safety_index",
+     "unit": "/10",
+     "weight": 0.25
+    }
+   ],
+   "criterion_labels": {
+    "construction_cost_mln": "Construction Cost",
+    "land_area_hectares": "Land Area",
+    "safety_index": "Safety Index",
+    "throughput_vph": "Throughput (vph)"
+   },
+   "normalised_weights": {
+    "construction_cost_mln": 0.3,
+    "land_area_hectares": 0.2,
+    "safety_index": 0.25,
+    "throughput_vph": 0.25
+   },
+   "results": [
+    {
+     "alternative_name": "Trumpet",
+     "blueprint_path": "assets/blueprints/trumpet.png",
+     "color": "#7c3aed",
+     "color_dark": "#c4b5fd",
+     "description": "Three-leg interchange with a loop ramp for one turning movement and direct ramps for the other two. Common for highway termini; cost-effective with a moderate footprint and good safety characteristics.",
+     "normalised_values": {
+      "construction_cost_mln": 0.5,
+      "land_area_hectares": 0.5,
+      "safety_index": 0.5,
+      "throughput_vph": 0.5
+     },
+     "rank": 1,
+     "raw_values": {
+      "construction_cost_mln": 12.0,
+      "land_area_hectares": 10.0,
+      "safety_index": 6.3,
+      "throughput_vph": 3000.0
+     },
+     "total_score": 0.5,
+     "weighted_scores": {
+      "construction_cost_mln": 0.15,
+      "land_area_hectares": 0.1,
+      "safety_index": 0.125,
+      "throughput_vph": 0.125
+     }
+    }
+   ]
+  },
+  "status": 200
+ }
+}
