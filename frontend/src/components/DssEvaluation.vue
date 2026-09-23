@@ -3,6 +3,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { blueprintUrl, fetchInterchangeDetail } from '../api.js'
 import PlotlyChart from './PlotlyChart.vue'
 import LeafletMap from './LeafletMap.vue'
+import MethodComparison from './MethodComparison.vue'
 import { useLocale } from '../composables/useLocale.js'
 
 const props = defineProps({
@@ -458,6 +459,9 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
         </div>
       </div>
     </div>
+
+    <!-- Multi-method comparison -->
+    <MethodComparison :data="data" :dark="dark" />
 
     <!-- Charts -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">

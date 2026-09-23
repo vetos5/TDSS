@@ -32,7 +32,14 @@ onMounted(async () => {
 })
 
 watch(
-  [() => dss.selectedContext.value, () => ({ ...dss.weights }), () => ({ ...dss.params })],
+  [
+    () => dss.selectedContext.value,
+    () => ({ ...dss.weights }),
+    () => ({ ...dss.params }),
+    () => [...dss.methods.value],
+    () => ({ ...dss.weighting }),
+    () => [...dss.ahpJudgements],
+  ],
   scheduleEvaluation,
   { deep: true }
 )

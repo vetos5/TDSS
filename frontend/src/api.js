@@ -7,8 +7,8 @@ export async function fetchContexts() {
   return data.contexts
 }
 
-export async function evaluate(context, weights, params, lang = 'en') {
-  const { data } = await api.post('/evaluate', { context, weights, params }, { params: { lang } })
+export async function evaluate(context, weights, params, lang = 'en', extra = {}) {
+  const { data } = await api.post('/evaluate', { context, weights, params, ...extra }, { params: { lang } })
   return data
 }
 

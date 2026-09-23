@@ -6,6 +6,23 @@ const selectedContext = ref('')
 const loading = ref(false)
 const evalData = ref(null)
 
+export const ALL_METHODS = ['wsm', 'topsis', 'ahp', 'promethee', 'vikor']
+export const CRITERION_KEYS = ['construction_cost_mln', 'land_area_hectares', 'throughput_vph', 'safety_index']
+// Upper-triangle cells of the 4×4 AHP matrix, in criteria order.
+export const AHP_PAIRS = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]]
+
+const methods = ref([...ALL_METHODS])
+
+const weighting = reactive({
+  mode: 'manual',          // manual | entropy | critic | ahp | combined
+  subjective: 'manual',    // combined mode: manual | ahp
+  objective: 'entropy',    // combined mode: entropy | critic
+  alpha: 0.5,
+})
+
+// Saaty judgements a_ij for AHP_PAIRS (> 1: row criterion more important).
+const ahpJudgements = reactive(AHP_PAIRS.map(() => 1))
+
 const weights = reactive({
   construction_cost_mln: 30,
   land_area_hectares: 20,
@@ -36,6 +53,24 @@ function normalizedWeights() {
   }
 }
 
+function ahpMatrix() {
+  const n = CRITERION_KEYS.length
+  const a = Array.from({ length: n }, () => Array(n).fill(1))
+  AHP_PAIRS.forEach(([i, j], k) => {
+    a[i][j] = ahpJudgements[k]
+    a[j][i] = 1 / ahpJudgements[k]
+  })
+  return a
+}
+
+function usesAhp() {
+  return weighting.mode === 'ahp' || (weighting.mode === 'combined' && weighting.subjective === 'ahp')
+}
+
+function weightingPayload() {
+  return { ...weighting, ahp_matrix: usesAhp() ? ahpMatrix() : null }
+}
+
 async function loadContexts() {
   contexts.value = await fetchContexts()
   if (contexts.value.length && !selectedContext.value) {
@@ -48,7 +83,10 @@ async function runEvaluation(lang = 'en') {
   loading.value = true
   try {
     const nw = normalizedWeights()
-    evalData.value = await evaluate(selectedContext.value, nw, { ...params }, lang)
+    evalData.value = await evaluate(selectedContext.value, nw, { ...params }, lang, {
+      methods: methods.value.length ? methods.value : ['wsm'],
+      weighting: weightingPayload(),
+    })
   } finally {
     loading.value = false
   }
@@ -62,6 +100,10 @@ export function useDSS() {
     evalData,
     weights,
     params,
+    methods,
+    weighting,
+    ahpJudgements,
+    usesAhp,
     normalizedWeights,
     loadContexts,
     runEvaluation,

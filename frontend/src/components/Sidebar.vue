@@ -1,6 +1,9 @@
 <script setup>
 import { computed } from 'vue'
 import { useLocale } from '../composables/useLocale.js'
+import { CRITERION_KEYS } from '../composables/useDSS.js'
+import MethodSelector from './MethodSelector.vue'
+import WeightingControls from './WeightingControls.vue'
 
 const props = defineProps({
   dark: Boolean,
@@ -11,7 +14,6 @@ const emit = defineEmits(['toggle-theme', 'close'])
 
 const { lang, toggleLang, t } = useLocale()
 
-const CRITERION_KEYS = ['construction_cost_mln', 'land_area_hectares', 'throughput_vph', 'safety_index']
 const criterionLabel = computed(() => ({
   construction_cost_mln: t.value.constructionCost,
   land_area_hectares:    t.value.landArea,
@@ -26,7 +28,12 @@ const BAR_COLORS = {
   safety_index: '#1d4ed8',
 }
 
-const normW = computed(() => props.dss.normalizedWeights())
+// Weights the backend actually used (objective / AHP modes differ from the sliders).
+const normW = computed(() => props.dss.evalData.value?.normalised_weights ?? props.dss.normalizedWeights())
+const showSliders = computed(() => {
+  const w = props.dss.weighting
+  return w.mode === 'manual' || (w.mode === 'combined' && w.subjective === 'manual')
+})
 const rawTotal = computed(() =>
   props.dss.weights.construction_cost_mln +
   props.dss.weights.land_area_hectares +
@@ -113,14 +120,20 @@ const envOptions = computed(() => [
 
       <hr class="mb-4" :class="dark ? 'border-slate-700' : 'border-black/5'" />
 
+      <MethodSelector :dark="dark" :dss="dss" />
+
+      <hr class="mb-4" :class="dark ? 'border-slate-700' : 'border-black/5'" />
+
       <!-- Criteria weights -->
       <div class="mb-4">
         <p class="font-bold text-sm mb-1" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.criteriaWeights }}</p>
-        <p class="text-xs mb-3" :class="dark ? 'text-slate-400' : 'text-slate-500'">
+        <p v-if="showSliders" class="text-xs mb-3" :class="dark ? 'text-slate-400' : 'text-slate-500'">
           {{ t.criteriaWeightsDesc }}
         </p>
 
-        <div class="space-y-4">
+        <WeightingControls :dark="dark" :dss="dss" />
+
+        <div v-if="showSliders" class="space-y-4">
           <div>
             <label class="text-xs font-medium" :class="dark ? 'text-slate-300' : 'text-slate-600'">
               {{ t.constructionCost }} — {{ t.minimize }}
@@ -228,7 +241,7 @@ const envOptions = computed(() => [
 
       <!-- Normalised weight bars -->
       <p class="text-xs mb-2" :class="dark ? 'text-slate-400' : 'text-slate-500'">
-        {{ t.normWeightsLabel }}
+        {{ t.weightsUsedLabel }}
       </p>
       <div class="space-y-1.5 mb-3">
         <div v-for="key in CRITERION_KEYS" :key="key"
@@ -243,7 +256,7 @@ const envOptions = computed(() => [
         </div>
       </div>
 
-      <p class="text-xs font-medium" :class="Math.abs(rawTotal - 100) <= 1
+      <p v-if="showSliders" class="text-xs font-medium" :class="Math.abs(rawTotal - 100) <= 1
         ? (dark ? 'text-teal-400' : 'text-teal-700')
         : 'text-orange-500'">
         {{ t.rawTotalLabel }}: {{ rawTotal }}%

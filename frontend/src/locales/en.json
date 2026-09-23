@@ -1,12 +1,12 @@
 {
   "appTitle": "Transport Interchange Decision Support System",
-  "appSubtitle": "Multi-Criteria Decision Analysis (MCDA) · Weighted Sum Model (WSM)",
+  "appSubtitle": "Multi-Criteria Decision Analysis (MCDA) · WSM · TOPSIS · AHP · PROMETHEE II · VIKOR",
 
   "tabEvaluation": "DSS Evaluation",
   "tabGallery": "Blueprint Gallery",
   "tabMethodology": "Methodology",
 
-  "sidebarVersion": "TDSS v4",
+  "sidebarVersion": "TDSS v5",
   "taskContext": "Task Context",
   "taskContextDesc": "Select the interchange type category to compare alternatives.",
   "criteriaWeights": "Criteria Weights",
@@ -290,5 +290,51 @@
         "Longer construction timeline than trumpet alternatives"
       ]
     }
-  }
+  },
+
+  "methodsTitle": "Decision Methods",
+  "methodsDesc": "Select the MCDA methods to run and compare.",
+  "methodLabels": {
+    "wsm": "WSM",
+    "topsis": "TOPSIS",
+    "ahp": "AHP",
+    "promethee": "PROMETHEE II",
+    "vikor": "VIKOR"
+  },
+  "weightingMode": "Weighting method",
+  "weightingModes": {
+    "manual": "Manual (sliders)",
+    "entropy": "Entropy (objective)",
+    "critic": "CRITIC (objective)",
+    "ahp": "AHP pairwise comparison",
+    "combined": "Combined (subjective + objective)"
+  },
+  "weightingModeDesc": {
+    "manual": "Weights come from the sliders below.",
+    "entropy": "Criteria that vary more across the alternatives get more weight.",
+    "critic": "Weights reward contrast and penalise criteria that duplicate each other.",
+    "ahp": "Weights come from your pairwise comparisons of the criteria.",
+    "combined": "Weight = α · subjective + (1 − α) · objective."
+  },
+  "ahpTitle": "Pairwise comparisons",
+  "ahpHint": "Above 1: the left criterion matters more (Saaty 1–9 scale).",
+  "consistencyRatio": "Consistency ratio CR",
+  "crOk": "consistent",
+  "crBad": "revise judgements (CR ≥ 0.10)",
+  "subjectiveSource": "Subjective weights",
+  "objectiveSource": "Objective weights",
+  "alphaLabel": "Subjective share α",
+  "weightsUsedLabel": "Weights used in the evaluation (sum = 1.0)",
+  "comparisonTitle": "Method Comparison",
+  "comparisonDesc": "Rank of each alternative under every selected method. Consensus is a Borda count across methods.",
+  "consensus": "Consensus",
+  "unanimous": "All methods pick the same winner",
+  "disagree": "Methods disagree on the winner",
+  "chartUtilityTitle": "Normalised score by method (1 = best)",
+  "chartUtilityAxis": "Normalised score",
+  "agreementTitle": "Rank agreement between methods",
+  "spearman": "Spearman ρ",
+  "kendall": "Kendall τ",
+  "vikorCompromise": "VIKOR compromise set",
+  "agreementNeedsTwo": "Select at least two methods to compare rankings."
 }
