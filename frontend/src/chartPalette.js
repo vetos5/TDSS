@@ -1,5 +1,6 @@
-// Chart colours validated with the dataviz palette validator against this app's panel
-// surfaces (light ≈ #f7f7f9, dark ≈ #1e293b). Colour follows the entity, never its rank.
+// Chart colours validated with the dataviz palette validator against panel surfaces
+// light ≈ #f7f7f9 and dark ≈ #1e293b (the current cards are #fff / #2c2c2e).
+// Colour follows the entity, never its rank.
 
 // Categorical slots for MCDA methods (fixed order, never cycled). Light slots below 3:1
 // contrast are always shipped with a legend plus a table view.
@@ -25,13 +26,15 @@ export function divergingScale(dark) {
   return [[0, '#e34948'], [0.5, dark ? '#383835' : '#f0efec'], [1, dark ? '#3987e5' : '#2a78d6']]
 }
 
-export const SURFACE = { light: '#f7f7f9', dark: '#1e293b' }
+export const SURFACE = { light: '#ffffff', dark: '#2c2c2e' }
 
+// Chart chrome matching the design tokens in style.css (--fg, --muted, --line).
 export function chartInk(dark) {
   return {
-    text: dark ? '#e2e8f0' : '#0f172a',
-    muted: dark ? '#94a3b8' : '#475569',
-    grid: dark ? '#334155' : '#e2e8f0',
+    text: dark ? '#f5f5f7' : '#1d1d1f',
+    muted: dark ? '#a1a1a6' : '#6e6e73',
+    grid: dark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.08)',
+    font: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, 'Segoe UI', Roboto, sans-serif",
   }
 }
 

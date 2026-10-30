@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import L from 'leaflet'
 import { useLocale } from '../composables/useLocale.js'
 import { useSiteAnalysis } from '../composables/useSiteAnalysis.js'
+import Icon from './Icon.vue'
 
 const props = defineProps({
   dss: Object,
@@ -151,128 +152,149 @@ function onAlternativeChange(e) {
 watch(locale, () => {
   if (site.analysis.value) site.analyse(locale.value)
 })
-
-const panel = computed(() => props.dark
-  ? 'bg-white/[0.06] border border-white/10'
-  : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]')
-const inputClass = computed(() => props.dark
-  ? 'bg-slate-700 border border-slate-600 text-slate-200'
-  : 'bg-white/80 border border-black/10 text-slate-800')
-const muted = computed(() => props.dark ? 'text-slate-400' : 'text-slate-500')
-const strong = computed(() => props.dark ? 'text-slate-100' : 'text-slate-900')
 </script>
 
 <template>
-  <div>
-    <div class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6 mb-6" :class="panel">
-      <h2 class="text-xl font-semibold tracking-tight mb-1" :class="strong">{{ t.siteAnalysisTitle }}</h2>
-      <p class="text-xs mb-4" :class="muted">{{ t.siteAnalysisDesc }}</p>
+  <div class="space-y-3 md:space-y-4">
+    <section class="card overflow-hidden">
+      <div class="p-4">
+        <h2 class="card-title">{{ t.siteAnalysisTitle }}</h2>
+        <p class="card-desc">{{ t.siteAnalysisDesc }}</p>
 
-      <div class="flex flex-wrap items-center gap-3 mb-3 text-xs">
-        <span :class="muted">{{ site.hasPointA.value ? t.pointAPlaced : t.clickToPlaceHint }}</span>
-        <button type="button"
-                class="px-2.5 py-1 rounded-lg font-semibold border transition-colors"
-                :class="site.settingDirection.value
-                  ? (dark ? 'bg-orange-500/20 border-orange-400/60 text-orange-200' : 'bg-orange-500 border-orange-500 text-white')
-                  : (dark ? 'border-slate-600 text-slate-300' : 'border-black/10 text-slate-600')"
-                :disabled="!site.hasPointA.value"
-                @click="site.settingDirection.value = !site.settingDirection.value">
-          {{ site.settingDirection.value ? t.clickToSetDirection : t.setDirectionButton }}
-        </button>
-        <button type="button" class="px-2.5 py-1 rounded-lg font-semibold border" :class="dark ? 'border-slate-600 text-slate-400' : 'border-black/10 text-slate-500'"
-                @click="site.reset()">
-          {{ t.resetSiteButton }}
-        </button>
-        <label class="flex items-center gap-1.5 ml-auto">
-          <span :class="muted">{{ t.radiusLabel }}</span>
-          <input type="range" min="200" max="1500" step="50" v-model.number="site.radiusM.value"
-                 class="ios-slider ios-slider--teal w-28" />
-          <span class="font-semibold w-14 text-right" :class="strong">{{ site.radiusM.value }} m</span>
-        </label>
-        <button type="button"
-                class="px-3 py-1.5 rounded-lg font-semibold text-white transition-colors disabled:opacity-40"
-                :class="dark ? 'bg-teal-600 hover:bg-teal-500' : 'bg-teal-700 hover:bg-teal-600'"
-                :disabled="!site.hasPointA.value || site.loading.value"
-                @click="onAnalyseClick">
-          {{ site.loading.value ? t.analysingLabel : t.analyseButton }}
-        </button>
+        <div class="mt-4 grid grid-cols-2 items-center gap-2 text-xs md:flex md:flex-wrap">
+          <span class="col-span-2 flex items-center gap-1.5 text-[13px] text-muted md:text-xs">
+            <Icon name="map-pin" class="text-subtle" />
+            {{ site.hasPointA.value ? t.pointAPlaced : t.clickToPlaceHint }}
+          </span>
+          <button type="button" class="btn leading-tight md:px-2.5 md:py-1 md:text-xs"
+                  :class="site.settingDirection.value ? '!border-accent/30 !bg-accent-soft !text-accent-ink' : ''"
+                  :aria-pressed="site.settingDirection.value"
+                  :disabled="!site.hasPointA.value"
+                  @click="site.settingDirection.value = !site.settingDirection.value">
+            {{ site.settingDirection.value ? t.clickToSetDirection : t.setDirectionButton }}
+          </button>
+          <button type="button" class="btn-ghost md:px-2 md:py-1 md:text-xs" @click="site.reset()">
+            <Icon name="refresh" />{{ t.resetSiteButton }}
+          </button>
+          <label class="col-span-2 flex min-h-11 items-center gap-3 md:ml-auto md:min-h-0 md:gap-2">
+            <span class="text-[13px] text-muted md:text-xs">{{ t.radiusLabel }}</span>
+            <input type="range" v-range-fill min="200" max="1500" step="50" v-model.number="site.radiusM.value"
+                   class="ios-slider ios-slider--teal min-w-0 flex-1 md:w-28! md:flex-none" />
+            <span class="num w-16 text-right text-[13px] font-medium text-fg md:w-14 md:text-xs">{{ site.radiusM.value }} m</span>
+          </label>
+          <button type="button" class="btn-primary col-span-2"
+                  :disabled="!site.hasPointA.value || site.loading.value"
+                  @click="onAnalyseClick">
+            <span v-if="site.loading.value" class="spinner"></span>
+            {{ site.loading.value ? t.analysingLabel : t.analyseButton }}
+          </button>
+        </div>
       </div>
 
-      <div ref="mapContainer" class="w-full h-[420px] rounded-2xl z-0 mb-3"></div>
+      <div ref="mapContainer"
+           class="site-map z-0 h-[58svh] min-h-[320px] w-full border-y border-line !rounded-none md:h-[420px] md:min-h-0"></div>
 
-      <div class="flex flex-wrap gap-3 text-[0.7rem]" :class="muted">
-        <span v-for="key in ['road', 'building', 'water', 'protected', 'residential']" :key="key" class="flex items-center gap-1">
-          <span class="inline-block w-2.5 h-2.5 rounded-full" :style="{ background: FEATURE_STYLE[key].color }"></span>
+      <div class="flex flex-wrap gap-x-4 gap-y-1.5 px-4 py-2.5 text-xs text-muted md:gap-y-1 md:text-[0.7rem]">
+        <span v-for="key in ['road', 'building', 'water', 'protected', 'residential']" :key="key" class="flex items-center gap-1.5">
+          <span class="inline-block h-2 w-2 shrink-0 rounded-full" :style="{ background: FEATURE_STYLE[key].color }"></span>
           {{ t.legend[key] }}
         </span>
       </div>
 
-      <div v-if="site.error.value" class="rounded-xl px-4 py-2.5 mt-3 text-sm"
-           :class="dark ? 'bg-red-500/10 border border-red-500/30 text-red-200' : 'bg-red-50 border border-red-200 text-red-800'">
-        {{ site.error.value }}
+      <div v-if="site.error.value" class="px-4 pb-4">
+        <div class="notice notice-bad">{{ site.error.value }}</div>
       </div>
-    </div>
+    </section>
 
-    <div v-if="site.analysis.value" class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6 mb-6" :class="panel">
-      <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
-        <h3 class="text-base font-semibold" :class="strong">{{ t.resultsInferred }}</h3>
-        <span class="px-3 py-1 rounded-full text-xs font-semibold"
-              :class="site.analysis.value.context_confident
-                ? (dark ? 'bg-teal-500/20 text-teal-200' : 'bg-teal-100 text-teal-800')
-                : (dark ? 'bg-orange-500/20 text-orange-200' : 'bg-orange-100 text-orange-800')">
-          {{ site.analysis.value.context_confident ? t.confidentBadge : t.lowConfidenceBadge }}
+    <section v-if="site.analysis.value" class="card p-4">
+      <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <h3 class="card-title">{{ t.resultsInferred }}</h3>
+        <span v-if="site.analysis.value.context_confident" class="badge-accent">
+          <Icon name="check" />{{ t.confidentBadge }}
+        </span>
+        <span v-else class="badge !border-warn/25 !bg-warn-soft !text-warn">
+          <Icon name="alert-triangle" />{{ t.lowConfidenceBadge }}
         </span>
       </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-sm">
-        <div><p class="text-xs" :class="muted">{{ t.taskContext }}</p><p class="font-semibold" :class="strong">{{ site.analysis.value.context }}</p></div>
-        <div><p class="text-xs" :class="muted">{{ t.terrainType }}</p><p class="font-semibold" :class="strong">{{ t.terrainDisplay?.[site.analysis.value.terrain] ?? site.analysis.value.terrain }}</p></div>
-        <div><p class="text-xs" :class="muted">{{ t.envSensitivity }}</p><p class="font-semibold" :class="strong">{{ t.envDisplay?.[site.analysis.value.env_sensitivity] ?? site.analysis.value.env_sensitivity }}</p></div>
-        <div><p class="text-xs" :class="muted">{{ t.landLimit }}</p><p class="font-semibold" :class="strong">{{ site.analysis.value.land_limit_ha.toFixed(1) }} ha</p></div>
+      <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div><p class="eyebrow">{{ t.taskContext }}</p><p class="mt-0.5 text-[13px] font-medium text-fg">{{ site.analysis.value.context }}</p></div>
+        <div><p class="eyebrow">{{ t.terrainType }}</p><p class="mt-0.5 text-[13px] font-medium text-fg">{{ t.terrainDisplay?.[site.analysis.value.terrain] ?? site.analysis.value.terrain }}</p></div>
+        <div><p class="eyebrow">{{ t.envSensitivity }}</p><p class="mt-0.5 text-[13px] font-medium text-fg">{{ t.envDisplay?.[site.analysis.value.env_sensitivity] ?? site.analysis.value.env_sensitivity }}</p></div>
+        <div><p class="eyebrow">{{ t.landLimit }}</p><p class="num mt-0.5 text-[13px] font-medium text-fg">{{ site.analysis.value.land_limit_ha.toFixed(1) }} ha</p></div>
       </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4 text-xs" :class="muted">
-        <span v-if="site.analysis.value.max_grade_pct !== null">{{ t.maxGradeLabel }}: {{ site.analysis.value.max_grade_pct.toFixed(1) }}%</span>
-        <span v-if="site.analysis.value.nearest_water_m !== null">{{ t.nearestWaterLabel }}: {{ Math.round(site.analysis.value.nearest_water_m) }} m</span>
-        <span>{{ t.residentialShareLabel }}: {{ (site.analysis.value.residential_share * 100).toFixed(0) }}%</span>
-        <span>{{ t.buildingCountLabel }}: {{ site.analysis.value.building_count }}</span>
-        <span>{{ t.buildingAreaLabel }}: {{ Math.round(site.analysis.value.building_area_m2).toLocaleString() }} m²</span>
-        <span>{{ t.waterAreaLabel }}: {{ Math.round(site.analysis.value.water_area_m2).toLocaleString() }} m²</span>
+      <!-- Phones: one label/value row per measure with hairlines between; wider: a compact grid. -->
+      <div class="mb-4 grid grid-cols-1 divide-y divide-line rounded-lg border border-line bg-surface-2 px-3 text-[13px] text-muted
+                  sm:grid-cols-3 sm:gap-x-3 sm:gap-y-1.5 sm:divide-y-0 sm:py-2.5 sm:text-xs">
+        <span v-if="site.analysis.value.max_grade_pct !== null" class="stat-row">{{ t.maxGradeLabel }}<span class="max-sm:hidden">:</span> <span class="num text-fg">{{ site.analysis.value.max_grade_pct.toFixed(1) }}%</span></span>
+        <span v-if="site.analysis.value.nearest_water_m !== null" class="stat-row">{{ t.nearestWaterLabel }}<span class="max-sm:hidden">:</span> <span class="num text-fg">{{ Math.round(site.analysis.value.nearest_water_m) }} m</span></span>
+        <span class="stat-row">{{ t.residentialShareLabel }}<span class="max-sm:hidden">:</span> <span class="num text-fg">{{ (site.analysis.value.residential_share * 100).toFixed(0) }}%</span></span>
+        <span class="stat-row">{{ t.buildingCountLabel }}<span class="max-sm:hidden">:</span> <span class="num text-fg">{{ site.analysis.value.building_count }}</span></span>
+        <span class="stat-row">{{ t.buildingAreaLabel }}<span class="max-sm:hidden">:</span> <span class="num text-fg">{{ Math.round(site.analysis.value.building_area_m2).toLocaleString() }} m²</span></span>
+        <span class="stat-row">{{ t.waterAreaLabel }}<span class="max-sm:hidden">:</span> <span class="num text-fg">{{ Math.round(site.analysis.value.water_area_m2).toLocaleString() }} m²</span></span>
       </div>
 
-      <ul v-if="site.analysis.value.notes.length" class="text-xs space-y-1 mb-4" :class="dark ? 'text-orange-300' : 'text-orange-700'">
-        <li v-for="(note, i) in site.analysis.value.notes" :key="i">⚠ {{ note }}</li>
+      <ul v-if="site.analysis.value.notes.length" class="notice notice-warn mb-4 space-y-1 text-xs">
+        <li v-for="(note, i) in site.analysis.value.notes" :key="i" class="flex items-start gap-1.5">
+          <Icon name="alert-triangle" class="mt-0.5" />{{ note }}
+        </li>
       </ul>
 
-      <button type="button" class="px-3 py-1.5 rounded-lg text-sm font-semibold text-white"
-              :class="dark ? 'bg-teal-600 hover:bg-teal-500' : 'bg-teal-700 hover:bg-teal-600'"
-              @click="applyToParams">
+      <button type="button" class="btn-primary w-full md:w-auto" @click="applyToParams">
         {{ t.applyParamsButton }}
       </button>
-    </div>
+    </section>
 
-    <div v-if="site.analysis.value" class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6" :class="panel">
-      <h3 class="text-base font-semibold mb-1" :class="strong">{{ t.footprintSectionTitle }}</h3>
-      <p class="text-xs mb-3" :class="muted">{{ t.footprintSectionDesc }}</p>
+    <section v-if="site.analysis.value" class="card p-4">
+      <h3 class="card-title">{{ t.footprintSectionTitle }}</h3>
+      <p class="card-desc mb-3">{{ t.footprintSectionDesc }}</p>
 
-      <label class="text-xs font-medium" :class="muted">
-        {{ t.selectAlternativeLabel }}
-        <select class="block mt-1 rounded-xl px-3 py-1.5 text-sm" :class="inputClass" @change="onAlternativeChange" :value="site.footprintAlternative.value ?? ''">
+      <label class="block md:max-w-xs">
+        <span class="field-label">{{ t.selectAlternativeLabel }}</span>
+        <select class="field" @change="onAlternativeChange" :value="site.footprintAlternative.value ?? ''">
           <option value="" disabled>{{ t.selectAlternativeLabel }}</option>
           <option v-for="name in alternatives" :key="name" :value="name">{{ name }}</option>
         </select>
       </label>
 
-      <p v-if="site.footprintLoading.value" class="text-xs mt-3" :class="muted">{{ t.analysingLabel }}</p>
+      <p v-if="site.footprintLoading.value" class="mt-3 flex items-center gap-2 text-xs text-muted">
+        <span class="spinner"></span>{{ t.analysingLabel }}
+      </p>
 
       <template v-if="site.footprint.value && !site.footprintLoading.value">
-        <p v-if="!site.footprint.value.available" class="text-xs mt-3" :class="muted">{{ site.footprint.value.message }}</p>
-        <div v-else class="grid grid-cols-3 gap-3 mt-3 text-sm">
-          <div><p class="text-xs" :class="muted">{{ t.buildingsAffectedLabel }}</p><p class="font-bold" :class="strong">{{ site.footprint.value.right_of_way.buildings_affected }}</p></div>
-          <div><p class="text-xs" :class="muted">{{ t.demolishedAreaLabel }}</p><p class="font-bold" :class="strong">{{ Math.round(site.footprint.value.right_of_way.demolished_area_m2).toLocaleString() }} m²</p></div>
-          <div><p class="text-xs" :class="muted">{{ t.estimatedCostLabel }}</p><p class="font-bold" :class="strong">${{ Math.round(site.footprint.value.right_of_way.estimated_cost_usd / 1000).toLocaleString() }}k</p></div>
+        <p v-if="!site.footprint.value.available" class="mt-3 text-xs text-muted">{{ site.footprint.value.message }}</p>
+        <div v-else class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div><p class="eyebrow">{{ t.buildingsAffectedLabel }}</p><p class="num mt-0.5 text-lg font-semibold text-fg">{{ site.footprint.value.right_of_way.buildings_affected }}</p></div>
+          <div><p class="eyebrow">{{ t.demolishedAreaLabel }}</p><p class="num mt-0.5 text-lg font-semibold text-fg">{{ Math.round(site.footprint.value.right_of_way.demolished_area_m2).toLocaleString() }} m²</p></div>
+          <div><p class="eyebrow">{{ t.estimatedCostLabel }}</p><p class="num mt-0.5 text-lg font-semibold text-fg">${{ Math.round(site.footprint.value.right_of_way.estimated_cost_usd / 1000).toLocaleString() }}k</p></div>
         </div>
       </template>
-    </div>
+    </section>
   </div>
 </template>
+
+<style scoped>
+@reference "../style.css";
+
+.stat-row {
+  @apply flex items-baseline justify-between gap-3 py-2 sm:block sm:py-0;
+}
+
+/* Leaflet's zoom buttons: macOS-style plate, and full-size tap targets on touch screens. */
+.site-map :deep(.leaflet-bar) {
+  @apply overflow-hidden rounded-lg border-0;
+  box-shadow: var(--control-shadow);
+}
+.site-map :deep(.leaflet-bar a) {
+  @apply border-line bg-control text-fg;
+}
+@media (pointer: coarse) {
+  .site-map :deep(.leaflet-bar a) {
+    width: 44px;
+    height: 44px;
+    line-height: 44px;
+    font-size: 20px;
+  }
+}
+</style>

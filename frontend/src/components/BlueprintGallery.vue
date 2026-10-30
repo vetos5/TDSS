@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { blueprintUrl } from '../api.js'
 import { useLocale } from '../composables/useLocale.js'
+import Icon from './Icon.vue'
 
 const props = defineProps({
   data: Object,
@@ -17,8 +18,6 @@ function displayEnv(val)     { return t.value.envDisplay?.[val] ?? val }
 const winner = computed(() => props.data?.results?.[0])
 const maxScore = computed(() => winner.value?.total_score || 1)
 
-const RANK_BADGES = { 1: { bg: '#fbbf24', fg: '#78350f', icon: '🏆' }, 2: { bg: '#cbd5e1', fg: '#1e293b', icon: '🥈' }, 3: { bg: '#d6a06c', fg: '#422006', icon: '🥉' } }
-
 function altColor(name) {
   const r = props.data?.results?.find(r => r.alternative_name === name)
   return props.dark ? (r?.color_dark || '#2dd4bf') : (r?.color || '#0f766e')
@@ -30,125 +29,122 @@ function isFeasible(rv) {
 </script>
 
 <template>
-  <div v-if="data">
-    <h2 class="text-lg font-bold mb-4" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.blueprints }}</h2>
-
+  <div v-if="data" class="space-y-4">
     <!-- Project parameters summary -->
-    <div class="rounded-xl border p-4 mb-6"
-         :class="dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'">
-      <p class="text-[0.65rem] font-semibold uppercase tracking-wider mb-2"
-         :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ t.projectParamsSummary }}</p>
-      <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm" :class="dark ? 'text-slate-300' : 'text-slate-600'">
-        <span>{{ t.designSpeedShort }}: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ params.design_speed }} km/h</strong></span>
-        <span>AADT: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ params.aadt.toLocaleString() }}</strong></span>
-        <span>{{ t.peakFactorShort }}: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ params.peak_factor }}%</strong></span>
-        <span>{{ t.lanesShort }}: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ params.num_lanes }}{{ t.dir }}</strong></span>
-        <span>{{ t.budgetShort }}: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">${{ params.budget }}M</strong></span>
-        <span>{{ t.landShort }}: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ params.land_limit }} ha</strong></span>
-        <span>{{ t.terrainShort }}: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ displayTerrain(params.terrain) }}</strong></span>
-        <span>{{ t.envShort }}: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ displayEnv(params.env_sensitivity) }}</strong></span>
-      </div>
-    </div>
+    <section class="card p-4">
+      <h2 class="card-title">{{ t.blueprints }}</h2>
+      <p class="card-desc">{{ t.projectParamsSummary }}</p>
+      <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 sm:grid-cols-4 xl:grid-cols-8">
+        <div><dt class="text-xs text-muted">{{ t.designSpeedShort }}</dt><dd class="num text-[13px] font-medium">{{ params.design_speed }} km/h</dd></div>
+        <div><dt class="text-xs text-muted">AADT</dt><dd class="num text-[13px] font-medium">{{ params.aadt.toLocaleString() }}</dd></div>
+        <div><dt class="text-xs text-muted">{{ t.peakFactorShort }}</dt><dd class="num text-[13px] font-medium">{{ params.peak_factor }}%</dd></div>
+        <div><dt class="text-xs text-muted">{{ t.lanesShort }}</dt><dd class="num text-[13px] font-medium">{{ params.num_lanes }}{{ t.dir }}</dd></div>
+        <div><dt class="text-xs text-muted">{{ t.budgetShort }}</dt><dd class="num text-[13px] font-medium">${{ params.budget }}M</dd></div>
+        <div><dt class="text-xs text-muted">{{ t.landShort }}</dt><dd class="num text-[13px] font-medium">{{ params.land_limit }} ha</dd></div>
+        <div><dt class="text-xs text-muted">{{ t.terrainShort }}</dt><dd class="text-[13px] font-medium">{{ displayTerrain(params.terrain) }}</dd></div>
+        <div><dt class="text-xs text-muted">{{ t.envShort }}</dt><dd class="text-[13px] font-medium">{{ displayEnv(params.env_sensitivity) }}</dd></div>
+      </dl>
+    </section>
 
     <!-- Winner spotlight -->
-    <div class="grid grid-cols-1 md:grid-cols-7 gap-6 mb-6">
-      <div class="md:col-span-2">
-        <div class="rounded-2xl border-2 p-5 text-center"
-             :class="dark ? 'bg-teal-900/20 border-teal-600' : 'bg-teal-50 border-teal-600'">
-          <p class="text-[0.65rem] font-semibold uppercase tracking-wider mb-1"
-             :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ t.recommended }}</p>
-          <p class="text-lg font-extrabold mb-0.5">
-<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(winner.alternative_name) }" aria-hidden="true"></span>
-            {{ winner.alternative_name }}
-          </p>
-          <p class="text-2xl font-bold mb-3" :class="dark ? 'text-slate-100' : 'text-slate-900'">
-            WSM {{ winner.total_score.toFixed(4) }}
-          </p>
-          <img :src="blueprintUrl(winner.alternative_name)" :alt="winner.alternative_name"
-               class="mx-auto max-h-64 object-contain mb-3" />
-          <p class="text-xs font-semibold"
-             :class="isFeasible(winner.raw_values) ? (dark ? 'text-teal-400' : 'text-teal-700') : 'text-red-500'">
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-7">
+      <section class="card flex flex-col p-4 md:col-span-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="badge-accent"><Icon name="trophy" />{{ t.recommended }}</span>
+          <span class="badge" :class="isFeasible(winner.raw_values) ? '!border-ok/25 !bg-ok-soft !text-ok' : '!border-bad/25 !bg-bad-soft !text-bad'">
             {{ isFeasible(winner.raw_values) ? t.feasibleCheck : t.exceedsLimits }}
-          </p>
+          </span>
         </div>
-      </div>
+        <p class="mt-3 flex items-center gap-1.5 text-[15px] font-semibold">
+          <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="{ background: altColor(winner.alternative_name) }" aria-hidden="true"></span>
+          {{ winner.alternative_name }}
+        </p>
+        <p class="mt-0.5 text-xs text-muted">WSM <span class="num text-sm font-semibold text-fg">{{ winner.total_score.toFixed(4) }}</span></p>
+        <div class="mt-3 overflow-hidden rounded-lg border border-line">
+          <img :src="blueprintUrl(winner.alternative_name)" :alt="winner.alternative_name"
+               class="mx-auto max-h-64 w-full object-contain" />
+        </div>
+      </section>
 
-      <div class="md:col-span-5">
-        <p class="font-semibold mb-1">
-<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(winner.alternative_name) }" aria-hidden="true"></span>
+      <section class="card p-4 md:col-span-5">
+        <h3 class="card-title flex items-center gap-1.5">
+          <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="{ background: altColor(winner.alternative_name) }" aria-hidden="true"></span>
           {{ winner.alternative_name }} — {{ t.criterionLabel }} {{ t.directionCol }}
-        </p>
-        <p class="text-sm mb-3" :class="dark ? 'text-slate-300' : 'text-slate-600'">
-          {{ winner.description }}
-        </p>
-        <div class="overflow-x-auto rounded-xl border"
-             :class="dark ? 'border-slate-700' : 'border-slate-200'">
-          <table class="w-full text-sm">
+        </h3>
+        <p class="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted [overflow-wrap:anywhere]">{{ winner.description }}</p>
+        <div class="table-scroll mt-3 rounded-lg border border-line">
+          <table class="table min-w-[34rem]">
             <thead>
-              <tr :class="dark ? 'bg-slate-800' : 'bg-slate-50'">
-                <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.criterionLabel }}</th>
-                <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.directionCol }}</th>
-                <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.rawValue }}</th>
-                <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.normalised }}</th>
-                <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.weight }}</th>
-                <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.contribution }}</th>
+              <tr>
+                <th class="sticky-col">{{ t.criterionLabel }}</th>
+                <th>{{ t.directionCol }}</th>
+                <th class="text-right">{{ t.rawValue }}</th>
+                <th class="text-right">{{ t.normalised }}</th>
+                <th class="text-right">{{ t.weight }}</th>
+                <th class="text-right">{{ t.contribution }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="crit in data.criteria" :key="crit.name"
-                  class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-                <td class="px-4 py-2 font-medium">{{ data.criterion_labels[crit.name] }}</td>
-                <td class="px-4 py-2">{{ crit.direction === 'maximize' ? t.maximize : t.minimize }}</td>
-                <td class="px-4 py-2">{{ winner.raw_values[crit.name] }} {{ crit.unit }}</td>
-                <td class="px-4 py-2">{{ winner.normalised_values[crit.name]?.toFixed(3) }}</td>
-                <td class="px-4 py-2">{{ data.normalised_weights[crit.name]?.toFixed(2) }}</td>
-                <td class="px-4 py-2 font-semibold">{{ winner.weighted_scores[crit.name]?.toFixed(4) }}</td>
+              <tr v-for="crit in data.criteria" :key="crit.name">
+                <td class="sticky-col font-medium">{{ data.criterion_labels[crit.name] }}</td>
+                <td class="text-muted">{{ crit.direction === 'maximize' ? t.maximize : t.minimize }}</td>
+                <td class="num whitespace-nowrap text-right">{{ winner.raw_values[crit.name] }} <span class="text-subtle">{{ crit.unit }}</span></td>
+                <td class="num text-right">{{ winner.normalised_values[crit.name]?.toFixed(3) }}</td>
+                <td class="num text-right">{{ data.normalised_weights[crit.name]?.toFixed(2) }}</td>
+                <td class="num text-right font-semibold">{{ winner.weighted_scores[crit.name]?.toFixed(4) }}</td>
               </tr>
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
-
-    <hr class="mb-6" :class="dark ? 'border-slate-700' : 'border-slate-200'" />
 
     <!-- All alternatives grid -->
-    <p class="font-semibold text-sm mb-3" :class="dark ? 'text-slate-200' : 'text-slate-700'">{{ t.allAlternatives }}</p>
-    <div class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      <div v-for="res in data.results" :key="res.alternative_name"
-           class="rounded-xl border p-4 text-center transition-all hover:shadow-lg hover:-translate-y-0.5"
-           :class="dark ? 'bg-slate-800 border-slate-700 hover:border-teal-500' : 'bg-white border-slate-200 hover:border-teal-600'">
-        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.65rem] font-bold mb-2"
-              :style="{
-                background: RANK_BADGES[res.rank]?.bg || (dark ? '#334155' : '#e2e8f0'),
-                color: RANK_BADGES[res.rank]?.fg || (dark ? '#94a3b8' : '#334155'),
-              }">
-          {{ RANK_BADGES[res.rank]?.icon }} {{ t.ordinals[res.rank - 1] }}
-        </span>
+    <section>
+      <h3 class="card-title mb-3">{{ t.allAlternatives }}</h3>
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div v-for="res in data.results" :key="res.alternative_name"
+             class="card flex flex-col p-3 transition-colors hover:border-line-strong">
+          <div class="flex items-center gap-2">
+            <span :class="res.rank === 1 ? 'badge-accent' : 'badge'">
+              <Icon v-if="res.rank === 1" name="trophy" />{{ t.ordinals[res.rank - 1] }}
+            </span>
+            <span class="h-2 w-2 shrink-0 rounded-full" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>
+            <span class="flex-1 truncate text-[13px] font-medium">{{ res.alternative_name }}</span>
+            <span class="num text-xs text-muted">{{ res.total_score.toFixed(4) }}</span>
+          </div>
 
-        <p class="font-bold text-sm mb-0.5">
-<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>{{ res.alternative_name }}</p>
-        <p class="text-xs mb-2" :class="dark ? 'text-slate-300' : 'text-slate-600'">
-          WSM: <strong :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ res.total_score.toFixed(4) }}</strong>
-        </p>
+          <div class="mt-2.5 overflow-hidden rounded-lg border border-line">
+            <img :src="blueprintUrl(res.alternative_name)" :alt="res.alternative_name"
+                 class="mx-auto max-h-52 w-full object-contain" />
+          </div>
 
-        <img :src="blueprintUrl(res.alternative_name)" :alt="res.alternative_name"
-             class="mx-auto max-h-52 object-contain mb-2" />
+          <div class="mt-2.5 h-1 overflow-hidden rounded-full bg-surface-3">
+            <div class="h-full rounded-full transition-all"
+                 :style="{ width: Math.round((res.total_score / maxScore) * 100) + '%', background: altColor(res.alternative_name) }"></div>
+          </div>
 
-        <div class="w-4/5 mx-auto h-1 rounded-full overflow-hidden mt-2 mb-2"
-             :class="dark ? 'bg-slate-700' : 'bg-slate-200'">
-          <div class="h-full rounded-full transition-all"
-               :style="{ width: Math.round((res.total_score / maxScore) * 100) + '%', background: altColor(res.alternative_name) }"></div>
+          <p class="mt-2 text-[0.7rem] font-medium" :class="isFeasible(res.raw_values) ? 'text-ok' : 'text-bad'">
+            {{ isFeasible(res.raw_values) ? t.feasibleCheck : t.exceedsLimits }}
+          </p>
+          <p class="mt-0.5 line-clamp-2 text-[0.7rem] text-subtle">
+            {{ res.description?.slice(0, 90) }}…
+          </p>
         </div>
-
-        <p class="text-[0.65rem]"
-           :class="isFeasible(res.raw_values) ? (dark ? 'text-teal-400' : 'text-teal-700') : 'text-red-500'">
-          {{ isFeasible(res.raw_values) ? t.feasibleCheck : t.exceedsLimits }}
-        </p>
-        <p class="text-[0.65rem] mt-1 line-clamp-2" :class="dark ? 'text-slate-400' : 'text-slate-500'">
-          {{ res.description?.slice(0, 90) }}…
-        </p>
       </div>
-    </div>
+    </section>
   </div>
 </template>
+
+<style scoped>
+/* First column stays put while the table scrolls sideways on phones. */
+.sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--surface) !important;
+}
+tbody tr:nth-child(even) > .sticky-col {
+  background-color: color-mix(in oklab, var(--surface-2) 40%, var(--surface)) !important;
+}
+</style>

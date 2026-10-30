@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useLocale } from '../composables/useLocale.js'
+import Icon from './Icon.vue'
 
 const props = defineProps({
   data: Object,
@@ -48,8 +49,6 @@ const THEORY = [
   ] },
 ]
 
-const RANK_BADGES = { 1: { bg: '#fbbf24', fg: '#78350f', icon: '🏆' }, 2: { bg: '#cbd5e1', fg: '#1e293b', icon: '🥈' }, 3: { bg: '#d6a06c', fg: '#422006', icon: '🥉' } }
-
 function altColor(name) {
   const r = props.data?.results?.find(r => r.alternative_name === name)
   return props.dark ? (r?.color_dark || '#2dd4bf') : (r?.color || '#0f766e')
@@ -57,196 +56,176 @@ function altColor(name) {
 </script>
 
 <template>
-  <div v-if="data" class="grid grid-cols-10 gap-8">
+  <div v-if="data" class="grid grid-cols-1 items-start gap-4 lg:grid-cols-10">
     <!-- Left column — methodology text -->
-    <div class="col-span-6 prose max-w-none" :class="dark ? 'prose-invert' : ''">
-      <h2 class="text-xl font-bold mb-4" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.wsmTitle }}</h2>
+    <div class="space-y-4 lg:col-span-6">
+      <section class="card p-4">
+        <h2 class="card-title">{{ t.wsmTitle }}</h2>
+        <p class="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-muted">{{ t.wsmDesc }}</p>
 
-      <p :class="dark ? 'text-slate-300' : 'text-slate-600'">
-        {{ t.wsmDesc }}
-      </p>
+        <div class="my-3 overflow-x-auto rounded-lg bg-surface-2 px-3 py-3 font-mono text-[15px]">
+          <div class="w-max min-w-full text-center whitespace-nowrap">S<sub>i</sub> = Σ<sub>j=1..n</sub> w<sub>j</sub> · x̄<sub>ij</sub></div>
+        </div>
 
-      <div class="rounded-xl border p-4 my-4 text-center text-lg font-mono"
-           :class="dark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'">
-        S<sub>i</sub> = Σ<sub>j=1..n</sub> w<sub>j</sub> · x̄<sub>ij</sub>
-      </div>
+        <div class="table-scroll rounded-lg border border-line">
+          <table class="table">
+            <thead>
+              <tr>
+                <th class="w-24">{{ t.symbol }}</th>
+                <th>{{ t.definition }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="font-mono">S<sub>i</sub></td>
+                <td class="text-muted">{{ t.defSi }}</td>
+              </tr>
+              <tr>
+                <td class="font-mono">n</td>
+                <td class="text-muted">{{ t.defN }}</td>
+              </tr>
+              <tr>
+                <td class="font-mono">w<sub>j</sub></td>
+                <td class="text-muted">{{ t.defWj }}</td>
+              </tr>
+              <tr>
+                <td class="font-mono">x̄<sub>ij</sub></td>
+                <td class="text-muted">{{ t.defXij }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-      <div class="overflow-x-auto rounded-xl border mb-6"
-           :class="dark ? 'border-slate-700' : 'border-slate-200'">
-        <table class="w-full text-sm">
-          <thead>
-            <tr :class="dark ? 'bg-slate-800' : 'bg-slate-50'">
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.symbol }}</th>
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.definition }}</th>
-            </tr>
-          </thead>
-          <tbody :class="dark ? 'text-slate-300' : 'text-slate-600'">
-            <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2 font-mono">S<sub>i</sub></td>
-              <td class="px-4 py-2">{{ t.defSi }}</td>
-            </tr>
-            <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2 font-mono">n</td>
-              <td class="px-4 py-2">{{ t.defN }}</td>
-            </tr>
-            <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2 font-mono">w<sub>j</sub></td>
-              <td class="px-4 py-2">{{ t.defWj }}</td>
-            </tr>
-            <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2 font-mono">x̄<sub>ij</sub></td>
-              <td class="px-4 py-2">{{ t.defXij }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <section class="card p-4">
+        <h2 class="card-title">{{ t.minMaxTitle }}</h2>
+        <p class="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-muted">{{ t.minMaxDesc }}</p>
 
-      <hr class="my-6" :class="dark ? 'border-slate-700' : 'border-slate-200'" />
+        <p class="mt-3 text-xs font-medium">{{ t.maxDir }}</p>
+        <div class="mt-1.5 overflow-x-auto rounded-lg bg-surface-2 px-3 py-2.5 font-mono text-[13px]">
+          <div class="w-max min-w-full text-center whitespace-nowrap">x̄<sub>ij</sub> = (x<sub>ij</sub> − min<sub>j</sub>) / (max<sub>j</sub> − min<sub>j</sub>)</div>
+        </div>
 
-      <h2 class="text-xl font-bold mb-4" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.minMaxTitle }}</h2>
+        <p class="mt-3 text-xs font-medium">{{ t.minDir }}</p>
+        <div class="mt-1.5 overflow-x-auto rounded-lg bg-surface-2 px-3 py-2.5 font-mono text-[13px]">
+          <div class="w-max min-w-full text-center whitespace-nowrap">x̄<sub>ij</sub> = (max<sub>j</sub> − x<sub>ij</sub>) / (max<sub>j</sub> − min<sub>j</sub>)</div>
+        </div>
 
-      <p :class="dark ? 'text-slate-300' : 'text-slate-600'">
-        {{ t.minMaxDesc }}
-      </p>
+        <p class="mt-3 flex max-w-3xl items-start gap-1.5 text-xs leading-relaxed text-subtle">
+          <Icon name="info" class="mt-0.5" />
+          <span>{{ t.edgeCase }}</span>
+        </p>
+      </section>
 
-      <p class="font-semibold mt-3" :class="dark ? 'text-slate-200' : 'text-slate-700'">
-        {{ t.maxDir }}
-      </p>
-      <div class="rounded-xl border p-3 my-2 text-center font-mono"
-           :class="dark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200'">
-        x̄<sub>ij</sub> = (x<sub>ij</sub> − min<sub>j</sub>) / (max<sub>j</sub> − min<sub>j</sub>)
-      </div>
+      <section class="card p-4">
+        <h2 class="card-title">{{ t.methodsTheoryTitle }}</h2>
+        <p class="card-desc max-w-3xl leading-relaxed">{{ t.methodsTheoryIntro }}</p>
 
-      <p class="font-semibold mt-3" :class="dark ? 'text-slate-200' : 'text-slate-700'">
-        {{ t.minDir }}
-      </p>
-      <div class="rounded-xl border p-3 my-2 text-center font-mono"
-           :class="dark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200'">
-        x̄<sub>ij</sub> = (max<sub>j</sub> − x<sub>ij</sub>) / (max<sub>j</sub> − min<sub>j</sub>)
-      </div>
+        <div class="mt-3 divide-y divide-line">
+          <div v-for="item in THEORY" :key="item.key" class="py-3 first:pt-1 last:pb-0">
+            <h3 class="text-[13px] font-semibold">{{ t.methodTheory[item.key].title }}</h3>
+            <p class="mt-1 max-w-3xl text-[13px] leading-relaxed text-muted">{{ t.methodTheory[item.key].desc }}</p>
+            <div v-for="(f, i) in item.formulas" :key="i"
+                 class="mt-1.5 overflow-x-auto rounded-lg bg-surface-2 px-3 py-2 font-mono text-[13px]">
+              <div class="w-max min-w-full text-center whitespace-nowrap" v-html="f"></div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <p class="text-sm italic mt-2" :class="dark ? 'text-slate-400' : 'text-slate-500'">
-        {{ t.edgeCase }}
-      </p>
+      <section class="card p-4">
+        <h2 class="card-title">{{ t.criteriaDataTitle }}</h2>
+        <div class="table-scroll mt-3 rounded-lg border border-line">
+          <table class="table min-w-[36rem]">
+            <thead>
+              <tr>
+                <th>{{ t.criterionLabel }}</th>
+                <th>{{ t.directionCol }}</th>
+                <th>{{ t.weight }}</th>
+                <th>{{ t.source }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="font-medium">{{ t.constructionCost }}</td><td class="text-muted">{{ t.minimize }}</td><td class="num whitespace-nowrap text-muted">M USD</td>
+                <td class="text-muted">FHWA Interchange Justification Report Guidelines (2023)</td>
+              </tr>
+              <tr>
+                <td class="font-medium">{{ t.landArea }}</td><td class="text-muted">{{ t.minimize }}</td><td class="num whitespace-nowrap text-muted">ha</td>
+                <td class="text-muted">TRB NCHRP Report 659</td>
+              </tr>
+              <tr>
+                <td class="font-medium">{{ t.throughput }}</td><td class="text-muted">{{ t.maximize }}</td><td class="num whitespace-nowrap text-muted">veh/hr</td>
+                <td class="text-muted">HCM 7th Edition, Chapter 14</td>
+              </tr>
+              <tr>
+                <td class="font-medium">{{ t.safetyIndex }}</td><td class="text-muted">{{ t.maximize }}</td><td class="num whitespace-nowrap text-muted">1–10</td>
+                <td class="text-muted">PIARC Road Safety Manual (2019); AASHTO HSM (2022)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
 
-      <hr class="my-6" :class="dark ? 'border-slate-700' : 'border-slate-200'" />
-
-      <h2 class="text-xl font-bold mb-2" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.methodsTheoryTitle }}</h2>
-      <p class="mb-4" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.methodsTheoryIntro }}</p>
-
-      <div v-for="item in THEORY" :key="item.key" class="mb-5">
-        <h3 class="text-base font-semibold mb-1" :class="dark ? 'text-slate-200' : 'text-slate-800'">
-          {{ t.methodTheory[item.key].title }}
-        </h3>
-        <p class="text-sm" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.methodTheory[item.key].desc }}</p>
-        <div v-for="(f, i) in item.formulas" :key="i"
-             class="rounded-xl border p-3 my-2 text-center font-mono text-sm"
-             :class="dark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'"
-             v-html="f"></div>
-      </div>
-
-      <hr class="my-6" :class="dark ? 'border-slate-700' : 'border-slate-200'" />
-
-      <h2 class="text-xl font-bold mb-4" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.criteriaDataTitle }}</h2>
-
-      <div class="overflow-x-auto rounded-xl border mb-6"
-           :class="dark ? 'border-slate-700' : 'border-slate-200'">
-        <table class="w-full text-sm">
-          <thead>
-            <tr :class="dark ? 'bg-slate-800' : 'bg-slate-50'">
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.criterionLabel }}</th>
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.directionCol }}</th>
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.weight }}</th>
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.source }}</th>
-            </tr>
-          </thead>
-          <tbody :class="dark ? 'text-slate-300' : 'text-slate-600'">
-            <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2">{{ t.constructionCost }}</td><td class="px-4 py-2">{{ t.minimize }}</td><td class="px-4 py-2">M USD</td>
-              <td class="px-4 py-2">FHWA Interchange Justification Report Guidelines (2023)</td>
-            </tr>
-            <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2">{{ t.landArea }}</td><td class="px-4 py-2">{{ t.minimize }}</td><td class="px-4 py-2">ha</td>
-              <td class="px-4 py-2">TRB NCHRP Report 659</td>
-            </tr>
-            <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2">{{ t.throughput }}</td><td class="px-4 py-2">{{ t.maximize }}</td><td class="px-4 py-2">veh/hr</td>
-              <td class="px-4 py-2">HCM 7th Edition, Chapter 14</td>
-            </tr>
-            <tr class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2">{{ t.safetyIndex }}</td><td class="px-4 py-2">{{ t.maximize }}</td><td class="px-4 py-2">1–10</td>
-              <td class="px-4 py-2">PIARC Road Safety Manual (2019); AASHTO HSM (2022)</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <hr class="my-6" :class="dark ? 'border-slate-700' : 'border-slate-200'" />
-
-      <h2 class="text-xl font-bold mb-3" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.referencesTitle }}</h2>
-      <ul class="list-disc pl-5 space-y-1.5 text-sm" :class="dark ? 'text-slate-300' : 'text-slate-600'">
-        <li>Fishburn, P. C. (1967). Additive utilities with incomplete product sets. <em>Operations Research</em>, 15(3), 537–542.</li>
-        <li>Triantaphyllou, E. (2000). <em>Multi-Criteria Decision Making Methods: A Comparative Study.</em> Kluwer Academic Publishers.</li>
-        <li>Transportation Research Board (2022). <em>Highway Capacity Manual, 7th Edition.</em></li>
-        <li>FHWA (2023). <em>Interchange Justification Report Guidelines.</em></li>
-        <li>PIARC (2019). <em>Road Safety Manual.</em></li>
-        <li>AASHTO (2022). <em>Highway Safety Manual, 2nd Edition.</em></li>
-        <li>Hwang, C. L., Yoon, K. (1981). <em>Multiple Attribute Decision Making: Methods and Applications.</em> Springer.</li>
-        <li>Saaty, T. L. (1980). <em>The Analytic Hierarchy Process.</em> McGraw-Hill.</li>
-        <li>Brans, J. P., Vincke, Ph. (1985). A preference ranking organisation method. <em>Management Science</em>, 31(6), 647–656.</li>
-        <li>Opricovic, S., Tzeng, G.-H. (2004). Compromise solution by MCDM methods: a comparative analysis of VIKOR and TOPSIS. <em>European Journal of Operational Research</em>, 156(2), 445–455.</li>
-        <li>Diakoulaki, D., Mavrotas, G., Papayannakis, L. (1995). Determining objective weights in multiple criteria problems: the CRITIC method. <em>Computers &amp; Operations Research</em>, 22(7), 763–770.</li>
-        <li>Lahdelma, R., Salminen, P. (2001). SMAA-2: Stochastic multicriteria acceptability analysis for group decision making. <em>Operations Research</em>, 49(3), 444–454.</li>
-        <li>Flyvbjerg, B., Holm, M. S., Buhl, S. (2002). Underestimating costs in public works projects: error or lie? <em>Journal of the American Planning Association</em>, 68(3), 279–295.</li>
-        <li>Shannon, C. E. (1948). A mathematical theory of communication. <em>Bell System Technical Journal</em>, 27, 379–423.</li>
-      </ul>
+      <section class="card p-4">
+        <h2 class="card-title">{{ t.referencesTitle }}</h2>
+        <ul class="mt-2 max-w-3xl list-disc space-y-1.5 pl-5 text-[13px] leading-relaxed text-muted [overflow-wrap:anywhere] marker:text-subtle">
+          <li>Fishburn, P. C. (1967). Additive utilities with incomplete product sets. <em>Operations Research</em>, 15(3), 537–542.</li>
+          <li>Triantaphyllou, E. (2000). <em>Multi-Criteria Decision Making Methods: A Comparative Study.</em> Kluwer Academic Publishers.</li>
+          <li>Transportation Research Board (2022). <em>Highway Capacity Manual, 7th Edition.</em></li>
+          <li>FHWA (2023). <em>Interchange Justification Report Guidelines.</em></li>
+          <li>PIARC (2019). <em>Road Safety Manual.</em></li>
+          <li>AASHTO (2022). <em>Highway Safety Manual, 2nd Edition.</em></li>
+          <li>Hwang, C. L., Yoon, K. (1981). <em>Multiple Attribute Decision Making: Methods and Applications.</em> Springer.</li>
+          <li>Saaty, T. L. (1980). <em>The Analytic Hierarchy Process.</em> McGraw-Hill.</li>
+          <li>Brans, J. P., Vincke, Ph. (1985). A preference ranking organisation method. <em>Management Science</em>, 31(6), 647–656.</li>
+          <li>Opricovic, S., Tzeng, G.-H. (2004). Compromise solution by MCDM methods: a comparative analysis of VIKOR and TOPSIS. <em>European Journal of Operational Research</em>, 156(2), 445–455.</li>
+          <li>Diakoulaki, D., Mavrotas, G., Papayannakis, L. (1995). Determining objective weights in multiple criteria problems: the CRITIC method. <em>Computers &amp; Operations Research</em>, 22(7), 763–770.</li>
+          <li>Lahdelma, R., Salminen, P. (2001). SMAA-2: Stochastic multicriteria acceptability analysis for group decision making. <em>Operations Research</em>, 49(3), 444–454.</li>
+          <li>Flyvbjerg, B., Holm, M. S., Buhl, S. (2002). Underestimating costs in public works projects: error or lie? <em>Journal of the American Planning Association</em>, 68(3), 279–295.</li>
+          <li>Shannon, C. E. (1948). A mathematical theory of communication. <em>Bell System Technical Journal</em>, 27, 379–423.</li>
+        </ul>
+      </section>
     </div>
 
     <!-- Right column — weight profile + ranking -->
-    <div class="col-span-4">
-      <p class="font-semibold text-sm mb-2" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.activeWeightProfile }}</p>
-      <div class="overflow-x-auto rounded-xl border mb-6"
-           :class="dark ? 'border-slate-700' : 'border-slate-200'">
-        <table class="w-full text-sm">
-          <thead>
-            <tr :class="dark ? 'bg-slate-800' : 'bg-slate-50'">
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.criterionLabel }}</th>
-              <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ t.weight }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="crit in data.criteria" :key="crit.name"
-                class="border-t" :class="dark ? 'border-slate-700' : 'border-slate-100'">
-              <td class="px-4 py-2" :class="dark ? 'text-slate-300' : 'text-slate-600'">{{ data.criterion_labels[crit.name] }}</td>
-              <td class="px-4 py-2 font-medium" :class="dark ? 'text-slate-100' : 'text-slate-900'">
-                {{ (data.normalised_weights[crit.name] * 100).toFixed(0) }}%
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <p class="font-semibold text-sm mb-2" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.currentRanking }}</p>
-      <div class="space-y-2">
-        <div v-for="res in data.results" :key="res.alternative_name"
-             class="flex items-center gap-3 rounded-lg border px-4 py-2.5"
-             :class="dark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'">
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.65rem] font-bold"
-                :style="{
-                  background: RANK_BADGES[res.rank]?.bg || (dark ? '#334155' : '#e2e8f0'),
-                  color: RANK_BADGES[res.rank]?.fg || (dark ? '#94a3b8' : '#334155'),
-                }">
-            {{ RANK_BADGES[res.rank]?.icon }} {{ t.ordinals[res.rank - 1] }}
-          </span>
-          <span class="flex-1 font-bold text-sm">
-<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>
-            {{ res.alternative_name }}
-          </span>
-          <span class="font-bold text-sm" :class="dark ? 'text-slate-100' : 'text-slate-900'">
-            {{ res.total_score.toFixed(4) }}
-          </span>
+    <div class="space-y-4 lg:col-span-4">
+      <section class="card p-4">
+        <h2 class="card-title">{{ t.activeWeightProfile }}</h2>
+        <div class="table-scroll mt-3 rounded-lg border border-line">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>{{ t.criterionLabel }}</th>
+                <th class="text-right">{{ t.weight }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="crit in data.criteria" :key="crit.name">
+                <td class="text-muted">{{ data.criterion_labels[crit.name] }}</td>
+                <td class="num text-right font-medium">{{ (data.normalised_weights[crit.name] * 100).toFixed(0) }}%</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-      </div>
+      </section>
+
+      <section class="card p-4">
+        <h2 class="card-title">{{ t.currentRanking }}</h2>
+        <div class="mt-3 divide-y divide-line overflow-hidden rounded-lg border border-line">
+          <div v-for="res in data.results" :key="res.alternative_name"
+               class="flex items-center gap-2.5 px-3 py-2 text-[13px]">
+            <span class="w-14 shrink-0">
+              <span :class="res.rank === 1 ? 'badge-accent' : 'badge'">
+                <Icon v-if="res.rank === 1" name="trophy" />{{ t.ordinals[res.rank - 1] }}
+              </span>
+            </span>
+            <span class="h-2 w-2 shrink-0 rounded-full" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>
+            <span class="flex-1 truncate font-medium">{{ res.alternative_name }}</span>
+            <span class="num text-muted">{{ res.total_score.toFixed(4) }}</span>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 </template>

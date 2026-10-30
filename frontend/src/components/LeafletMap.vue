@@ -1,6 +1,7 @@
 <script setup>
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import L from 'leaflet'
+import { useViewport } from '../composables/useViewport.js'
 
 const props = defineProps({
   lat: Number,
@@ -11,9 +12,11 @@ const props = defineProps({
 })
 
 const mapContainer = ref(null)
+const { coarse } = useViewport()
 let map = null
 let marker = null
 let circle = null
+let ro = null
 
 function initMap() {
   if (!mapContainer.value) return
@@ -23,7 +26,8 @@ function initMap() {
     map = null
   }
 
-  map = L.map(mapContainer.value, { zoomControl: true }).setView([props.lat, props.lon], 15)
+  // On touch screens one finger scrolls the page; pinch or the +/- buttons zoom the map.
+  map = L.map(mapContainer.value, { zoomControl: true, dragging: !coarse.value }).setView([props.lat, props.lon], 15)
 
   L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -44,6 +48,14 @@ function initMap() {
 
 onMounted(() => {
   nextTick(initMap)
+  ro = new ResizeObserver(() => map?.invalidateSize())
+  ro.observe(mapContainer.value)
+})
+
+onBeforeUnmount(() => {
+  ro?.disconnect()
+  map?.remove()
+  map = null
 })
 
 watch(() => [props.lat, props.lon, props.name, props.example], () => {
@@ -52,5 +64,33 @@ watch(() => [props.lat, props.lon, props.name, props.example], () => {
 </script>
 
 <template>
-  <div ref="mapContainer" class="w-full h-96 rounded-xl z-0"></div>
+  <div class="overflow-hidden rounded-lg border border-line">
+    <div ref="mapContainer" class="z-0 h-64 w-full !rounded-none sm:h-80 md:h-96"></div>
+  </div>
 </template>
+
+<style scoped>
+/* macOS-style zoom buttons; 44px on touch screens. */
+:deep(.leaflet-bar) {
+  border: 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: var(--control-shadow);
+}
+:deep(.leaflet-bar a) {
+  background: var(--control);
+  color: var(--fg);
+  border-bottom-color: var(--line);
+}
+:deep(.leaflet-bar a:hover) {
+  background: var(--surface-2);
+}
+@media (pointer: coarse) {
+  :deep(.leaflet-touch .leaflet-bar a) {
+    width: 44px;
+    height: 44px;
+    line-height: 44px;
+    font-size: 20px;
+  }
+}
+</style>

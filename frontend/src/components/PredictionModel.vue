@@ -1,7 +1,9 @@
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
 import PlotlyChart from './PlotlyChart.vue'
+import Icon from './Icon.vue'
 import { useLocale } from '../composables/useLocale.js'
+import { useViewport } from '../composables/useViewport.js'
 import { useModel, ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES } from '../composables/useModel.js'
 import { CRITERION_KEYS } from '../composables/useDSS.js'
 import { MODEL_COLORS, SURFACE, chartInk } from '../chartPalette.js'
@@ -13,6 +15,7 @@ const props = defineProps({
 })
 
 const { t, locale } = useLocale()
+const { narrow, coarse } = useViewport()
 const model = useModel()
 const status = model.status
 const prediction = model.prediction
@@ -50,6 +53,16 @@ watch(
   () => schedulePredict(),
   { deep: true },
 )
+
+// Load once in the background so the first visit opens on data.
+onMounted(() => {
+  setTimeout(() => (window.requestIdleCallback ?? (f => f()))(() => {
+    if (props.active || prediction.value) return
+    model.load()
+    stale = false
+    model.predict(props.dss, locale.value)
+  }), 2500)
+})
 
 // Upload / delete / retrain refit the model, so the predictions are out of date.
 watch(() => status.value?.revision, (now, before) => {
@@ -200,6 +213,7 @@ const intervalChart = computed(() => {
   const f = D3_FORMAT[k]
   const names = rows.map(r => r.name)
   const intervalLabel = fmt(t.value.modelIntervalLabel, { level: levelPct.value })
+  const n = narrow.value
   return {
     data: [
       {
@@ -208,7 +222,7 @@ const intervalChart = computed(() => {
         name: t.value.modelExpertSeries,
         x: names,
         y: rows.map(r => r.expert),
-        marker: { symbol: 'diamond', size: 13, color: colors.value.expert, line: { color: surface.value, width: 2 } },
+        marker: { symbol: 'diamond', size: n ? 11 : 13, color: colors.value.expert, line: { color: surface.value, width: 2 } },
         hovertemplate: `<b>%{x}</b><br>${t.value.modelExpertSeries}: %{y:${f}} ${unit}<extra></extra>`,
       },
       {
@@ -217,12 +231,12 @@ const intervalChart = computed(() => {
         name: `${t.value.modelSeries} · ${intervalLabel}`,
         x: names,
         y: rows.map(r => r.predicted),
-        marker: { symbol: 'circle', size: 12, color: colors.value.model, line: { color: surface.value, width: 2 } },
+        marker: { symbol: 'circle', size: n ? 10 : 12, color: colors.value.model, line: { color: surface.value, width: 2 } },
         error_y: {
           type: 'data', symmetric: false,
           array: rows.map(r => r.high - r.predicted),
           arrayminus: rows.map(r => r.predicted - r.low),
-          color: colors.value.model, thickness: 2, width: 8,
+          color: colors.value.model, thickness: 2, width: n ? 6 : 8,
         },
         customdata: rows.map(r => [r.low, r.high]),
         hovertemplate: `<b>%{x}</b><br>${t.value.modelSeries}: %{y:${f}} ${unit}`
@@ -231,19 +245,23 @@ const intervalChart = computed(() => {
     ],
     layout: {
       paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-      font: { family: 'Inter, system-ui, sans-serif', color: ink.value.text, size: 12 },
-      hoverlabel: { font: { family: 'Inter, system-ui, sans-serif' } },
-      height: 360,
+      font: { family: ink.value.font, color: ink.value.text, size: n ? 11 : 12 },
+      hoverlabel: { font: { family: ink.value.font } },
+      height: n ? 300 : 360,
       autosize: true,
       scattermode: 'group',
       scattergap: 0.75,
-      margin: { l: 64, r: 16, t: 8, b: 80 },
-      xaxis: { tickfont: { size: 12, color: ink.value.text } },
+      // The legend sits at the bottom of the container; automargin makes room for ticks above it.
+      margin: n ? { l: 8, r: 4, t: 4, b: 44 } : { l: 64, r: 16, t: 8, b: 56 },
+      xaxis: { tickfont: { size: n ? 11 : 12, color: ink.value.text }, gridcolor: ink.value.grid, automargin: true },
       yaxis: {
-        title: { text: `${criterionLabel.value[k]} (${unit})`, font: { size: 12 } },
-        gridcolor: ink.value.grid, tickfont: { color: ink.value.muted }, zeroline: false,
+        title: { text: `${criterionLabel.value[k]} (${unit})`, font: { size: n ? 11 : 12 }, standoff: n ? 6 : 10 },
+        gridcolor: ink.value.grid, tickfont: { color: ink.value.muted }, zeroline: false, automargin: true,
       },
-      legend: { orientation: 'h', y: -0.18, x: 0, bgcolor: 'rgba(0,0,0,0)' },
+      legend: {
+        orientation: 'h', x: 0, xanchor: 'left', yref: 'container', y: 0, yanchor: 'bottom',
+        bgcolor: 'rgba(0,0,0,0)', font: { size: n ? 11 : 12 },
+      },
     },
   }
 })
@@ -267,175 +285,197 @@ const coefRows = computed(() => (status.value?.coefficients?.[coefCriterion.valu
   effect: Math.exp(c.mean) - 1,
   credible: c.sd > 0 && Math.abs(c.mean) > 1.645 * c.sd,
 })))
-
-// ── Styles ───────────────────────────────────────────────────────────────────
-const panel = computed(() => props.dark
-  ? 'bg-white/[0.06] border border-white/10'
-  : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]')
-const muted = computed(() => props.dark ? 'text-slate-400' : 'text-slate-500')
-const strong = computed(() => props.dark ? 'text-slate-100' : 'text-slate-900')
-const rowBorder = computed(() => props.dark ? 'border-slate-700 text-slate-200' : 'border-black/5 text-slate-800')
-const primaryButton = computed(() => props.dark ? 'bg-teal-600 hover:bg-teal-500' : 'bg-teal-700 hover:bg-teal-600')
-const amberBox = computed(() => props.dark
-  ? 'bg-amber-900/20 border border-amber-700/50 text-amber-200'
-  : 'bg-amber-50/80 border border-amber-200/80 text-amber-800')
-const errorBox = computed(() => props.dark
-  ? 'bg-red-500/10 border border-red-500/30 text-red-200'
-  : 'bg-red-50 border border-red-200 text-red-800')
-const chip = computed(() => props.dark
-  ? 'bg-white/10 text-slate-300'
-  : 'bg-slate-200/80 text-slate-600')
-
-function segmentClass(selected) {
-  return selected
-    ? (props.dark ? 'bg-slate-600 border-slate-500 text-white' : 'bg-slate-800 border-slate-800 text-white')
-    : (props.dark ? 'border-slate-600 text-slate-400' : 'border-black/10 text-slate-500')
-}
 </script>
 
+
 <template>
-  <div>
+  <div class="space-y-4">
     <!-- (1) Header -->
-    <div class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6 mb-6" :class="panel">
-      <h2 class="text-xl font-semibold tracking-tight mb-1" :class="strong">{{ t.modelTitle }}</h2>
-      <p class="text-xs mb-3 max-w-4xl leading-relaxed" :class="muted">{{ t.modelIntro }}</p>
-      <div class="flex flex-wrap items-center gap-2 text-xs">
-        <span :class="muted">{{ t.modelEvaluationUses }}:</span>
-        <span class="font-semibold" :class="strong">{{ t.valueSources[dss.valueSource.value] }}</span>
-        <button type="button" class="px-2.5 py-1 rounded-lg font-semibold border transition-colors"
-                :class="dark ? 'border-slate-600 text-slate-300 hover:text-white' : 'border-black/10 text-slate-600 hover:text-slate-900'"
+    <div class="card p-4">
+      <h2 class="card-title">{{ t.modelTitle }}</h2>
+      <p class="card-desc max-w-3xl leading-relaxed">{{ t.modelIntro }}</p>
+      <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+        <span class="text-muted">{{ t.modelEvaluationUses }}:</span>
+        <span class="badge-accent">{{ t.valueSources[dss.valueSource.value] }}</span>
+        <button type="button" class="btn md:!px-2.5 md:!py-1 md:!text-xs"
                 @click="dss.valueSource.value = dss.valueSource.value === 'model' ? 'expert' : 'model'">
           {{ dss.valueSource.value === 'model' ? t.modelBackToExpert : t.modelUseInEvaluation }}
         </button>
-        <span v-if="model.loading.value" class="flex items-center gap-1.5 ml-auto" :class="muted">
-          <span class="animate-spin rounded-full h-3.5 w-3.5 border-b-2" :class="dark ? 'border-teal-400' : 'border-teal-600'"></span>
+        <span v-if="model.loading.value" class="ml-auto flex items-center gap-1.5 text-subtle">
+          <span class="spinner"></span>
           {{ t.updating }}
         </span>
       </div>
     </div>
 
-    <div v-if="model.error.value || localError" class="rounded-2xl px-4 py-3 mb-6 text-sm space-y-1 whitespace-pre-line" :class="errorBox">
+    <div v-if="model.error.value || localError" class="notice notice-bad space-y-1 whitespace-pre-line">
       <p v-if="localError">{{ localError }}</p>
       <p v-if="model.error.value">{{ model.error.value }}</p>
     </div>
 
     <template v-if="status">
       <!-- (2) Status cards -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div class="rounded-3xl p-5" :class="panel">
-          <p class="text-xs font-semibold uppercase tracking-wider mb-2" :class="muted">{{ t.modelStatDocuments }}</p>
-          <p class="text-3xl font-extrabold tabular-nums" :class="strong">{{ documents.length }}</p>
-          <p class="text-xs mt-1" :class="muted">
-            {{ fmtSize(totalBytes) }}
-            <template v-if="docsWithWarnings"> · {{ fmt(t.modelDocsWithWarnings, { n: docsWithWarnings }) }}</template>
+      <div class="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <div class="card p-4">
+          <p class="eyebrow">{{ t.modelStatDocuments }}</p>
+          <p class="num mt-1.5 text-2xl font-semibold tracking-tight">{{ documents.length }}</p>
+          <p class="mt-0.5 text-xs text-muted">
+            <span class="num">{{ fmtSize(totalBytes) }}</span>
+            <template v-if="docsWithWarnings"> · <span class="text-warn">{{ fmt(t.modelDocsWithWarnings, { n: docsWithWarnings }) }}</span></template>
           </p>
         </div>
-        <div class="rounded-3xl p-5" :class="panel">
-          <p class="text-xs font-semibold uppercase tracking-wider mb-2" :class="muted">{{ t.modelStatRecords }}</p>
-          <p class="text-3xl font-extrabold tabular-nums" :class="strong">{{ nRecords }}</p>
-          <p class="text-xs mt-1" :class="muted">
+        <div class="card p-4">
+          <p class="eyebrow">{{ t.modelStatRecords }}</p>
+          <p class="num mt-1.5 text-2xl font-semibold tracking-tight">{{ nRecords }}</p>
+          <p class="mt-0.5 text-xs text-muted">
             {{ fmt(t.modelRealCount, { n: nRecords - nSynthetic }) }} · {{ fmt(t.modelSyntheticCount, { n: nSynthetic }) }}
           </p>
-          <p v-if="nSynthetic > 0" class="text-[0.7rem] leading-snug mt-2 rounded-lg px-2.5 py-1.5" :class="amberBox">
-            ⚠ {{ t.modelSyntheticBadge }}
+          <p v-if="nSynthetic > 0" class="notice notice-warn mt-2 hidden gap-1.5 !px-2.5 !py-1.5 text-[0.7rem] leading-snug md:flex">
+            <Icon name="alert-triangle" class="mt-px text-xs" />
+            <span>{{ t.modelSyntheticBadge }}</span>
           </p>
         </div>
-        <div class="rounded-3xl p-5" :class="panel">
-          <p class="text-xs font-semibold uppercase tracking-wider mb-2" :class="muted">{{ t.modelStatTrained }}</p>
-          <p class="text-lg font-bold mt-1" :class="strong">{{ trainedAt ?? t.modelNeverTrained }}</p>
-          <p class="text-xs mt-1" :class="muted">{{ fmt(t.modelTrainedIn, { ms: trainMs }) }}</p>
+        <!-- Phones: the notice gets the full row instead of squeezing into a half-width card. -->
+        <p v-if="nSynthetic > 0" class="notice notice-warn col-span-2 flex gap-1.5 text-xs leading-snug md:hidden">
+          <Icon name="alert-triangle" class="mt-px shrink-0" />
+          <span>{{ t.modelSyntheticBadge }}</span>
+        </p>
+        <div class="card col-span-2 p-4 md:col-span-1">
+          <p class="eyebrow">{{ t.modelStatTrained }}</p>
+          <p class="mt-1.5 text-[15px] font-semibold">{{ trainedAt ?? t.modelNeverTrained }}</p>
+          <p class="mt-0.5 text-xs text-muted">{{ fmt(t.modelTrainedIn, { ms: trainMs }) }}</p>
         </div>
       </div>
 
-      <div v-if="nRecords === 0" class="rounded-2xl px-4 py-3 mb-6 text-sm" :class="amberBox">
-        {{ t.modelEmptyCorpus }}
+      <div v-if="nRecords === 0" class="notice notice-warn flex items-start gap-2">
+        <Icon name="alert-triangle" class="mt-0.5" />
+        <span>{{ t.modelEmptyCorpus }}</span>
       </div>
 
       <!-- (3) Document manager -->
-      <div class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6 mb-6" :class="panel">
-        <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+      <div class="card p-4">
+        <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 class="text-base font-semibold" :class="strong">{{ t.modelDocsTitle }}</h3>
-            <p class="text-xs" :class="muted">{{ t.modelDocsDesc }}</p>
+            <h3 class="card-title">{{ t.modelDocsTitle }}</h3>
+            <p class="card-desc">{{ t.modelDocsDesc }}</p>
           </div>
-          <button type="button"
-                  class="px-3 py-1.5 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-40"
-                  :class="primaryButton" :disabled="busy" @click="retrain">
+          <button type="button" class="btn" :disabled="busy" @click="retrain">
+            <Icon name="refresh" :class="retraining ? 'animate-spin' : ''" />
             {{ retraining ? t.modelRetraining : t.modelRetrain }}
           </button>
         </div>
 
         <div role="button" tabindex="0"
-             class="rounded-2xl border-2 border-dashed px-4 py-6 text-center cursor-pointer transition-colors"
-             :class="dragActive
-               ? (dark ? 'border-teal-400 bg-teal-500/10' : 'border-teal-600 bg-teal-50/70')
-               : (dark ? 'border-slate-600 hover:border-slate-500' : 'border-black/15 hover:border-black/30')"
+             class="flex cursor-pointer flex-col items-center rounded-lg border border-dashed px-4 py-5 text-center transition-colors"
+             :class="dragActive ? 'border-accent bg-accent-soft' : 'border-line-strong hover:bg-surface-2 active:bg-surface-2'"
              @click="pickFiles" @keydown.enter.prevent="pickFiles" @keydown.space.prevent="pickFiles"
              @dragenter.prevent="dragActive = true" @dragover.prevent="dragActive = true"
              @dragleave.prevent="dragActive = false" @drop.prevent="onDrop">
           <input ref="fileInput" type="file" multiple class="hidden" :accept="ALLOWED_EXTENSIONS.join(',')" @change="onFileInput" />
-          <p class="text-sm font-semibold pointer-events-none" :class="strong">
-            <span v-if="model.uploading.value" class="inline-block animate-spin rounded-full h-3.5 w-3.5 border-b-2 mr-1.5 align-middle"
-                  :class="dark ? 'border-teal-400' : 'border-teal-600'"></span>
-            {{ model.uploading.value ? t.modelUploading : t.modelDropHint }}
+          <span v-if="model.uploading.value" class="spinner pointer-events-none mb-2 !h-4 !w-4"></span>
+          <Icon v-else name="upload" class="pointer-events-none mb-2 text-lg text-subtle" />
+          <p class="pointer-events-none text-[13px] font-medium">
+            {{ model.uploading.value ? t.modelUploading : coarse ? t.modelTapHint : t.modelDropHint }}
           </p>
-          <p class="text-xs mt-1 pointer-events-none" :class="muted">{{ fmt(t.modelDropFormats, { formats: formatsText, size: maxMb }) }}</p>
+          <p class="pointer-events-none mt-0.5 text-xs text-muted">{{ fmt(t.modelDropFormats, { formats: formatsText, size: maxMb }) }}</p>
         </div>
 
-        <div class="flex flex-wrap gap-2 mt-2 text-[0.7rem]">
-          <span class="px-2 py-0.5 rounded-full" :class="chip">{{ status.pdf_available ? t.modelPdfOn : t.modelPdfOff }}</span>
-          <span class="px-2 py-0.5 rounded-full" :class="chip">{{ status.llm_available ? t.modelLlmOn : t.modelLlmOff }}</span>
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          <span class="badge">
+            <Icon :name="status.pdf_available ? 'check' : 'x'" :class="status.pdf_available ? 'text-ok' : 'text-subtle'" />
+            {{ status.pdf_available ? t.modelPdfOn : t.modelPdfOff }}
+          </span>
+          <span class="badge">
+            <Icon :name="status.llm_available ? 'check' : 'x'" :class="status.llm_available ? 'text-ok' : 'text-subtle'" />
+            {{ status.llm_available ? t.modelLlmOn : t.modelLlmOff }}
+          </span>
         </div>
 
-        <p v-if="!documents.length" class="text-sm mt-4" :class="muted">{{ t.modelNoDocuments }}</p>
-        <div v-else class="overflow-x-auto mt-4">
-          <table class="w-full text-sm">
+        <p v-if="!documents.length" class="mt-4 text-[13px] text-muted">{{ t.modelNoDocuments }}</p>
+        <ul v-if="documents.length" class="mt-4 divide-y divide-line rounded-lg border border-line md:hidden">
+          <li v-for="doc in documents" :key="doc.name" class="flex items-center gap-2.5 py-1.5 pr-1 pl-3">
+            <Icon name="file" class="mt-1.5 shrink-0 self-start text-subtle" />
+            <div class="min-w-0 flex-1 py-0.5">
+              <p class="text-sm font-medium [overflow-wrap:anywhere]">{{ doc.name }}</p>
+              <p class="mt-0.5 text-xs text-muted">
+                <span v-if="doc.synthetic" class="badge mr-1 !bg-warn-soft !py-0 !text-warn">{{ t.modelSyntheticTag }}</span>
+                {{ t.modelKinds[doc.kind] ?? doc.kind }} · {{ t.modelExtractors[doc.extractor] ?? doc.extractor }}
+                · <span :class="doc.records === 0 ? 'text-warn' : ''">{{ t.modelColRecords }}: <span class="num">{{ doc.records }}</span></span>
+                · <span class="num whitespace-nowrap">{{ fmtSize(doc.size_bytes) }}</span>
+              </p>
+              <button v-if="doc.warnings.length" type="button"
+                      class="-mb-2 inline-flex min-h-11 items-center gap-1 text-xs font-medium text-warn"
+                      :aria-expanded="expandedWarnings.has(doc.name)" @click="toggleWarnings(doc.name)">
+                <Icon :name="expandedWarnings.has(doc.name) ? 'chevron-down' : 'chevron-right'" />
+                {{ t.modelColWarnings }}
+                <span class="num">({{ doc.warnings.length }})</span>
+              </button>
+              <ul v-if="expandedWarnings.has(doc.name)" class="notice notice-warn mt-2 mb-1 space-y-1 text-xs">
+                <li v-for="(w, i) in doc.warnings" :key="i" class="flex gap-1.5">
+                  <Icon name="alert-triangle" class="mt-px shrink-0" />
+                  <span class="min-w-0 break-words">{{ w }}</span>
+                </li>
+              </ul>
+            </div>
+            <button type="button" class="icon-btn shrink-0 active:!bg-bad-soft active:!text-bad disabled:pointer-events-none disabled:opacity-40"
+                    :aria-label="`${t.modelDelete}: ${doc.name}`"
+                    :disabled="busy" @click="removeDocument(doc.name)">
+              <Icon name="trash" />
+            </button>
+          </li>
+        </ul>
+        <div v-if="documents.length" class="table-scroll mt-4 hidden rounded-lg border border-line md:block">
+          <table class="table">
             <thead>
-              <tr :class="muted">
-                <th class="px-3 py-2 text-left font-semibold">{{ t.modelColDocument }}</th>
-                <th class="px-3 py-2 text-left font-semibold">{{ t.modelColKind }}</th>
-                <th class="px-3 py-2 text-left font-semibold">{{ t.modelColExtractor }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.modelColRecords }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.modelColSize }}</th>
-                <th class="px-3 py-2 text-left font-semibold">{{ t.modelColWarnings }}</th>
-                <th class="px-3 py-2"></th>
+              <tr>
+                <th>{{ t.modelColDocument }}</th>
+                <th>{{ t.modelColKind }}</th>
+                <th>{{ t.modelColExtractor }}</th>
+                <th class="text-right">{{ t.modelColRecords }}</th>
+                <th class="text-right">{{ t.modelColSize }}</th>
+                <th>{{ t.modelColWarnings }}</th>
+                <th class="w-10"></th>
               </tr>
             </thead>
             <tbody>
               <template v-for="doc in documents" :key="doc.name">
-                <tr class="border-t" :class="rowBorder">
-                  <td class="px-3 py-2 font-medium break-all">
-                    {{ doc.name }}
-                    <span v-if="doc.synthetic" class="ml-1.5 inline-block px-1.5 py-0.5 rounded text-[0.6rem] font-bold uppercase tracking-wide align-middle"
-                          :class="dark ? 'bg-amber-700/40 text-amber-300' : 'bg-amber-200 text-amber-700'">
-                      {{ t.modelSyntheticTag }}
-                    </span>
+                <tr>
+                  <td class="!py-1.5">
+                    <div class="flex items-center gap-2">
+                      <Icon name="file" class="text-subtle" />
+                      <span class="break-all font-medium">{{ doc.name }}</span>
+                      <span v-if="doc.synthetic" class="badge !border-warn/25 !bg-warn-soft !text-warn">{{ t.modelSyntheticTag }}</span>
+                    </div>
                   </td>
-                  <td class="px-3 py-2">{{ t.modelKinds[doc.kind] ?? doc.kind }}</td>
-                  <td class="px-3 py-2">{{ t.modelExtractors[doc.extractor] ?? doc.extractor }}</td>
-                  <td class="px-3 py-2 text-right tabular-nums font-semibold"
-                      :class="doc.records === 0 ? (dark ? 'text-amber-300' : 'text-amber-700') : ''">{{ doc.records }}</td>
-                  <td class="px-3 py-2 text-right tabular-nums whitespace-nowrap">{{ fmtSize(doc.size_bytes) }}</td>
-                  <td class="px-3 py-2">
-                    <button v-if="doc.warnings.length" type="button" class="text-xs underline whitespace-nowrap"
-                            :class="dark ? 'text-amber-300' : 'text-amber-700'"
+                  <td class="!py-1.5 text-muted">{{ t.modelKinds[doc.kind] ?? doc.kind }}</td>
+                  <td class="!py-1.5 text-muted">{{ t.modelExtractors[doc.extractor] ?? doc.extractor }}</td>
+                  <td class="num !py-1.5 text-right" :class="doc.records === 0 ? '!text-warn' : ''">{{ doc.records }}</td>
+                  <td class="num !py-1.5 whitespace-nowrap text-right text-muted">{{ fmtSize(doc.size_bytes) }}</td>
+                  <td class="!py-1.5">
+                    <button v-if="doc.warnings.length" type="button"
+                            class="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-warn hover:underline"
                             :aria-expanded="expandedWarnings.has(doc.name)" @click="toggleWarnings(doc.name)">
-                      {{ expandedWarnings.has(doc.name) ? `▾ ${t.modelHide}` : `▸ ${t.modelShow}` }} ({{ doc.warnings.length }})
+                      <Icon :name="expandedWarnings.has(doc.name) ? 'chevron-down' : 'chevron-right'" />
+                      {{ expandedWarnings.has(doc.name) ? t.modelHide : t.modelShow }}
+                      <span class="num">({{ doc.warnings.length }})</span>
                     </button>
-                    <span v-else :class="muted">—</span>
+                    <span v-else class="text-subtle">—</span>
                   </td>
-                  <td class="px-3 py-2 text-right">
-                    <button type="button" class="text-xs font-semibold px-2 py-1 rounded-lg border transition-colors disabled:opacity-40"
-                            :class="dark ? 'border-red-500/40 text-red-300 hover:bg-red-500/10' : 'border-red-200 text-red-700 hover:bg-red-50'"
+                  <td class="!py-1.5 text-right">
+                    <button type="button" class="icon-btn hover:!bg-bad-soft hover:!text-bad disabled:pointer-events-none disabled:opacity-40"
+                            :title="t.modelDelete" :aria-label="`${t.modelDelete}: ${doc.name}`"
                             :disabled="busy" @click="removeDocument(doc.name)">
-                      {{ t.modelDelete }}
+                      <Icon name="trash" />
                     </button>
                   </td>
                 </tr>
                 <tr v-if="expandedWarnings.has(doc.name)">
-                  <td colspan="7" class="px-3 pb-3">
-                    <ul class="text-xs space-y-0.5 rounded-lg px-3 py-2" :class="amberBox">
-                      <li v-for="(w, i) in doc.warnings" :key="i">⚠ {{ w }}</li>
+                  <td colspan="7" class="!bg-transparent !pt-0">
+                    <ul class="notice notice-warn space-y-1 text-xs">
+                      <li v-for="(w, i) in doc.warnings" :key="i" class="flex gap-1.5">
+                        <Icon name="alert-triangle" class="mt-px" />
+                        <span>{{ w }}</span>
+                      </li>
                     </ul>
                   </td>
                 </tr>
@@ -446,135 +486,153 @@ function segmentClass(selected) {
       </div>
 
       <!-- (4) Accuracy -->
-      <div class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6 mb-6" :class="panel">
-        <h3 class="text-base font-semibold" :class="strong">{{ t.modelAccuracyTitle }}</h3>
-        <p class="text-xs mb-3" :class="muted">{{ t.modelAccuracyDesc }}</p>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+      <div class="card p-4">
+        <h3 class="card-title">{{ t.modelAccuracyTitle }}</h3>
+        <p class="card-desc">{{ t.modelAccuracyDesc }}</p>
+        <div class="table-scroll mt-3 rounded-lg border border-line">
+          <table class="table min-w-[38rem]">
             <thead>
-              <tr :class="muted">
-                <th class="px-3 py-2 text-left font-semibold">{{ t.criterionLabel }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.modelColObs }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.modelColMapeExpert }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.modelColMapeModel }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ fmt(t.modelColCoverage, { level: levelPct }) }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.modelColNoise }}</th>
+              <tr>
+                <th class="sticky-col">{{ t.criterionLabel }}</th>
+                <th class="text-right">{{ t.modelColObs }}</th>
+                <th class="text-right">{{ t.modelColMapeExpert }}</th>
+                <th class="text-right">{{ t.modelColMapeModel }}</th>
+                <th class="text-right">{{ fmt(t.modelColCoverage, { level: levelPct }) }}</th>
+                <th class="text-right">{{ t.modelColNoise }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in accuracyRows" :key="row.key" class="border-t tabular-nums" :class="rowBorder">
-                <td class="px-3 py-2 font-semibold">{{ criterionLabel[row.key] }}</td>
-                <td class="px-3 py-2 text-right">{{ row.n_obs ?? 0 }}</td>
-                <td class="px-3 py-2 text-right">{{ pct(row.loo_mape_expert) }}</td>
-                <td class="px-3 py-2 text-right font-semibold"
-                    :class="modelBetter(row) === true ? (dark ? 'text-teal-300' : 'text-teal-700')
-                      : modelBetter(row) === false ? 'text-orange-500' : ''">
+              <tr v-for="row in accuracyRows" :key="row.key">
+                <td class="sticky-col font-medium">{{ criterionLabel[row.key] }}</td>
+                <td class="num text-right">{{ row.n_obs ?? 0 }}</td>
+                <td class="num text-right">{{ pct(row.loo_mape_expert) }}</td>
+                <td class="num text-right font-semibold"
+                    :class="modelBetter(row) === true ? '!text-ok' : modelBetter(row) === false ? '!text-warn' : ''">
                   {{ pct(row.loo_mape_model) }}
                 </td>
-                <td class="px-3 py-2 text-right">{{ pct(row.coverage90, 0) }}</td>
-                <td class="px-3 py-2 text-right whitespace-nowrap">
+                <td class="num text-right">{{ pct(row.coverage90, 0) }}</td>
+                <td class="num whitespace-nowrap text-right">
                   {{ num(row.noise_sd, 3) }}
-                  <span v-if="row.noise_sd != null" class="text-xs" :class="muted">(≈ ±{{ num((Math.exp(row.noise_sd) - 1) * 100, 0) }}%)</span>
+                  <span v-if="row.noise_sd != null" class="text-xs text-subtle">(≈ ±{{ num((Math.exp(row.noise_sd) - 1) * 100, 0) }}%)</span>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
-        <p class="text-[0.7rem] mt-2 leading-relaxed" :class="muted">{{ fmt(t.modelAccuracyNote, { level: levelPct }) }}</p>
+        <p class="mt-2 max-w-3xl text-xs leading-relaxed text-subtle">{{ fmt(t.modelAccuracyNote, { level: levelPct }) }}</p>
       </div>
     </template>
 
     <!-- (5) Expert vs model for the current context and parameters -->
-    <div class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6 mb-6" :class="panel">
-      <div class="flex flex-wrap items-start justify-between gap-3 mb-2">
+    <div class="card p-4">
+      <div class="mb-2 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 class="text-base font-semibold" :class="strong">
-            {{ t.modelChartTitle }}<template v-if="prediction"> · {{ prediction.context }}</template>
+          <h3 class="card-title">
+            {{ t.modelChartTitle }}<template v-if="prediction"><span class="font-normal text-muted"> · {{ prediction.context }}</span></template>
           </h3>
-          <p class="text-xs" :class="muted">{{ fmt(t.modelChartDesc, { level: levelPct }) }}</p>
+          <p class="card-desc">{{ fmt(t.modelChartDesc, { level: levelPct }) }}</p>
         </div>
-        <div class="flex flex-wrap gap-1">
-          <button v-for="k in CRITERION_KEYS" :key="k" type="button" @click="chartCriterion = k"
-                  class="px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors"
-                  :class="segmentClass(chartCriterion === k)">
+        <div class="seg grid w-full grid-cols-2 md:inline-flex md:w-auto md:flex-wrap">
+          <button v-for="k in CRITERION_KEYS" :key="k" type="button" class="seg-item"
+                  :aria-pressed="chartCriterion === k" @click="chartCriterion = k">
             {{ criterionLabel[k] }}
           </button>
         </div>
       </div>
 
-      <div v-if="model.predictError.value" class="rounded-xl px-4 py-2.5 my-3 text-sm" :class="errorBox">
+      <div v-if="model.predictError.value" class="notice notice-bad my-3">
         {{ model.predictError.value }}
       </div>
-      <p v-else-if="!prediction" class="text-sm py-8 text-center" :class="muted">
+      <p v-else-if="!prediction" class="flex items-center justify-center gap-2 py-8 text-[13px] text-muted">
+        <span v-if="model.predicting.value" class="spinner"></span>
         {{ model.predicting.value ? t.modelPredicting : '—' }}
       </p>
 
       <template v-if="prediction && predictionRows.length">
         <PlotlyChart :chart="intervalChart" :dark="dark" />
-        <div class="overflow-x-auto mt-2">
-          <table class="w-full text-sm">
+        <div class="table-scroll mt-2 rounded-lg border border-line">
+          <table class="table min-w-[32rem]">
             <thead>
-              <tr :class="muted">
-                <th class="px-3 py-2 text-left font-semibold">{{ t.alternative }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.modelExpertSeries }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.modelSeries }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ fmt(t.modelIntervalLabel, { level: levelPct }) }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.modelColChange }}</th>
+              <tr>
+                <th class="sticky-col">{{ t.alternative }}</th>
+                <th class="text-right">{{ t.modelExpertSeries }}</th>
+                <th class="text-right">{{ t.modelSeries }}</th>
+                <th class="text-right">{{ fmt(t.modelIntervalLabel, { level: levelPct }) }}</th>
+                <th class="text-right">{{ t.modelColChange }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="r in predictionRows" :key="r.name" class="border-t tabular-nums" :class="rowBorder">
-                <td class="px-3 py-2 font-semibold">{{ r.name }}</td>
-                <td class="px-3 py-2 text-right">{{ fmtValue(chartCriterion, r.expert) }}</td>
-                <td class="px-3 py-2 text-right font-semibold">{{ fmtValue(chartCriterion, r.predicted) }}</td>
-                <td class="px-3 py-2 text-right whitespace-nowrap">{{ fmtValue(chartCriterion, r.low) }} – {{ fmtValue(chartCriterion, r.high) }}</td>
-                <td class="px-3 py-2 text-right">{{ r.expert ? signedPct(r.predicted / r.expert - 1) : '—' }}</td>
+              <tr v-for="r in predictionRows" :key="r.name">
+                <td class="sticky-col font-medium">{{ r.name }}</td>
+                <td class="num text-right">{{ fmtValue(chartCriterion, r.expert) }}</td>
+                <td class="num text-right font-semibold">{{ fmtValue(chartCriterion, r.predicted) }}</td>
+                <td class="num whitespace-nowrap text-right text-muted">{{ fmtValue(chartCriterion, r.low) }} – {{ fmtValue(chartCriterion, r.high) }}</td>
+                <td class="num text-right">{{ r.expert ? signedPct(r.predicted / r.expert - 1) : '—' }}</td>
               </tr>
             </tbody>
           </table>
         </div>
-        <p class="text-[0.7rem] mt-2" :class="muted">
+        <p class="mt-2 text-xs text-subtle">
           {{ t.modelUnitsLabel }}: {{ t.modelUnits[chartCriterion] }} · {{ fmt(t.modelTrainedOn, { n: prediction.n_records }) }}
         </p>
       </template>
     </div>
 
     <!-- (6) Coefficients -->
-    <details v-if="status" class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6 mb-6" :class="panel">
-      <summary class="cursor-pointer text-base font-semibold" :class="strong">{{ t.modelCoefTitle }}</summary>
-      <div class="flex flex-wrap items-start justify-between gap-3 mt-2 mb-2">
-        <p class="text-xs max-w-3xl" :class="muted">{{ t.modelCoefDesc }}</p>
-        <div class="flex flex-wrap gap-1">
-          <button v-for="k in CRITERION_KEYS" :key="k" type="button" @click="coefCriterion = k"
-                  class="px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors"
-                  :class="segmentClass(coefCriterion === k)">
+    <details v-if="status" class="card group p-4">
+      <summary class="card-title flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden">
+        <Icon name="chevron-right" class="text-subtle transition-transform group-open:rotate-90" />
+        {{ t.modelCoefTitle }}
+      </summary>
+      <div class="mt-2 mb-3 flex flex-wrap items-start justify-between gap-3">
+        <p class="max-w-3xl text-xs leading-relaxed text-muted">{{ t.modelCoefDesc }}</p>
+        <div class="seg grid w-full grid-cols-2 md:inline-flex md:w-auto md:flex-wrap">
+          <button v-for="k in CRITERION_KEYS" :key="k" type="button" class="seg-item"
+                  :aria-pressed="coefCriterion === k" @click="coefCriterion = k">
             {{ criterionLabel[k] }}
           </button>
         </div>
       </div>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+      <div class="table-scroll rounded-lg border border-line">
+        <table class="table min-w-[24rem]">
           <thead>
-            <tr :class="muted">
-              <th class="px-3 py-2 text-left font-semibold">{{ t.modelColFeature }}</th>
-              <th class="px-3 py-2 text-right font-semibold">{{ t.modelColMean }}</th>
-              <th class="px-3 py-2 text-right font-semibold">{{ t.modelColSd }}</th>
-              <th class="px-3 py-2 text-right font-semibold">{{ t.modelColEffect }}</th>
+            <tr>
+              <th>{{ t.modelColFeature }}</th>
+              <th class="text-right">{{ t.modelColMean }}</th>
+              <th class="text-right">{{ t.modelColSd }}</th>
+              <th class="text-right">{{ t.modelColEffect }}</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="c in coefRows" :key="c.feature" class="border-t tabular-nums" :class="rowBorder">
-              <td class="px-3 py-1.5" :class="c.credible ? 'font-semibold' : ''">
-                {{ c.label }}<span v-if="c.credible" class="ml-1" :class="dark ? 'text-teal-300' : 'text-teal-700'" aria-hidden="true">●</span>
+            <tr v-for="c in coefRows" :key="c.feature">
+              <td class="!py-1.5" :class="c.credible ? 'font-medium' : '!text-muted'">
+                {{ c.label }}<span v-if="c.credible" class="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-accent align-middle" aria-hidden="true"></span>
               </td>
-              <td class="px-3 py-1.5 text-right">{{ num(c.mean, 3) }}</td>
-              <td class="px-3 py-1.5 text-right">{{ num(c.sd, 3) }}</td>
-              <td class="px-3 py-1.5 text-right" :class="c.credible ? 'font-semibold' : ''">{{ signedPct(c.effect) }}</td>
+              <td class="num !py-1.5 text-right">{{ num(c.mean, 3) }}</td>
+              <td class="num !py-1.5 text-right text-muted">{{ num(c.sd, 3) }}</td>
+              <td class="num !py-1.5 text-right" :class="c.credible ? 'font-semibold' : ''">{{ signedPct(c.effect) }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p class="text-[0.7rem] mt-2" :class="muted">● {{ t.modelCoefCredible }}</p>
+      <p class="mt-2 flex items-center gap-1.5 text-xs text-subtle">
+        <span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true"></span>
+        {{ t.modelCoefCredible }}
+      </p>
     </details>
   </div>
 </template>
+
+<style scoped>
+/* First column stays put while a wide table scrolls sideways on phones (opaque, so the
+   scrolled cells don't show through; even rows keep their stripe). */
+.sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--surface) !important;
+}
+tbody tr:nth-child(even) > .sticky-col {
+  background-color: color-mix(in oklab, var(--surface-2) 40%, var(--surface)) !important;
+}
+</style>

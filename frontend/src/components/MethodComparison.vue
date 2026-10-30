@@ -1,8 +1,10 @@
 <script setup>
 import { computed, ref } from 'vue'
 import PlotlyChart from './PlotlyChart.vue'
+import Icon from './Icon.vue'
 import { useLocale } from '../composables/useLocale.js'
-import { METHOD_COLORS, SURFACE, divergingScale } from '../chartPalette.js'
+import { METHOD_COLORS, SURFACE, chartInk, divergingScale } from '../chartPalette.js'
+import { useViewport } from '../composables/useViewport.js'
 
 const props = defineProps({
   data: Object,
@@ -10,6 +12,7 @@ const props = defineProps({
 })
 
 const { t } = useLocale()
+const { narrow } = useViewport()
 const corrKind = ref('spearman')
 
 const methodIds = computed(() => Object.keys(props.data?.method_results ?? {}))
@@ -49,20 +52,20 @@ const compromise = computed(() => {
   return v && v.compromise_set?.length > 1 ? v.compromise_set : null
 })
 
-function baseLayout(title, height) {
-  const p = props.dark
+// Chart titles live in the card header, so layouts carry none.
+function baseLayout(height) {
+  const ink = chartInk(props.dark)
   return {
     paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-    font: { family: 'Inter, system-ui, sans-serif', color: p ? '#e2e8f0' : '#0f172a', size: 12 },
-    title: { text: title, font: { size: 15 }, x: 0.02 },
-    margin: { l: 56, r: 24, t: 56, b: 56 },
+    font: { family: ink.font, color: ink.text, size: 11 },
+    margin: narrow.value ? { l: 32, r: 8, t: 8, b: 40 } : { l: 56, r: 24, t: 12, b: 56 },
     height,
     autosize: true,
   }
 }
 
 const utilityChart = computed(() => {
-  const p = props.dark
+  const ink = chartInk(props.dark)
   const names = rows.value.map(r => r.name)
   return {
     data: methodIds.value.map(id => {
@@ -77,16 +80,18 @@ const utilityChart = computed(() => {
       }
     }),
     layout: {
-      ...baseLayout(t.value.chartUtilityTitle, 360),
+      ...baseLayout(narrow.value ? 300 : 320),
       barmode: 'group',
-      yaxis: { title: t.value.chartUtilityAxis, range: [0, 1.05], gridcolor: p ? '#334155' : '#cbd5e1' },
-      xaxis: { tickfont: { size: 12 } },
-      legend: { orientation: 'h', y: -0.2, x: 0.5, xanchor: 'center', bgcolor: 'rgba(0,0,0,0)' },
+      bargap: narrow.value ? 0.18 : undefined,
+      yaxis: { title: { text: narrow.value ? '' : t.value.chartUtilityAxis, font: { color: ink.muted } }, range: [0, 1.05], gridcolor: ink.grid, zerolinecolor: ink.grid, tickfont: { color: ink.muted }, automargin: true },
+      xaxis: { tickfont: { size: 11, color: ink.text }, automargin: true },
+      legend: { orientation: 'h', y: narrow.value ? -0.14 : -0.2, x: 0.5, xanchor: 'center', yanchor: narrow.value ? 'top' : undefined, font: { color: ink.muted }, bgcolor: 'rgba(0,0,0,0)' },
     },
   }
 })
 
 const corrChart = computed(() => {
+  const ink = chartInk(props.dark)
   const a = agreement.value
   const labels = a.methods.map(methodLabel)
   const z = a[corrKind.value]
@@ -107,58 +112,50 @@ const corrChart = computed(() => {
       showscale: false,
     }],
     layout: {
-      ...baseLayout('', 330),
-      margin: { l: 56, r: 24, t: 16, b: 56 },
-      yaxis: { autorange: 'reversed', automargin: true },
-      xaxis: { automargin: true },
+      ...baseLayout(narrow.value ? 300 : 320),
+      margin: narrow.value ? { l: 8, r: 8, t: 8, b: 8 } : { l: 56, r: 24, t: 8, b: 56 },
+      yaxis: { autorange: 'reversed', automargin: true, tickfont: { color: ink.text, ...(narrow.value && { size: 10 }) } },
+      xaxis: { automargin: true, tickfont: { color: ink.text, ...(narrow.value && { size: 10 }) }, ...(narrow.value && { tickangle: -40 }) },
     },
   }
 })
-
-const panelClass = computed(() => props.dark
-  ? 'bg-white/[0.06] border border-white/10'
-  : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]')
 </script>
 
 <template>
-  <div v-if="methodIds.length" class="mb-6">
-    <div class="rounded-[28px] backdrop-blur-2xl p-6 lg:p-8 mb-6" :class="panelClass">
-      <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
-        <div>
-          <h2 class="text-xl font-semibold tracking-tight mb-1" :class="dark ? 'text-white/90' : 'text-slate-900'">
-            {{ t.comparisonTitle }}
-          </h2>
-          <p class="text-xs" :class="dark ? 'text-white/40' : 'text-slate-500'">{{ t.comparisonDesc }}</p>
+  <div v-if="methodIds.length" class="space-y-4">
+    <section class="card overflow-hidden">
+      <div class="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-3">
+        <div class="min-w-0">
+          <h2 class="card-title">{{ t.comparisonTitle }}</h2>
+          <p class="card-desc">{{ t.comparisonDesc }}</p>
         </div>
-        <span v-if="agreement" class="px-3 py-1 rounded-full text-xs font-semibold"
+        <span v-if="agreement" class="shrink-0"
               :class="agreement.unanimous_winner
-                ? (dark ? 'bg-teal-500/20 text-teal-200' : 'bg-teal-100 text-teal-800')
-                : (dark ? 'bg-orange-500/20 text-orange-200' : 'bg-orange-100 text-orange-800')">
+                ? 'badge-accent'
+                : 'inline-flex items-center gap-1 rounded-md bg-warn-soft px-1.5 py-0.5 text-[0.7rem] font-medium text-warn'">
+          <Icon :name="agreement.unanimous_winner ? 'check' : 'alert-triangle'" />
           {{ agreement.unanimous_winner ? t.unanimous : t.disagree }}
         </span>
       </div>
 
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+      <div class="table-scroll">
+        <table class="table border-separate border-spacing-0 [&_td]:whitespace-nowrap">
           <thead>
             <tr>
-              <th class="px-3 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.alternative }}</th>
-              <th v-for="id in methodIds" :key="id" class="px-3 py-2 text-center font-semibold"
-                  :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ methodLabel(id) }}</th>
-              <th v-if="agreement" class="px-3 py-2 text-center font-bold"
-                  :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.consensus }}</th>
+              <th class="sticky-col">{{ t.alternative }}</th>
+              <th v-for="id in methodIds" :key="id" class="text-center">{{ methodLabel(id) }}</th>
+              <th v-if="agreement" class="text-center text-fg">{{ t.consensus }}</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in rows" :key="row.name" class="border-t" :class="dark ? 'border-slate-700' : 'border-black/5'">
-              <td class="px-3 py-2 font-semibold">
-<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(row.name) }" aria-hidden="true"></span>{{ row.name }}</td>
-              <td v-for="id in methodIds" :key="id" class="px-3 py-2 text-center font-medium tabular-nums"
-                  :class="dark ? 'text-slate-100' : 'text-slate-900'" :style="rankStyle(row.ranks[id])">
+            <tr v-for="row in rows" :key="row.name">
+              <td class="sticky-col font-medium">
+                <span class="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" :style="{ background: altColor(row.name) }" aria-hidden="true"></span>{{ row.name }}
+              </td>
+              <td v-for="id in methodIds" :key="id" class="num text-center" :style="rankStyle(row.ranks[id])">
                 #{{ row.ranks[id] }}
               </td>
-              <td v-if="agreement" class="px-3 py-2 text-center font-bold tabular-nums"
-                  :class="dark ? 'text-slate-100' : 'text-slate-900'" :style="rankStyle(row.consensus)">
+              <td v-if="agreement" class="num text-center font-semibold" :style="rankStyle(row.consensus)">
                 #{{ row.consensus }}
               </td>
             </tr>
@@ -166,33 +163,45 @@ const panelClass = computed(() => props.dark
         </table>
       </div>
 
-      <p v-if="compromise" class="text-xs mt-3" :class="dark ? 'text-slate-400' : 'text-slate-500'">
-        {{ t.vikorCompromise }}: <b>{{ compromise.join(', ') }}</b>
+      <p v-if="compromise" class="border-t border-line px-4 py-2.5 text-xs text-muted">
+        {{ t.vikorCompromise }}: <span class="font-medium text-fg">{{ compromise.join(', ') }}</span>
       </p>
-      <p v-if="!agreement" class="text-xs mt-3" :class="dark ? 'text-slate-400' : 'text-slate-500'">
+      <p v-if="!agreement" class="border-t border-line px-4 py-2.5 text-xs text-muted">
         {{ t.agreementNeedsTwo }}
       </p>
-    </div>
+    </section>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div class="rounded-[28px] overflow-hidden backdrop-blur-2xl" :class="panelClass">
+    <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <section class="card overflow-hidden">
+        <h2 class="card-title px-4 pt-4">{{ t.chartUtilityTitle }}</h2>
         <PlotlyChart :chart="utilityChart" :dark="dark" />
-      </div>
-      <div v-if="agreement" class="rounded-[28px] overflow-hidden backdrop-blur-2xl" :class="panelClass">
-        <div class="flex flex-wrap items-center justify-between gap-2 px-4 pt-4 text-xs">
-          <span class="text-[15px]" :class="dark ? 'text-slate-200' : 'text-slate-900'">{{ t.agreementTitle }}</span>
-          <div class="flex gap-1">
-          <button v-for="k in ['spearman', 'kendall']" :key="k" type="button" @click="corrKind = k"
-                  class="px-2 py-0.5 rounded-md font-semibold"
-                  :class="corrKind === k
-                    ? (dark ? 'bg-slate-600 text-white' : 'bg-slate-800 text-white')
-                    : (dark ? 'text-slate-400' : 'text-slate-500')">
-            {{ t[k] }}
-          </button>
+      </section>
+      <section v-if="agreement" class="card overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+          <h2 class="card-title">{{ t.agreementTitle }}</h2>
+          <div class="seg">
+            <button v-for="k in ['spearman', 'kendall']" :key="k" type="button" @click="corrKind = k"
+                    :aria-pressed="corrKind === k" class="seg-item">
+              {{ t[k] }}
+            </button>
           </div>
         </div>
         <PlotlyChart :chart="corrChart" :dark="dark" />
-      </div>
+      </section>
     </div>
   </div>
 </template>
+
+<style scoped>
+/* The alternative column stays put while the method ranks scroll sideways on phones. */
+.sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--surface);
+  box-shadow: inset -1px 0 var(--line);
+}
+tbody tr:nth-child(even) .sticky-col {
+  background-image: linear-gradient(color-mix(in oklab, var(--surface-2) 40%, transparent), color-mix(in oklab, var(--surface-2) 40%, transparent));
+}
+</style>

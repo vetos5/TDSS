@@ -1,11 +1,13 @@
 <script setup>
-import { onMounted, watch, ref } from 'vue'
+import { onMounted, watch, ref, nextTick, computed } from 'vue'
 import { useDSS } from './composables/useDSS.js'
 import { useTheme } from './composables/useTheme.js'
 import { useLocale } from './composables/useLocale.js'
 import { useModel } from './composables/useModel.js'
+import { useViewport } from './composables/useViewport.js'
 import Sidebar from './components/Sidebar.vue'
 import TabNav from './components/TabNav.vue'
+import MobileTabBar from './components/MobileTabBar.vue'
 import DssEvaluation from './components/DssEvaluation.vue'
 import BlueprintGallery from './components/BlueprintGallery.vue'
 import Methodology from './components/Methodology.vue'
@@ -17,8 +19,34 @@ const { dark, toggle } = useTheme()
 const { locale, t } = useLocale()
 const dss = useDSS()
 const model = useModel()
+const { narrow } = useViewport()
 const activeTab = ref('evaluation')
-const sidebarOpen = ref(false)
+
+const title = computed(() => ({
+  inputs: t.value.tabInputs,
+  evaluation: t.value.tabEvaluation,
+  site: t.value.tabSiteAnalysis,
+  robustness: t.value.tabRobustness,
+  model: t.value.tabModel,
+  gallery: t.value.tabGallery,
+  methodology: t.value.tabMethodology,
+}[activeTab.value]))
+
+// Each view keeps its own scroll position, so switching back lands where you left off.
+const scroller = ref(null)
+const scrollTops = {}
+
+async function selectTab(id) {
+  // Re-selecting the current view scrolls it back to the top, as on iOS.
+  if (id === activeTab.value) return scroller.value?.scrollTo({ top: 0, behavior: 'smooth' })
+  scrollTops[activeTab.value] = scroller.value?.scrollTop ?? 0
+  activeTab.value = id
+  await nextTick()
+  if (scroller.value) scroller.value.scrollTop = scrollTops[id] ?? 0
+}
+
+// "Inputs" is a tab on phones only; on wider screens the panel is always beside the content.
+watch(narrow, n => { if (!n && activeTab.value === 'inputs') selectTab('evaluation') })
 
 let debounceTimer = null
 
@@ -59,114 +87,101 @@ watch(() => model.status.value?.revision, (now, before) => {
 </script>
 
 <template>
-  <div class="relative min-h-screen overflow-hidden transition-colors duration-200"
-       :class="dark ? 'bg-slate-900 text-slate-200' : 'bg-[#F5F5F7] text-slate-900'">
+  <div class="flex h-dvh overflow-hidden bg-app text-fg">
+    <Sidebar v-if="!narrow" :dark="dark" :dss="dss" @toggle-theme="toggle" />
 
-    <!-- Global ambient blobs (light mode glassmorphism backdrop) -->
-    <div v-if="!dark" class="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-      <div class="absolute -top-32 left-1/4 h-[480px] w-[480px] rounded-full bg-blue-200/60 blur-[120px]"></div>
-      <div class="absolute top-1/3 -right-24 h-[420px] w-[420px] rounded-full bg-rose-200/60 blur-[120px]"></div>
-      <div class="absolute bottom-0 left-1/2 h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-violet-200/40 blur-[140px]"></div>
-    </div>
+    <main ref="scroller" class="relative min-w-0 flex-1 overflow-y-auto pb-[calc(52px+env(safe-area-inset-bottom))] md:pb-0">
+      <!-- Desktop toolbar: title on the left, view switcher centred, activity on the right -->
+      <header class="material-bar sticky top-0 z-20 hidden h-[52px] items-center gap-3 border-b border-line px-4 md:flex">
+        <div class="min-w-0 flex-1">
+          <h1 class="truncate text-[15px] leading-tight font-semibold">{{ title }}</h1>
+          <p class="truncate text-[11px] text-muted">
+            {{ dss.selectedContext.value }}<template v-if="dss.valueSource.value === 'model'"> · {{ t.valueSources.model }}</template>
+          </p>
+        </div>
+        <TabNav :active="activeTab" @update="selectTab" />
+        <div class="flex flex-1 items-center justify-end gap-1.5 text-xs text-subtle transition-opacity duration-200"
+             :class="dss.loading.value ? 'opacity-100' : 'opacity-0'" aria-live="polite">
+          <span class="spinner"></span>
+          <span class="hidden lg:inline">{{ t.updating }}</span>
+        </div>
+      </header>
 
-    <div class="flex">
-      <!-- Mobile sidebar backdrop -->
-      <div v-if="sidebarOpen"
-           class="fixed inset-0 z-20 bg-black/40 backdrop-blur-sm md:hidden"
-           @click="sidebarOpen = false"></div>
+      <!-- Phone navigation bar -->
+      <header class="material-bar sticky top-0 z-20 border-b border-line pt-safe md:hidden">
+        <div class="relative flex h-11 flex-col items-center justify-center px-12">
+          <h1 class="max-w-full truncate text-[17px] leading-tight font-semibold">{{ title }}</h1>
+          <p v-if="activeTab !== 'inputs'" class="max-w-full truncate text-[11px] leading-tight text-muted">
+            {{ dss.selectedContext.value }}
+          </p>
+          <span class="spinner absolute right-4 transition-opacity duration-200"
+                :class="dss.loading.value ? 'opacity-100' : 'opacity-0'"></span>
+        </div>
+      </header>
 
-      <!-- Hamburger (mobile only) — fixed so it stays visible when scrolling -->
-      <button v-if="!sidebarOpen"
-              class="fixed top-3 left-3 z-40 md:hidden w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
-              :class="dark
-                ? 'bg-slate-700 border border-slate-600 text-slate-200 hover:bg-slate-600'
-                : 'bg-white/80 border border-black/5 shadow-[0_1px_3px_rgb(0,0,0,0.06)] text-slate-700 hover:bg-white'"
-              @click="sidebarOpen = true"
-              aria-label="Open settings">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
-        </svg>
-      </button>
+      <div class="mx-auto max-w-[1400px] px-4 py-4 sm:p-6">
+        <!-- Phone only: the inputs as a page of their own -->
+        <Sidebar v-if="narrow" v-show="activeTab === 'inputs'" page class="tab-pane"
+                 :dark="dark" :dss="dss" @show-results="selectTab('evaluation')" />
 
-      <Sidebar :dark="dark" :dss="dss" :open="sidebarOpen"
-               @toggle-theme="toggle"
-               @close="sidebarOpen = false" />
-
-      <main class="flex-1 md:ml-80 p-4 sm:p-6 lg:p-8 min-w-0">
-        <header class="mb-6 flex items-start gap-3">
-          <!-- Spacer so the title doesn't sit under the fixed hamburger on mobile -->
-          <div class="md:hidden shrink-0 w-9 h-9" aria-hidden="true"></div>
-          <div>
-            <h1 class="text-2xl lg:text-3xl font-extrabold tracking-tight"
-                :class="dark ? 'text-slate-100' : 'text-slate-900'">
-              {{ t.appTitle }}
-            </h1>
-            <p class="text-sm mt-1" :class="dark ? 'text-slate-400' : 'text-slate-500'">
-              {{ t.appSubtitle }}
-            </p>
+        <template v-if="activeTab !== 'inputs'">
+          <!-- Full-page spinner only on initial load (no data yet) -->
+          <div v-if="dss.loading.value && !dss.evalData.value" class="flex items-center justify-center py-24">
+            <span class="spinner !h-6 !w-6"></span>
           </div>
-        </header>
 
-        <TabNav :active="activeTab" :dark="dark" @update="v => { activeTab = v; sidebarOpen = false }" />
+          <div v-if="dss.evalError.value && activeTab === 'evaluation'" class="notice notice-bad mb-4">
+            <span class="font-semibold">{{ t.evaluationFailed }}</span> {{ dss.evalError.value }}
+          </div>
+        </template>
 
-        <!-- Full-page spinner only on initial load (no data yet) -->
-        <div v-if="dss.loading.value && !dss.evalData.value" class="flex items-center justify-center py-20">
-          <div class="animate-spin rounded-full h-10 w-10 border-b-2"
-               :class="dark ? 'border-teal-400' : 'border-teal-700'"></div>
-        </div>
-
-        <div v-if="dss.evalError.value && activeTab === 'evaluation'"
-             class="rounded-2xl px-4 py-3 mb-4 text-sm"
-             :class="dark ? 'bg-red-500/10 border border-red-500/30 text-red-200' : 'bg-red-50 border border-red-200 text-red-800'">
-          <span class="font-semibold">{{ t.evaluationFailed }}</span> {{ dss.evalError.value }}
-        </div>
-
+        <!-- Panes stay mounted (v-show) so views keep their state; .tab-pane fades each one in on show. -->
         <template v-if="dss.evalData.value">
-          <!-- Subtle re-evaluation indicator -->
-          <div class="flex items-center gap-2 mb-3 h-5 transition-opacity duration-200"
-               :class="dss.loading.value ? 'opacity-100' : 'opacity-0 pointer-events-none'">
-            <div class="animate-spin rounded-full h-3.5 w-3.5 border-b-2"
-                 :class="dark ? 'border-teal-400' : 'border-teal-600'"></div>
-            <span class="text-xs" :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ t.updating }}</span>
-          </div>
-
           <DssEvaluation
             v-show="activeTab === 'evaluation'"
+            class="tab-pane"
             :data="dss.evalData.value"
             :params="dss.params"
             :dark="dark"
           />
           <SiteMap
             v-show="activeTab === 'site'"
+            class="tab-pane"
             :dss="dss"
             :active="activeTab === 'site'"
             :dark="dark"
           />
           <RobustnessAnalysis
             v-show="activeTab === 'robustness'"
+            class="tab-pane"
             :dss="dss"
             :active="activeTab === 'robustness'"
             :dark="dark"
           />
           <PredictionModel
             v-show="activeTab === 'model'"
+            class="tab-pane"
             :dss="dss"
             :active="activeTab === 'model'"
             :dark="dark"
           />
           <BlueprintGallery
             v-show="activeTab === 'gallery'"
+            class="tab-pane"
             :data="dss.evalData.value"
             :params="dss.params"
             :dark="dark"
           />
           <Methodology
             v-show="activeTab === 'methodology'"
+            class="tab-pane"
             :data="dss.evalData.value"
             :dark="dark"
           />
         </template>
-      </main>
-    </div>
+      </div>
+    </main>
+
+    <MobileTabBar :active="activeTab" @update="selectTab" />
   </div>
 </template>

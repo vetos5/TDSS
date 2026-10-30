@@ -1,89 +1,372 @@
 @import "tailwindcss";
 
-@theme {
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --color-teal-primary: #0f766e;
-  --color-teal-light: #2dd4bf;
+/* `dark:` follows the .dark class useTheme puts on <html>, not the OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Design tokens ──────────────────────────────────────────────────────────
+   macOS system appearance: SF type, grouped white boxes on a grey window, system blue,
+   translucent bars over scrolling content. Components use the Tailwind names below
+   (bg-app, bg-surface, text-muted, border-line, …) and never branch on the theme for
+   chrome; only charts read the `dark` prop. */
+:root {
+  --app: #f5f5f7;
+  --panel: #ebebee;
+  --bar: rgb(245 245 247 / 0.78);
+  --surface: #ffffff;
+  --surface-2: #f2f2f4;
+  --surface-3: #e3e3e8;
+  --control: #ffffff;
+  --line: rgb(0 0 0 / 0.09);
+  --line-strong: rgb(0 0 0 / 0.16);
+  --fg: #1d1d1f;
+  --muted: #6e6e73;
+  --subtle: #86868b;
+  --accent: #007aff;
+  --accent-fg: #ffffff;
+  --accent-soft: rgb(0 122 255 / 0.1);
+  --accent-ink: #0066d6;
+  --ok: #248a3d;
+  --ok-soft: rgb(52 199 89 / 0.12);
+  --warn: #b25000;
+  --warn-soft: rgb(255 149 0 / 0.13);
+  --bad: #d70015;
+  --bad-soft: rgb(255 59 48 / 0.1);
+  --ring: rgb(0 122 255 / 0.45);
+  --shadow: 0 0 0 0.5px rgb(0 0 0 / 0.04), 0 1px 2px rgb(0 0 0 / 0.04);
+  --control-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.14), 0 1px 1.5px rgb(0 0 0 / 0.1);
+  --sheet-shadow: 0 -10px 40px rgb(0 0 0 / 0.18);
+  color-scheme: light;
+}
+
+.dark {
+  --app: #1d1d1f;
+  --panel: #232325;
+  --bar: rgb(29 29 31 / 0.78);
+  --surface: #2c2c2e;
+  --surface-2: #3a3a3c;
+  --surface-3: #48484a;
+  --control: #4a4a4d;
+  --line: rgb(255 255 255 / 0.09);
+  --line-strong: rgb(255 255 255 / 0.16);
+  --fg: #f5f5f7;
+  --muted: #a1a1a6;
+  --subtle: #8e8e93;
+  --accent: #0a84ff;
+  --accent-fg: #ffffff;
+  --accent-soft: rgb(10 132 255 / 0.18);
+  --accent-ink: #4ea1ff;
+  --ok: #30d158;
+  --ok-soft: rgb(48 209 88 / 0.14);
+  --warn: #ff9f0a;
+  --warn-soft: rgb(255 159 10 / 0.14);
+  --bad: #ff453a;
+  --bad-soft: rgb(255 69 58 / 0.14);
+  --ring: rgb(10 132 255 / 0.55);
+  --shadow: 0 0 0 0.5px rgb(0 0 0 / 0.3);
+  --control-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.4), inset 0 0.5px 0 rgb(255 255 255 / 0.08);
+  --sheet-shadow: 0 -10px 40px rgb(0 0 0 / 0.5);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+
+  --color-app: var(--app);
+  --color-panel: var(--panel);
+  --color-bar: var(--bar);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-control: var(--control);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
 }
 
 html {
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   font-family: var(--font-sans);
+  font-size: 13px;
+  letter-spacing: -0.003em;
+  background: var(--app);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* macOS focus ring: a soft accent halo, keyboard focus only. */
+:focus-visible {
+  outline: 3px solid var(--ring);
+  outline-offset: 0;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* Safe-area helpers for the notch / home indicator. */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* ── Shared building blocks ─────────────────────────────────────────────── */
+@layer components {
+  /* Grouped box (System Settings style) holding one section of content. */
+  .card {
+    @apply rounded-xl border border-line bg-surface;
+    box-shadow: var(--shadow);
+  }
+
+  .card-title {
+    @apply text-[15px] font-semibold tracking-[-0.01em] text-fg md:text-sm;
+  }
+  .card-desc {
+    @apply mt-0.5 text-xs leading-relaxed text-muted;
+  }
+
+  /* Small label above a value or a group of controls. */
+  .eyebrow {
+    @apply text-[0.7rem] font-semibold uppercase tracking-[0.04em] text-subtle;
+  }
+
+  /* Text fields and pop-up buttons. 16px on touch screens so iOS doesn't zoom on focus. */
+  .field {
+    @apply w-full rounded-md border-0 bg-control px-2.5 py-2 text-base text-fg transition-shadow
+           md:py-[5px] md:text-[13px];
+    box-shadow: var(--control-shadow);
+  }
+  .field:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--ring), 0 0 0 1px var(--accent);
+  }
+  select.field {
+    @apply appearance-none pr-7;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 16' fill='none' stroke='%238e8e93' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 6l3-3 3 3M2 10l3 3 3-3'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.55rem center;
+    background-size: 0.5rem 0.8rem;
+  }
+  .field-label {
+    @apply mb-1 block text-xs text-muted;
+  }
+
+  /* Push buttons. */
+  .btn {
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md bg-control px-3 text-[15px] font-medium text-fg
+           transition-[filter,opacity] active:brightness-95 disabled:pointer-events-none disabled:opacity-50
+           md:min-h-0 md:py-[5px] md:text-[13px];
+    box-shadow: var(--control-shadow);
+  }
+  .btn-primary {
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md bg-accent px-3 text-[15px] font-medium text-accent-fg
+           transition-[filter,opacity] hover:brightness-110 active:brightness-95 disabled:pointer-events-none disabled:opacity-50
+           md:min-h-0 md:py-[5px] md:text-[13px];
+    background-image: linear-gradient(rgb(255 255 255 / 0.14), rgb(255 255 255 / 0));
+    box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.12), 0 1px 1.5px rgb(0 0 0 / 0.12);
+  }
+  .btn-ghost {
+    @apply inline-flex min-h-11 items-center justify-center gap-1.5 rounded-md px-2 text-[15px] font-medium text-accent-ink
+           transition-colors hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-50
+           md:min-h-0 md:py-[5px] md:text-[13px];
+  }
+  .icon-btn {
+    @apply inline-flex h-11 w-11 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-fg
+           md:h-7 md:w-7;
+  }
+
+  /* Segmented control: a .seg wrapper with .seg-item buttons; the active one gets aria-checked/aria-pressed="true". */
+  .seg {
+    @apply inline-flex gap-0.5 rounded-lg bg-surface-3/70 p-0.5 dark:bg-surface;
+  }
+  .seg-item {
+    @apply min-h-9 rounded-md px-3 text-[13px] font-medium text-fg/80 transition-[background-color,box-shadow,color] duration-200
+           hover:text-fg md:min-h-0 md:px-2.5 md:py-[3px] md:text-xs;
+  }
+  .seg-item[aria-checked='true'],
+  .seg-item[aria-pressed='true'],
+  .seg-item[aria-selected='true'] {
+    @apply bg-control text-fg;
+    box-shadow: var(--control-shadow);
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-md bg-surface-2 px-1.5 py-0.5 text-[0.7rem] font-medium text-muted;
+  }
+  .badge-accent {
+    @apply inline-flex items-center gap-1 rounded-md bg-accent-soft px-1.5 py-0.5 text-[0.7rem] font-medium text-accent-ink;
+  }
+
+  .notice {
+    @apply rounded-lg px-3 py-2 text-[13px];
+  }
+  .notice-warn {
+    @apply bg-warn-soft text-warn;
+  }
+  .notice-bad {
+    @apply bg-bad-soft text-bad;
+  }
+  .notice-ok {
+    @apply bg-ok-soft text-ok;
+  }
+
+  /* Data tables. Wrap wide ones in .table-scroll so they swipe sideways on phones. */
+  .table {
+    @apply w-full text-[13px];
+  }
+  .table th {
+    @apply border-b border-line px-3 py-2 text-left text-xs font-medium whitespace-nowrap text-muted;
+  }
+  .table td {
+    @apply border-b border-line px-3 py-2 text-fg;
+  }
+  .table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .table tbody tr:nth-child(even) td {
+    @apply bg-surface-2/40;
+  }
+  .table-scroll {
+    @apply overflow-x-auto overscroll-x-contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Numbers: tabular figures so columns and live values don't jitter. */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .spinner {
+    @apply inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-line-strong border-t-accent;
+  }
+
+  /* Translucent toolbar / tab bar over scrolling content. */
+  .material-bar {
+    background: var(--bar);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+  }
+}
+
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+/* A pane's animation restarts whenever v-show takes it out of display: none. */
+.tab-pane {
+  animation: tab-in 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes tab-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 200ms ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* Bottom sheet (Sheet.vue): spring-like rise, quicker fall. */
+.sheet-enter-active { transition: transform 380ms cubic-bezier(0.32, 0.72, 0, 1); }
+.sheet-leave-active { transition: transform 240ms cubic-bezier(0.4, 0, 1, 1); }
+.sheet-enter-from,
+.sheet-leave-to { transform: translateY(100%); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
 }
 
 .leaflet-container {
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
+  font-family: var(--font-sans);
 }
 
-/* ── iOS-style range sliders ── */
+/* ── Sliders (macOS style: white knob, accent fill up to the value) ─────── */
+/* --pct is kept in sync by the v-range-fill directive (main.js). */
 .ios-slider {
+  --slider-color: var(--accent);
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 6px;
+  height: 4px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.08);
+  background: linear-gradient(to right, var(--slider-color) var(--pct, 0%), var(--surface-3) var(--pct, 0%));
   outline: none;
   cursor: pointer;
-  transition: background 0.2s;
+  touch-action: pan-y;
 }
 
 .ios-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.18), 0 1px 3px rgb(0 0 0 / 0.25);
   cursor: pointer;
-  transition: transform 0.15s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.15s;
+  transition: transform 0.15s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-.ios-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
-}
-
-.ios-slider::-webkit-slider-thumb:active {
-  transform: scale(1.15);
+.ios-slider:active::-webkit-slider-thumb {
+  transform: scale(1.08);
 }
 
 .ios-slider::-moz-range-thumb {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
+  border: none;
   border-radius: 50%;
   background: #fff;
-  border: none;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.18), 0 1px 3px rgb(0 0 0 / 0.25);
   cursor: pointer;
 }
 
-.ios-slider::-moz-range-track {
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.08);
+/* Taller hit area on touch screens without changing the drawn track. */
+@media (pointer: coarse) {
+  .ios-slider {
+    height: 28px;
+    background:
+      linear-gradient(to right, var(--slider-color) var(--pct, 0%), var(--surface-3) var(--pct, 0%))
+      center / 100% 4px no-repeat;
+  }
+  .ios-slider::-webkit-slider-thumb {
+    width: 26px;
+    height: 26px;
+  }
 }
 
-.ios-slider--teal { accent-color: #0d9488; }
-.ios-slider--teal::-webkit-slider-thumb { border: 2px solid #0d9488; }
-.ios-slider--teal::-moz-range-thumb { border: 2px solid #0d9488; }
-.ios-slider--teal::-moz-range-progress { background: #0d9488; border-radius: 999px; }
-
-.ios-slider--orange { accent-color: #f97316; }
-.ios-slider--orange::-webkit-slider-thumb { border: 2px solid #f97316; }
-.ios-slider--orange::-moz-range-thumb { border: 2px solid #f97316; }
-.ios-slider--orange::-moz-range-progress { background: #f97316; border-radius: 999px; }
-
-.ios-slider--violet { accent-color: #8b5cf6; }
-.ios-slider--violet::-webkit-slider-thumb { border: 2px solid #8b5cf6; }
-.ios-slider--violet::-moz-range-thumb { border: 2px solid #8b5cf6; }
-.ios-slider--violet::-moz-range-progress { background: #8b5cf6; border-radius: 999px; }
-
-.ios-slider--blue { accent-color: #3b82f6; }
-.ios-slider--blue::-webkit-slider-thumb { border: 2px solid #3b82f6; }
-.ios-slider--blue::-moz-range-thumb { border: 2px solid #3b82f6; }
-.ios-slider--blue::-moz-range-progress { background: #3b82f6; border-radius: 999px; }
+.ios-slider--teal { --slider-color: #0d9488; }
+.ios-slider--orange { --slider-color: #f97316; }
+.ios-slider--violet { --slider-color: #8b5cf6; }
+.ios-slider--blue { --slider-color: #3b82f6; }

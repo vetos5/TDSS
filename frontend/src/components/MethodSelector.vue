@@ -20,16 +20,15 @@ function toggle(id) {
 </script>
 
 <template>
-  <div class="mb-4">
-    <p class="font-bold text-sm mb-1" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.methodsTitle }}</p>
-    <p class="text-xs mb-2" :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ t.methodsDesc }}</p>
+  <div>
+    <p class="mb-2 text-xs text-subtle">{{ t.methodsDesc }}</p>
     <div class="flex flex-wrap gap-1.5">
       <button v-for="id in ALL_METHODS" :key="id" type="button" @click="toggle(id)"
               :aria-pressed="dss.methods.value.includes(id)"
-              class="px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors"
+              class="rounded-md border px-2 py-1 text-xs font-medium transition-colors"
               :class="dss.methods.value.includes(id)
-                ? (dark ? 'bg-teal-500/20 border-teal-400/60 text-teal-200' : 'bg-teal-600 border-teal-600 text-white')
-                : (dark ? 'bg-slate-700 border-slate-600 text-slate-400 hover:text-slate-200' : 'bg-white/80 border-black/10 text-slate-500 hover:text-slate-800')">
+                ? 'border-accent/40 bg-accent-soft text-accent-ink'
+                : 'border-line bg-surface text-muted hover:text-fg'">
         {{ t.methodLabels[id] }}
       </button>
     </div>

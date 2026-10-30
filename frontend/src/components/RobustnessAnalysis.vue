@@ -1,9 +1,11 @@
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import PlotlyChart from './PlotlyChart.vue'
+import Icon from './Icon.vue'
 import { useLocale } from '../composables/useLocale.js'
 import { useRobustness } from '../composables/useRobustness.js'
 import { useModel } from '../composables/useModel.js'
+import { useViewport } from '../composables/useViewport.js'
 import { CRITERION_KEYS } from '../composables/useDSS.js'
 import { METHOD_COLORS, SURFACE, chartInk, rankColors } from '../chartPalette.js'
 
@@ -17,6 +19,7 @@ const { t, locale } = useLocale()
 const rob = useRobustness()
 const { settings } = rob
 const model = useModel()
+const { narrow } = useViewport()
 
 const selectedMethod = ref('wsm')
 const sweepCriterion = ref(CRITERION_KEYS[0])
@@ -38,6 +41,17 @@ function schedule(delay = 500) {
 }
 
 watch(() => props.active, a => { if (a && (stale || !rob.data.value)) schedule(0) }, { immediate: true })
+
+// Warm the tab once in the background so the first visit opens on results, not a spinner.
+// Later input changes still only re-run while the tab is visible.
+onMounted(() => {
+  const warm = () => {
+    if (props.active || rob.data.value || rob.loading.value) return
+    stale = false
+    rob.run(props.dss, locale.value)
+  }
+  setTimeout(() => (window.requestIdleCallback ?? (f => f()))(warm), 1500)
+})
 watch(
   [
     () => props.dss.selectedContext.value,
@@ -93,12 +107,19 @@ const top = computed(() => smaa.value?.alternatives?.[0])
 function baseLayout(height) {
   return {
     paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-    font: { family: 'Inter, system-ui, sans-serif', color: ink.value.text, size: 12 },
-    margin: { l: 16, r: 24, t: 16, b: 48 },
+    font: { family: ink.value.font, color: ink.value.text, size: narrow.value ? 11 : 12 },
+    margin: { l: 16, r: 24, t: 8, b: 48 },
     height,
     autosize: true,
-    hoverlabel: { font: { family: 'Inter, system-ui, sans-serif' } },
+    hoverlabel: { font: { family: ink.value.font } },
   }
+}
+
+// Horizontal legend under the plot; on phones it's anchored to the bottom of the figure so
+// wrapped rows never collide with the x-axis labels.
+function bottomLegend(y) {
+  const legend = { orientation: 'h', x: 0, bgcolor: 'rgba(0,0,0,0)' }
+  return narrow.value ? { ...legend, xanchor: 'left', yref: 'container', y: 0, yanchor: 'bottom' } : { ...legend, y }
 }
 
 // ── Value-range editor (shown as ± percentages) ─────────────────────────────
@@ -140,12 +161,12 @@ const acceptabilityChart = computed(() => {
       hovertemplate: `<b>%{y}</b><br>${t.value.rankWord} ${r + 1}: %{x:.1f}%<extra></extra>`,
     })),
     layout: {
-      ...baseLayout(Math.max(160, 64 * rows.length + 90)),
+      ...baseLayout(narrow.value ? Math.max(200, 44 * rows.length + 120) : Math.max(160, 64 * rows.length + 90)),
       barmode: 'stack',
-      margin: { l: 16, r: 24, t: 8, b: 56 },
-      xaxis: { range: [0, 100], ticksuffix: '%', gridcolor: ink.value.grid, tickfont: { color: ink.value.muted } },
-      yaxis: { autorange: 'reversed', automargin: true, ticksuffix: '  ' },
-      legend: { orientation: 'h', y: -0.12, yanchor: 'top', x: 0, bgcolor: 'rgba(0,0,0,0)', traceorder: 'normal' },
+      margin: narrow.value ? { l: 4, r: 12, t: 4, b: 72 } : { l: 16, r: 24, t: 8, b: 56 },
+      xaxis: { range: [0, 100], ticksuffix: '%', gridcolor: ink.value.grid, tickfont: { color: ink.value.muted }, automargin: true },
+      yaxis: { autorange: 'reversed', automargin: true, ticksuffix: narrow.value ? ' ' : '  ' },
+      legend: { ...bottomLegend(-0.12), yanchor: narrow.value ? 'bottom' : 'top', traceorder: 'normal' },
     },
   }
 })
@@ -166,11 +187,12 @@ const firstByMethodChart = computed(() => {
       }
     }),
     layout: {
-      ...baseLayout(340),
+      ...baseLayout(narrow.value ? 300 : 340),
       barmode: 'group',
-      margin: { l: 56, r: 16, t: 8, b: 80 },
+      margin: narrow.value ? { l: 40, r: 4, t: 4, b: 84 } : { l: 56, r: 16, t: 8, b: 80 },
+      xaxis: { automargin: true },
       yaxis: { range: [0, 105], ticksuffix: '%', gridcolor: ink.value.grid, tickfont: { color: ink.value.muted } },
-      legend: { orientation: 'h', y: -0.22, x: 0, bgcolor: 'rgba(0,0,0,0)' },
+      legend: bottomLegend(-0.22),
     },
   }
 })
@@ -194,6 +216,13 @@ const intervalChart = computed(() => {
     x, y, text, xanchor, yshift, showarrow: false, font: { size: 11, color: ink.value.muted },
   })
   rows.forEach((c, i) => {
+    // Phones: criterion names sit above their whisker instead of eating half the width as tick labels.
+    if (narrow.value) {
+      annotations.push({
+        xref: 'paper', x: 0, y: labels[i], text: labels[i], xanchor: 'left', yshift: 32, showarrow: false,
+        font: { size: 12, color: ink.value.text },
+      })
+    }
     if (c.lower != null) annotations.push(note(c.lower, labels[i], `◂ ${c.winner_below}`, 'left', 14))
     if (c.upper != null) annotations.push(note(c.upper, labels[i], `${c.winner_above} ▸`, 'right', -14))
   })
@@ -214,10 +243,10 @@ const intervalChart = computed(() => {
       showlegend: false,
     }],
     layout: {
-      ...baseLayout(Math.max(220, 70 * rows.length + 70)),
-      margin: { l: 16, r: 24, t: 8, b: 48 },
-      xaxis: { range: [-0.02, 1.02], title: { text: t.value.criterionWeight, font: { size: 12 } }, gridcolor: ink.value.grid, tickfont: { color: ink.value.muted } },
-      yaxis: { autorange: 'reversed', automargin: true, ticksuffix: '  ' },
+      ...baseLayout(narrow.value ? Math.max(220, 80 * rows.length + 56) : Math.max(220, 70 * rows.length + 70)),
+      margin: narrow.value ? { l: 8, r: 12, t: 4, b: 44 } : { l: 16, r: 24, t: 8, b: 48 },
+      xaxis: { range: [-0.02, 1.02], title: { text: t.value.criterionWeight, font: { size: narrow.value ? 11 : 12 } }, gridcolor: ink.value.grid, tickfont: { color: ink.value.muted } },
+      yaxis: { autorange: 'reversed', automargin: true, ticksuffix: '  ', showticklabels: !narrow.value },
       annotations,
     },
   }
@@ -247,225 +276,226 @@ const sweepChart = computed(() => {
       hovertemplate: `${n}: %{y:.4f}<extra></extra>`,
     })),
     layout: {
-      ...baseLayout(340),
-      margin: { l: 56, r: 24, t: 16, b: 80 },
+      ...baseLayout(narrow.value ? 320 : 340),
+      margin: narrow.value ? { l: 44, r: 8, t: 4, b: 96 } : { l: 56, r: 24, t: 8, b: 80 },
       hovermode: 'x unified',
-      xaxis: { range: [0, 1], title: { text: `${criterionLabel.value[c.criterion]} — ${t.value.criterionWeight}`, font: { size: 12 } }, gridcolor: ink.value.grid, tickfont: { color: ink.value.muted } },
+      xaxis: { range: [0, 1], title: { text: `${criterionLabel.value[c.criterion]} — ${t.value.criterionWeight}`, font: { size: narrow.value ? 11 : 12 } }, gridcolor: ink.value.grid, tickfont: { color: ink.value.muted } },
       yaxis: {
         // VIKOR's Q is a loss: flip the axis so "better" is always up.
         autorange: sens.value.higher_is_better ? true : 'reversed',
-        title: { text: sens.value.higher_is_better ? t.value.methodScore : t.value.methodLoss, font: { size: 12 } },
+        title: { text: sens.value.higher_is_better ? t.value.methodScore : t.value.methodLoss, font: { size: narrow.value ? 11 : 12 } },
         gridcolor: ink.value.grid, tickfont: { color: ink.value.muted },
       },
-      legend: { orientation: 'h', y: -0.28, x: 0, bgcolor: 'rgba(0,0,0,0)' },
+      legend: bottomLegend(-0.28),
       shapes,
     },
   }
 })
-
-// ── Styles ───────────────────────────────────────────────────────────────────
-const panel = computed(() => props.dark
-  ? 'bg-white/[0.06] border border-white/10'
-  : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]')
-const input = computed(() => props.dark
-  ? 'bg-slate-700 border border-slate-600 text-slate-200'
-  : 'bg-white/80 border border-black/10 text-slate-800')
-const muted = computed(() => props.dark ? 'text-slate-400' : 'text-slate-500')
-const strong = computed(() => props.dark ? 'text-slate-100' : 'text-slate-900')
 </script>
 
 <template>
-  <div>
+  <div class="space-y-3 md:space-y-4">
     <!-- Controls -->
-    <div class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6 mb-6" :class="panel">
-      <h2 class="text-xl font-semibold tracking-tight mb-1" :class="strong">{{ t.robustnessTitle }}</h2>
-      <p class="text-xs mb-4" :class="muted">{{ t.robustnessDesc }}</p>
+    <section class="card p-4">
+      <h2 class="card-title">{{ t.robustnessTitle }}</h2>
+      <p class="card-desc">{{ t.robustnessDesc }}</p>
 
-      <div class="flex flex-wrap items-end gap-3 mb-4">
-        <label class="text-xs font-medium" :class="muted">
-          {{ t.methodShown }}
-          <select v-model="selectedMethod" class="block mt-1 rounded-lg px-2 py-1.5 text-sm" :class="input">
+      <div class="mt-4 grid grid-cols-2 items-end gap-3 md:flex md:flex-wrap">
+        <label class="min-w-0 md:w-40">
+          <span class="field-label">{{ t.methodShown }}</span>
+          <select v-model="selectedMethod" class="field">
             <option v-for="id in dss.methods.value" :key="id" :value="id">{{ methodLabel(id) }}</option>
           </select>
         </label>
-        <label class="text-xs font-medium" :class="muted">
-          {{ t.iterations }}
-          <select v-model.number="settings.iterations" class="block mt-1 rounded-lg px-2 py-1.5 text-sm" :class="input">
+        <label class="min-w-0 md:w-32">
+          <span class="field-label">{{ t.iterations }}</span>
+          <select v-model.number="settings.iterations" class="field num">
             <option v-for="n in [500, 1000, 2000, 5000]" :key="n" :value="n">{{ n.toLocaleString() }}</option>
           </select>
         </label>
-        <label class="text-xs font-medium" :class="muted">
-          {{ t.weightUncertainty }}
-          <select v-model="settings.weight_model" class="block mt-1 rounded-lg px-2 py-1.5 text-sm" :class="input">
+        <label class="min-w-0 md:w-44">
+          <span class="field-label">{{ t.weightUncertainty }}</span>
+          <select v-model="settings.weight_model" class="field">
             <option v-for="m in ['fixed', 'perturbed', 'uniform']" :key="m" :value="m">{{ t.weightModels[m] }}</option>
           </select>
         </label>
-        <label v-if="settings.weight_model === 'perturbed'" class="text-xs font-medium" :class="muted">
-          {{ t.weightConfidence }}
-          <select v-model.number="settings.concentration" class="block mt-1 rounded-lg px-2 py-1.5 text-sm" :class="input">
+        <label v-if="settings.weight_model === 'perturbed'" class="min-w-0 md:w-36">
+          <span class="field-label">{{ t.weightConfidence }}</span>
+          <select v-model.number="settings.concentration" class="field">
             <option :value="20">{{ t.confidenceLow }}</option>
             <option :value="100">{{ t.confidenceMedium }}</option>
             <option :value="500">{{ t.confidenceHigh }}</option>
           </select>
         </label>
-        <div class="flex items-center gap-2 h-9 ml-auto text-xs" :class="muted">
-          <span v-if="rob.loading.value" class="animate-spin rounded-full h-3.5 w-3.5 border-b-2"
-                :class="dark ? 'border-teal-400' : 'border-teal-600'"></span>
+        <div class="col-span-2 flex h-5 items-center gap-2 text-xs text-subtle md:ml-auto md:h-8" aria-live="polite">
+          <span v-if="rob.loading.value" class="spinner"></span>
           <span v-if="rob.loading.value">{{ t.simulating }}</span>
-          <span v-else-if="data">{{ data.iterations.toLocaleString() }} {{ t.drawsDone }}</span>
+          <span v-else-if="data"><span class="num">{{ data.iterations.toLocaleString() }}</span> {{ t.drawsDone }}</span>
         </div>
       </div>
 
-      <details class="text-sm">
-        <summary class="cursor-pointer text-xs font-semibold" :class="strong">{{ t.valueRanges }}</summary>
-        <p class="text-xs mt-1 mb-2" :class="muted">{{ t.valueRangesDesc }}</p>
-        <p v-if="modelMode" class="text-xs mb-2 rounded-lg px-2.5 py-1.5"
-           :class="dark ? 'bg-blue-500/10 text-blue-200' : 'bg-blue-50 text-blue-800'">
+      <details class="group mt-4 border-t border-line pt-3">
+        <summary class="flex min-h-11 cursor-pointer list-none items-center gap-1.5 text-[15px] font-medium text-fg md:min-h-0 md:text-[13px] [&::-webkit-details-marker]:hidden">
+          <Icon name="chevron-right" class="text-xs text-subtle transition-transform group-open:rotate-90" />
+          {{ t.valueRanges }}
+        </summary>
+        <p class="mt-1 mb-2 text-xs text-muted">{{ t.valueRangesDesc }}</p>
+        <p v-if="modelMode" class="notice mb-2 border-accent/25 bg-accent-soft text-xs text-accent-ink">
           {{ t.modelRangesHint.replace('{level}', intervalPct) }}
         </p>
-        <div class="overflow-x-auto" :class="modelMode ? 'opacity-60' : ''">
-          <table class="text-xs">
-            <thead>
-              <tr :class="muted">
-                <th class="text-left pr-4 py-1 font-semibold">{{ t.criterionLabel }}</th>
-                <th class="text-left pr-3 py-1 font-semibold">{{ t.rangeLow }}</th>
-                <th class="text-left pr-3 py-1 font-semibold">{{ t.rangeHigh }}</th>
-                <th class="text-left py-1 font-semibold">{{ t.distribution }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="k in CRITERION_KEYS" :key="k">
-                <td class="pr-4 py-1" :class="strong">{{ criterionLabel[k] }}</td>
-                <td class="pr-3 py-1">
+        <!-- A table on desktop; on phones each criterion becomes a block of labelled fields. -->
+        <div class="lg:grid lg:w-max lg:grid-cols-[auto_auto_auto_auto] lg:items-center lg:gap-x-4 lg:gap-y-1 lg:text-xs"
+             :class="modelMode ? 'opacity-60' : ''">
+          <div class="hidden font-medium text-muted lg:contents">
+            <span class="py-1">{{ t.criterionLabel }}</span>
+            <span class="py-1">{{ t.rangeLow }}</span>
+            <span class="py-1">{{ t.rangeHigh }}</span>
+            <span class="py-1">{{ t.distribution }}</span>
+          </div>
+          <div v-for="k in CRITERION_KEYS" :key="k" class="border-b border-line py-3 last:border-b-0 lg:contents">
+            <p class="mb-2 text-[13px] font-medium text-fg lg:mb-0 lg:text-xs lg:font-normal">{{ criterionLabel[k] }}</p>
+            <div class="grid grid-cols-2 gap-x-3 gap-y-2 lg:contents">
+              <label class="min-w-0">
+                <span class="field-label lg:hidden">{{ t.rangeLow }}</span>
+                <span class="num flex items-center gap-1 text-muted">
                   −<input type="number" min="0" max="95" step="5" :value="lowPct(k)" @change="setLow(k, $event.target.value)"
-                          :disabled="modelMode"
-                          class="w-14 rounded-md px-1.5 py-0.5 mx-1 disabled:cursor-not-allowed" :class="input" />%
-                </td>
-                <td class="pr-3 py-1">
+                          :disabled="modelMode" inputmode="decimal"
+                          class="field num min-w-0 disabled:cursor-not-allowed lg:w-16 lg:px-1.5 lg:py-0.5 lg:text-xs" />%
+                </span>
+              </label>
+              <label class="min-w-0">
+                <span class="field-label lg:hidden">{{ t.rangeHigh }}</span>
+                <span class="num flex items-center gap-1 text-muted">
                   +<input type="number" min="0" max="900" step="5" :value="highPct(k)" @change="setHigh(k, $event.target.value)"
-                          :disabled="modelMode"
-                          class="w-14 rounded-md px-1.5 py-0.5 mx-1 disabled:cursor-not-allowed" :class="input" />%
-                </td>
-                <td class="py-1">
-                  <select v-if="modelMode" disabled class="rounded-md px-1.5 py-0.5 cursor-not-allowed" :class="input">
-                    <option>{{ shownRange(k)?.distribution === 'uniform' ? t.distUniform : t.distTriangular }}</option>
-                  </select>
-                  <select v-else v-model="settings.values[k].distribution" class="rounded-md px-1.5 py-0.5" :class="input">
-                    <option value="triangular">{{ t.distTriangular }}</option>
-                    <option value="uniform">{{ t.distUniform }}</option>
-                  </select>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                          :disabled="modelMode" inputmode="decimal"
+                          class="field num min-w-0 disabled:cursor-not-allowed lg:w-16 lg:px-1.5 lg:py-0.5 lg:text-xs" />%
+                </span>
+              </label>
+              <label class="col-span-2 min-w-0 lg:col-span-1">
+                <span class="field-label lg:hidden">{{ t.distribution }}</span>
+                <select v-if="modelMode" disabled class="field cursor-not-allowed lg:w-auto lg:px-1.5 lg:py-0.5 lg:pr-7 lg:text-xs">
+                  <option>{{ shownRange(k)?.distribution === 'uniform' ? t.distUniform : t.distTriangular }}</option>
+                </select>
+                <select v-else v-model="settings.values[k].distribution" class="field lg:w-auto lg:px-1.5 lg:py-0.5 lg:pr-7 lg:text-xs">
+                  <option value="triangular">{{ t.distTriangular }}</option>
+                  <option value="uniform">{{ t.distUniform }}</option>
+                </select>
+              </label>
+            </div>
+          </div>
         </div>
-        <button v-if="!modelMode" type="button" class="mt-2 text-xs underline" :class="muted" @click="rob.resetRanges()">{{ t.resetDefaults }}</button>
+        <button v-if="!modelMode" type="button" class="btn-ghost mt-2 lg:!px-1.5 lg:!py-1 lg:text-xs" @click="rob.resetRanges()">
+          <Icon name="refresh" class="text-xs" />{{ t.resetDefaults }}
+        </button>
       </details>
+    </section>
+
+    <div v-if="rob.error.value" class="notice notice-bad">
+      {{ rob.error.value }}
     </div>
 
-    <div v-if="rob.error.value" class="rounded-2xl px-4 py-3 mb-6 text-sm"
-         :class="dark ? 'bg-red-500/10 border border-red-500/30 text-red-200' : 'bg-red-50 border border-red-200 text-red-800'">
-      {{ rob.error.value }}
+    <!-- First run only; later runs keep the previous results on screen while they update. -->
+    <div v-if="!data && rob.loading.value" class="space-y-4" aria-hidden="true">
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4">
+        <div v-for="i in 3" :key="i" class="card h-32 animate-pulse bg-surface-2"></div>
+      </div>
+      <div class="card h-96 animate-pulse bg-surface-2"></div>
     </div>
 
     <template v-if="data && smaa && sens">
       <!-- Headline -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div class="rounded-3xl p-5" :class="panel">
-          <p class="text-xs font-semibold uppercase tracking-wider mb-2" :class="muted">{{ t.likelyWinner }} · {{ methodLabel(selectedMethod) }}</p>
-          <p class="text-lg font-bold" :class="strong">
-            <span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(top.alternative_name) }" aria-hidden="true"></span>{{ top.alternative_name }}
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 md:gap-4">
+        <div class="card p-4">
+          <p class="eyebrow mb-2">{{ t.likelyWinner }} · {{ methodLabel(selectedMethod) }}</p>
+          <p class="flex items-center gap-1.5 text-[13px] font-medium text-fg">
+            <span class="inline-block h-2 w-2 shrink-0 rounded-full" :style="{ background: altColor(top.alternative_name) }" aria-hidden="true"></span>{{ top.alternative_name }}
           </p>
-          <p class="text-3xl font-extrabold tabular-nums mt-1" :class="strong">{{ pct(top.rank_acceptability[0]) }}</p>
-          <p class="text-xs" :class="muted">{{ t.firstPlaceShare }}</p>
+          <p class="num mt-1 text-2xl font-semibold tracking-tight text-fg">{{ pct(top.rank_acceptability[0]) }}</p>
+          <p class="text-xs text-muted">{{ t.firstPlaceShare }}</p>
         </div>
-        <div class="rounded-3xl p-5" :class="panel">
-          <p class="text-xs font-semibold uppercase tracking-wider mb-2" :class="muted">{{ t.mostSensitive }}</p>
+        <div class="card p-4">
+          <p class="eyebrow mb-2">{{ t.mostSensitive }}</p>
           <template v-if="critical">
-            <p class="text-lg font-bold" :class="strong">{{ criterionLabel[critical] }}</p>
-            <p class="text-3xl font-extrabold tabular-nums mt-1" :class="strong">±{{ sens.critical_change.toFixed(3) }}</p>
-            <p class="text-xs" :class="muted">{{ t.weightChangeFlips }} {{ sens.winner }}</p>
+            <p class="text-[13px] font-medium text-fg">{{ criterionLabel[critical] }}</p>
+            <p class="num mt-1 text-2xl font-semibold tracking-tight text-fg">±{{ sens.critical_change.toFixed(3) }}</p>
+            <p class="text-xs text-muted">{{ t.weightChangeFlips }} {{ sens.winner }}</p>
           </template>
-          <p v-else class="text-sm mt-2" :class="strong">{{ t.noSingleFlip }}</p>
+          <p v-else class="mt-2 text-[13px] text-fg">{{ t.noSingleFlip }}</p>
         </div>
-        <div class="rounded-3xl p-5" :class="panel">
-          <p class="text-xs font-semibold uppercase tracking-wider mb-2" :class="muted">{{ t.constraintRisk }} · {{ top.alternative_name }}</p>
-          <p class="text-3xl font-extrabold tabular-nums mt-1" :class="strong">{{ pct(winnerRisk.construction_cost_mln) }}</p>
-          <p class="text-xs" :class="muted">{{ t.overBudget }} ({{ dss.params.budget }} M USD)</p>
-          <p class="text-sm font-semibold tabular-nums mt-2" :class="strong">{{ pct(winnerRisk.land_area_hectares) }}
-            <span class="font-normal text-xs" :class="muted">{{ t.overLand }} ({{ dss.params.land_limit }} ha)</span></p>
+        <div class="card p-4 sm:col-span-2 md:col-span-1">
+          <p class="eyebrow mb-2">{{ t.constraintRisk }} · {{ top.alternative_name }}</p>
+          <p class="num mt-1 text-2xl font-semibold tracking-tight text-fg">{{ pct(winnerRisk.construction_cost_mln) }}</p>
+          <p class="text-xs text-muted">{{ t.overBudget }} (<span class="num">{{ dss.params.budget }}</span> M USD)</p>
+          <p class="mt-2 text-[13px] text-fg"><span class="num font-medium">{{ pct(winnerRisk.land_area_hectares) }}</span>
+            <span class="text-xs text-muted">{{ t.overLand }} (<span class="num">{{ dss.params.land_limit }}</span> ha)</span></p>
         </div>
       </div>
 
       <!-- Rank acceptability -->
-      <div class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6 mb-6" :class="panel">
-        <h3 class="text-base font-semibold" :class="strong">{{ t.rankAcceptabilityTitle }} · {{ methodLabel(selectedMethod) }}</h3>
-        <p class="text-xs mb-2" :class="muted">{{ t.rankAcceptabilityDesc }}</p>
+      <section class="card p-4">
+        <h3 class="card-title">{{ t.rankAcceptabilityTitle }} · {{ methodLabel(selectedMethod) }}</h3>
+        <p class="card-desc mb-2">{{ t.rankAcceptabilityDesc }}</p>
         <PlotlyChart :chart="acceptabilityChart" :dark="dark" />
-        <div class="overflow-x-auto mt-2">
-          <table class="w-full text-sm">
+        <div class="table-scroll -mx-4 mt-2 border-t border-line">
+          <table class="table min-w-[560px]">
             <thead>
-              <tr :class="muted">
-                <th class="px-3 py-2 text-left font-semibold">{{ t.alternative }}</th>
-                <th v-for="r in nAlts" :key="r" class="px-3 py-2 text-right font-semibold">{{ t.rankWord }} {{ r }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.holistic }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.confidenceFactor }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.overBudget }}</th>
-                <th class="px-3 py-2 text-right font-semibold">{{ t.overLand }}</th>
+              <tr>
+                <th class="sticky left-0 z-[1] bg-surface !pl-4 max-md:shadow-[inset_-1px_0_0_var(--line)]">{{ t.alternative }}</th>
+                <th v-for="r in nAlts" :key="r" class="!text-right">{{ t.rankWord }} {{ r }}</th>
+                <th class="!text-right">{{ t.holistic }}</th>
+                <th class="!text-right">{{ t.confidenceFactor }}</th>
+                <th class="!text-right">{{ t.overBudget }}</th>
+                <th class="!pr-4 !text-right">{{ t.overLand }}</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="a in smaa.alternatives" :key="a.alternative_name" class="border-t tabular-nums"
-                  :class="dark ? 'border-slate-700 text-slate-200' : 'border-black/5 text-slate-800'">
-                <td class="px-3 py-2 font-semibold">
-                  <span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(a.alternative_name) }" aria-hidden="true"></span>{{ a.alternative_name }}
+              <tr v-for="a in smaa.alternatives" :key="a.alternative_name">
+                <td class="sticky left-0 z-[1] whitespace-nowrap bg-surface !pl-4 font-medium max-md:shadow-[inset_-1px_0_0_var(--line)] [tr:nth-child(even)>&]:bg-[color-mix(in_srgb,var(--surface-2)_40%,var(--surface))]">
+                  <span class="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" :style="{ background: altColor(a.alternative_name) }" aria-hidden="true"></span>{{ a.alternative_name }}
                 </td>
-                <td v-for="(p, r) in a.rank_acceptability" :key="r" class="px-3 py-2 text-right">{{ pct(p, 1) }}</td>
-                <td class="px-3 py-2 text-right font-semibold">{{ a.holistic_acceptability.toFixed(3) }}</td>
-                <td class="px-3 py-2 text-right">{{ pct(a.confidence, 1) }}</td>
-                <td class="px-3 py-2 text-right">{{ pct(data.exceedance[a.alternative_name].construction_cost_mln, 1) }}</td>
-                <td class="px-3 py-2 text-right">{{ pct(data.exceedance[a.alternative_name].land_area_hectares, 1) }}</td>
+                <td v-for="(p, r) in a.rank_acceptability" :key="r" class="num text-right">{{ pct(p, 1) }}</td>
+                <td class="num text-right font-medium">{{ a.holistic_acceptability.toFixed(3) }}</td>
+                <td class="num text-right">{{ pct(a.confidence, 1) }}</td>
+                <td class="num text-right">{{ pct(data.exceedance[a.alternative_name].construction_cost_mln, 1) }}</td>
+                <td class="num !pr-4 text-right">{{ pct(data.exceedance[a.alternative_name].land_area_hectares, 1) }}</td>
               </tr>
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
-      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
+      <div class="grid grid-cols-1 gap-3 md:gap-4 xl:grid-cols-2">
         <!-- First place by method -->
-        <div class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6" :class="panel">
-          <h3 class="text-base font-semibold" :class="strong">{{ t.firstByMethodTitle }}</h3>
-          <p class="text-xs mb-2" :class="muted">{{ t.firstByMethodDesc }}</p>
+        <section class="card p-4">
+          <h3 class="card-title">{{ t.firstByMethodTitle }}</h3>
+          <p class="card-desc mb-2">{{ t.firstByMethodDesc }}</p>
           <PlotlyChart :chart="firstByMethodChart" :dark="dark" />
-        </div>
+        </section>
 
         <!-- Stability intervals -->
-        <div class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6" :class="panel">
-          <h3 class="text-base font-semibold" :class="strong">{{ t.stabilityTitle }} · {{ methodLabel(selectedMethod) }}</h3>
-          <p class="text-xs mb-2" :class="muted">{{ t.stabilityDesc }}</p>
+        <section class="card p-4">
+          <h3 class="card-title">{{ t.stabilityTitle }} · {{ methodLabel(selectedMethod) }}</h3>
+          <p class="card-desc mb-2">{{ t.stabilityDesc }}</p>
           <PlotlyChart :chart="intervalChart" :dark="dark" />
-        </div>
+        </section>
       </div>
 
       <!-- Weight sweep -->
-      <div class="rounded-[28px] backdrop-blur-2xl p-5 lg:p-6 mb-6" :class="panel">
-        <div class="flex flex-wrap items-start justify-between gap-3 mb-2">
+      <section class="card p-4">
+        <div class="mb-2 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 class="text-base font-semibold" :class="strong">{{ t.sweepTitle }} · {{ methodLabel(selectedMethod) }}</h3>
-            <p class="text-xs" :class="muted">{{ t.sweepDesc }}</p>
+            <h3 class="card-title">{{ t.sweepTitle }} · {{ methodLabel(selectedMethod) }}</h3>
+            <p class="card-desc">{{ t.sweepDesc }}</p>
           </div>
-          <div class="flex flex-wrap gap-1">
-            <button v-for="k in CRITERION_KEYS" :key="k" type="button" @click="sweepCriterion = k"
-                    class="px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors"
-                    :class="sweepCriterion === k
-                      ? (dark ? 'bg-slate-600 border-slate-500 text-white' : 'bg-slate-800 border-slate-800 text-white')
-                      : (dark ? 'border-slate-600 text-slate-400' : 'border-black/10 text-slate-500')">
+          <div class="seg grid w-full grid-cols-2 md:inline-flex md:w-auto md:flex-wrap" role="group">
+            <button v-for="k in CRITERION_KEYS" :key="k" type="button" class="seg-item leading-tight pointer-coarse:min-h-11"
+                    :aria-pressed="sweepCriterion === k" @click="sweepCriterion = k">
               {{ criterionLabel[k] }}
             </button>
           </div>
         </div>
         <PlotlyChart v-if="sweep" :chart="sweepChart" :dark="dark" />
-      </div>
+      </section>
     </template>
   </div>
 </template>

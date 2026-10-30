@@ -1,9 +1,16 @@
 import { ref, watchEffect } from 'vue'
 
-const dark = ref(false)
+// Remembered choice first, then the OS preference.
+const stored = localStorage.getItem('theme')
+const dark = ref(stored ? stored === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches)
+
+function setDark(value) {
+  dark.value = value
+  localStorage.setItem('theme', value ? 'dark' : 'light')
+}
 
 function toggle() {
-  dark.value = !dark.value
+  setDark(!dark.value)
 }
 
 watchEffect(() => {
@@ -11,5 +18,5 @@ watchEffect(() => {
 })
 
 export function useTheme() {
-  return { dark, toggle }
+  return { dark, toggle, setDark }
 }

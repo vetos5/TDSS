@@ -4,7 +4,10 @@ import { blueprintUrl, fetchInterchangeDetail } from '../api.js'
 import PlotlyChart from './PlotlyChart.vue'
 import LeafletMap from './LeafletMap.vue'
 import MethodComparison from './MethodComparison.vue'
+import Icon from './Icon.vue'
 import { useLocale } from '../composables/useLocale.js'
+import { chartInk } from '../chartPalette.js'
+import { useViewport } from '../composables/useViewport.js'
 
 const props = defineProps({
   data: Object,
@@ -13,14 +16,13 @@ const props = defineProps({
 })
 
 const { t, locale } = useLocale()
+const { narrow } = useViewport()
 
 const selectedDetail = ref(null)
 const detailInfo = ref(null)
 
 const winner = computed(() => props.data?.results?.[0])
 const maxScore = computed(() => winner.value?.total_score || 1)
-
-const RANK_BADGES = { 1: { bg: '#fbbf24', fg: '#78350f', icon: '🏆' }, 2: { bg: '#cbd5e1', fg: '#1e293b', icon: '🥈' }, 3: { bg: '#d6a06c', fg: '#422006', icon: '🥉' } }
 
 const criterionLabels = computed(() => ({
   construction_cost_mln: t.value.constructionCost,
@@ -70,10 +72,22 @@ watch(locale, async () => {
   }
 })
 
-function radarData() {
+// Breaks a chart label into short lines so radar axis labels fit beside a phone-width plot.
+function wrapLabel(text, max = 12) {
+  const lines = []
+  for (const word of String(text).split(' ')) {
+    const last = lines[lines.length - 1]
+    if (last && last.length + word.length < max) lines[lines.length - 1] = `${last} ${word}`
+    else lines.push(word)
+  }
+  return lines.join('<br>')
+}
+
+const radarChart = computed(() => {
+  const n = narrow.value
   const results = props.data.results.slice(0, 2)
   const keys = Object.keys(results[0].normalised_values)
-  const labels = keys.map(k => criterionLabels.value[k] || k)
+  const labels = keys.map(k => criterionLabels.value[k] || k).map(l => (n ? wrapLabel(l) : l))
   const traces = results.map((r, i) => ({
     type: 'scatterpolar',
     r: [...keys.map(k => r.normalised_values[k]), r.normalised_values[keys[0]]],
@@ -83,28 +97,29 @@ function radarData() {
     line: { color: props.dark ? r.color_dark : r.color, width: 2.5 },
     fillcolor: `${props.dark ? r.color_dark : r.color}22`,
   }))
-  const p = props.dark
+  const ink = chartInk(props.dark)
   return {
     data: traces,
     layout: {
       polar: {
         bgcolor: 'rgba(0,0,0,0)',
-        radialaxis: { visible: true, range: [0, 1], tickvals: [0.25, 0.5, 0.75, 1], tickfont: { size: 10, color: p ? '#94a3b8' : '#334155' }, gridcolor: p ? '#334155' : '#cbd5e1' },
-        angularaxis: { tickfont: { size: 12, color: p ? '#e2e8f0' : '#0f172a' }, gridcolor: p ? '#334155' : '#cbd5e1', rotation: 90, direction: 'clockwise' },
+        radialaxis: { visible: true, range: [0, 1], tickvals: n ? [0.5, 1] : [0.25, 0.5, 0.75, 1], tickfont: { size: 10, color: ink.muted }, gridcolor: ink.grid, linecolor: ink.grid },
+        angularaxis: { tickfont: { size: n ? 10 : 11, color: ink.text }, gridcolor: ink.grid, linecolor: ink.grid, rotation: 90, direction: 'clockwise' },
       },
       paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-      font: { family: 'Inter, system-ui, sans-serif', color: p ? '#e2e8f0' : '#0f172a', size: 12 },
-      legend: { orientation: 'h', y: -0.18, x: 0.5, xanchor: 'center', font: { size: 11 }, bgcolor: 'rgba(0,0,0,0)' },
-      margin: { l: 56, r: 56, t: 56, b: 56 },
-      title: { text: `${t.value.chartRadarTitle} ${results.length}`, font: { size: 15 }, x: 0.02 },
-      height: 420,
+      font: { family: ink.font, color: ink.text, size: 11 },
+      legend: { orientation: 'h', y: n ? -0.24 : -0.18, x: 0.5, xanchor: 'center', yanchor: 'top', font: { size: 11, color: ink.muted }, bgcolor: 'rgba(0,0,0,0)' },
+      margin: n ? { l: 60, r: 60, t: 40, b: 56 } : { l: 56, r: 56, t: 32, b: 56 },
+      height: n ? 330 : 396,
     },
   }
-}
+})
 
-function barChartData() {
+const barChart = computed(() => {
+  const n = narrow.value
   const ordered = [...props.data.results].sort((a, b) => a.total_score - b.total_score)
   const p = props.dark
+  const ink = chartInk(p)
   return {
     data: [{
       type: 'bar', orientation: 'h',
@@ -112,27 +127,27 @@ function barChartData() {
       y: ordered.map(r => r.alternative_name),
       marker: { color: ordered.map(r => p ? r.color_dark : r.color), opacity: 0.92 },
       text: ordered.map(r => `  #${r.rank}  ${r.total_score.toFixed(4)}`),
-      textposition: 'outside', textfont: { size: 11, color: p ? '#e2e8f0' : '#0f172a' },
+      textposition: 'outside', textfont: { size: 11, color: ink.muted },
       hovertemplate: `<b>%{y}</b><br>${t.value.wsmScore}: <b>%{x:.4f}</b><extra></extra>`,
     }],
     layout: {
       paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-      font: { family: 'Inter, system-ui, sans-serif', color: p ? '#e2e8f0' : '#0f172a', size: 12 },
-      xaxis: { title: t.value.chartBarXAxis, range: [0, 1.22], gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { color: p ? '#94a3b8' : '#334155' } },
-      yaxis: { gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { size: 12, color: p ? '#e2e8f0' : '#0f172a' }, automargin: true, ticksuffix: '  ' },
-      margin: { l: 8, r: 80, t: 48, b: 48, pad: 4 },
-      title: { text: t.value.chartBarTitle, font: { size: 15 }, x: 0.02 },
-      showlegend: false, height: 300,
+      font: { family: ink.font, color: ink.text, size: 11 },
+      xaxis: { title: { text: t.value.chartBarXAxis, font: { color: ink.muted, ...(n && { size: 11 }) } }, range: [0, n ? 1.32 : 1.22], gridcolor: ink.grid, zerolinecolor: ink.grid, tickfont: { color: ink.muted } },
+      yaxis: { gridcolor: ink.grid, tickfont: { size: 11, color: ink.text }, automargin: true, ticksuffix: n ? ' ' : '  ' },
+      margin: n ? { l: 4, r: 12, t: 8, b: 44, pad: 2 } : { l: 8, r: 80, t: 12, b: 48, pad: 4 },
+      showlegend: false, height: n ? 260 : 300,
       autosize: true,
     },
   }
-}
+})
 
-function stackedBarData() {
+const stackedChart = computed(() => {
+  const n = narrow.value
   const ordered = [...props.data.results].sort((a, b) => a.total_score - b.total_score)
   const keys = Object.keys(props.data.results[0].weighted_scores)
   const COLORS = props.dark ? ['#2dd4bf', '#fb923c', '#a78bfa', '#60a5fa'] : ['#0f766e', '#ea580c', '#7c3aed', '#1d4ed8']
-  const p = props.dark
+  const ink = chartInk(props.dark)
   return {
     data: keys.map((k, i) => ({
       type: 'bar', orientation: 'h',
@@ -145,99 +160,69 @@ function stackedBarData() {
     layout: {
       barmode: 'stack',
       paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-      font: { family: 'Inter, system-ui, sans-serif', color: p ? '#e2e8f0' : '#0f172a', size: 12 },
-      xaxis: { title: t.value.chartStackXAxis, range: [0, 1.08], gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { color: p ? '#94a3b8' : '#334155' } },
-      yaxis: { gridcolor: p ? '#334155' : '#cbd5e1', tickfont: { size: 12, color: p ? '#e2e8f0' : '#0f172a' }, automargin: true, ticksuffix: '  ' },
-      legend: { orientation: 'h', y: -0.32, x: 0.5, xanchor: 'center', font: { size: 11 }, bgcolor: 'rgba(0,0,0,0)' },
-      margin: { l: 8, r: 24, t: 48, b: 120, pad: 4 },
-      title: { text: t.value.chartStackTitle, font: { size: 15 }, x: 0.02 },
-      height: 380,
+      font: { family: ink.font, color: ink.text, size: 11 },
+      xaxis: { title: { text: t.value.chartStackXAxis, font: { color: ink.muted, ...(n && { size: 11 }) } }, range: [0, 1.08], gridcolor: ink.grid, zerolinecolor: ink.grid, tickfont: { color: ink.muted } },
+      yaxis: { gridcolor: ink.grid, tickfont: { size: 11, color: ink.text }, automargin: true, ticksuffix: n ? ' ' : '  ' },
+      legend: n
+        ? { orientation: 'h', y: -0.3, x: 0, xanchor: 'left', yanchor: 'top', font: { size: 11, color: ink.muted }, bgcolor: 'rgba(0,0,0,0)' }
+        : { orientation: 'h', y: -0.32, x: 0.5, xanchor: 'center', font: { size: 11, color: ink.muted }, bgcolor: 'rgba(0,0,0,0)' },
+      margin: n ? { l: 4, r: 12, t: 8, b: 40, pad: 2 } : { l: 8, r: 24, t: 12, b: 120, pad: 4 },
+      height: n ? 320 : 344,
       autosize: true,
     },
   }
-}
+})
 
 const selResult = computed(() => props.data?.results?.find(r => r.alternative_name === selectedDetail.value))
 </script>
 
 <template>
-  <div v-if="data" class="dss-wrapper" :class="{ 'dss-main-container': !dark }">
-    <!-- Context badge + winner banner -->
-    <div class="flex items-center gap-3 mb-3">
-      <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold"
-            :class="dark
-              ? 'bg-teal-900/30 border border-teal-700 text-teal-400'
-              : 'bg-blue-500/10 text-blue-600 border border-blue-200/60'">
-        {{ t.context }}: {{ data.context }}
-      </span>
-      <span v-if="data.value_source === 'model'"
-            class="inline-block px-3 py-1 rounded-full text-xs font-semibold"
-            :class="dark
-              ? 'bg-blue-500/15 border border-blue-400/40 text-blue-200'
-              : 'bg-blue-500/10 text-blue-700 border border-blue-200/60'">
-        {{ t.valueSourceTitle }}: {{ t.valueSources.model }}
-      </span>
+  <div v-if="data" class="space-y-4">
+    <!-- The toolbar already names the context; on phones it has no room for the value source. -->
+    <div v-if="data.value_source === 'model'" class="md:hidden">
+      <span class="badge-accent">{{ t.valueSourceTitle }}: {{ t.valueSources.model }}</span>
     </div>
 
-    <div class="rounded-2xl px-4 py-3 mb-6 flex items-start gap-2 backdrop-blur-xl"
-         :class="dark
-           ? 'bg-emerald-900/20 border border-emerald-700 text-emerald-300'
-           : 'bg-white/60 border border-white/80 text-emerald-700 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
-      <span class="text-lg">✅</span>
-      <span class="text-sm font-medium">
-        {{ t.recommended }}: <strong>{{ winner?.alternative_name }}</strong> —
-        {{ t.wsmScore }} {{ winner?.total_score?.toFixed(4) }}
+    <div class="notice notice-ok flex items-start gap-2">
+      <Icon name="check" class="mt-0.5 text-sm" />
+      <span>
+        {{ t.recommended }}: <strong class="font-semibold">{{ winner?.alternative_name }}</strong> —
+        {{ t.wsmScore }} <span class="num">{{ winner?.total_score?.toFixed(4) }}</span>
         ({{ t.rankOf }} {{ data.results.length }} {{ t.alternatives }} "{{ data.context }}")
       </span>
     </div>
 
     <!-- Project params summary -->
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+    <div class="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-4">
       <div v-for="m in [
-        { label: t.designSpeedLabel, val: params.design_speed + ' km/h' },
-        { label: t.aadtLabel,        val: params.aadt.toLocaleString() },
-        { label: t.budgetLimit,      val: '$' + params.budget + 'M' },
-        { label: t.landLimitLabel,   val: params.land_limit + ' ha' },
-      ]" :key="m.label"
-           class="rounded-2xl p-3 backdrop-blur-xl"
-           :class="dark
-             ? 'bg-slate-800 border border-slate-700'
-             : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
-        <p class="text-[0.7rem] font-medium uppercase tracking-wide" :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ m.label }}</p>
-        <p class="text-lg font-bold" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ m.val }}</p>
+        { label: t.designSpeedLabel, val: params.design_speed + ' km/h', n: true },
+        { label: t.aadtLabel,        val: params.aadt.toLocaleString(), n: true },
+        { label: t.budgetLimit,      val: '$' + params.budget + 'M', n: true },
+        { label: t.landLimitLabel,   val: params.land_limit + ' ha', n: true },
+      ]" :key="m.label" class="bg-surface px-3 py-2.5">
+        <p class="eyebrow">{{ m.label }}</p>
+        <p class="mt-0.5 text-sm font-semibold" :class="{ num: m.n }">{{ m.val }}</p>
       </div>
-    </div>
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
       <div v-for="m in [
-        { label: t.peakHourFactor, val: params.peak_factor + '%' },
-        { label: t.lanesPerDir,    val: String(params.num_lanes) },
+        { label: t.peakHourFactor, val: params.peak_factor + '%', n: true },
+        { label: t.lanesPerDir,    val: String(params.num_lanes), n: true },
         { label: t.terrain,        val: displayTerrain(params.terrain) },
         { label: t.envSens,        val: displayEnv(params.env_sensitivity) },
-      ]" :key="m.label"
-           class="rounded-2xl p-3 backdrop-blur-xl"
-           :class="dark
-             ? 'bg-slate-800 border border-slate-700'
-             : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
-        <p class="text-[0.7rem] font-medium uppercase tracking-wide" :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ m.label }}</p>
-        <p class="text-lg font-bold" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ m.val }}</p>
+      ]" :key="m.label" class="bg-surface px-3 py-2.5">
+        <p class="eyebrow">{{ m.label }}</p>
+        <p class="mt-0.5 text-sm font-semibold" :class="{ num: m.n }">{{ m.val }}</p>
       </div>
     </div>
 
-    <!-- ═══ Active Parameter Adjustments ═══ -->
-    <div v-if="data.adjustments && data.adjustments.length" class="rounded-2xl px-4 py-3 mb-6"
-         :class="dark
-           ? 'bg-amber-900/20 border border-amber-700/50'
-           : 'bg-amber-50/80 border border-amber-200/80 shadow-[0_4px_16px_rgb(0,0,0,0.04)]'">
-      <p class="text-[0.7rem] font-bold uppercase tracking-widest mb-2"
-         :class="dark ? 'text-amber-400' : 'text-amber-600'">
-        ⚙ {{ t.paramAdjustments }}
+    <!-- Active parameter adjustments -->
+    <div v-if="data.adjustments && data.adjustments.length" class="notice notice-warn">
+      <p class="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
+        <Icon name="sliders" />
+        {{ t.paramAdjustments }}
       </p>
       <ul class="space-y-1">
-        <li v-for="note in data.adjustments" :key="note.kind"
-            class="flex items-start gap-2 text-xs leading-relaxed"
-            :class="dark ? 'text-amber-200' : 'text-amber-800'">
-          <span class="mt-0.5 shrink-0 font-bold uppercase tracking-wide text-[0.6rem] px-1.5 py-0.5 rounded"
-                :class="dark ? 'bg-amber-700/40 text-amber-300' : 'bg-amber-200 text-amber-700'">
+        <li v-for="note in data.adjustments" :key="note.kind" class="flex flex-col items-start gap-1 text-xs leading-relaxed text-fg sm:flex-row sm:gap-2">
+          <span class="mt-px shrink-0 rounded bg-warn-soft px-1.5 py-0.5 text-[0.6rem] font-medium uppercase tracking-wide text-warn">
             {{ note.kind.replace('_', ' ') }}
           </span>
           <span>{{ note.message }}</span>
@@ -245,203 +230,145 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
       </ul>
     </div>
 
-    <!-- ═══ WSM Score Ranking — iOS Light Glassmorphism ═══ -->
-    <div class="relative overflow-hidden rounded-[32px] p-1 mb-6">
+    <!-- WSM score ranking -->
+    <section class="card p-4">
+      <h2 class="card-title">{{ t.wsmRanking }}</h2>
+      <p class="card-desc">{{ t.tapToExplore }}</p>
 
-      <!-- Glass container -->
-      <div class="relative rounded-[28px] backdrop-blur-2xl p-6 lg:p-8"
-           :class="dark
-             ? 'bg-white/[0.06] border border-white/10'
-             : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
+      <!-- Phones: compact list rows (thumbnail · rank + name · score). From sm: cards with the full schematic. -->
+      <div class="mt-3 grid grid-cols-1 gap-2 sm:mt-4 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
+        <button v-for="res in data.results" :key="res.alternative_name" type="button"
+                :aria-expanded="selectedDetail === res.alternative_name"
+                class="group flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-lg border bg-surface p-2.5 text-left transition-[border-color,opacity,box-shadow,background-color] duration-150
+                       sm:flex-col sm:items-stretch sm:gap-0 sm:p-3"
+                :class="[
+                  selectedDetail === res.alternative_name
+                    ? 'border-accent ring-2 ring-accent/30'
+                    : 'border-line hover:border-line-strong active:bg-surface-2',
+                  selectedDetail && selectedDetail !== res.alternative_name ? 'opacity-60 hover:opacity-100' : '',
+                ]"
+                @click="toggleDetail(res.alternative_name)">
+          <!-- Phone row -->
+          <img :src="blueprintUrl(res.alternative_name)" alt="" aria-hidden="true"
+               class="h-14 w-14 shrink-0 rounded-md object-contain sm:hidden" />
+          <span class="flex min-w-0 flex-1 flex-col gap-1 sm:hidden">
+            <span class="flex min-w-0 items-center gap-1.5">
+              <span class="shrink-0" :class="res.rank === 1 ? 'badge-accent' : 'badge'">
+                <Icon v-if="res.rank === 1" name="trophy" />
+                {{ t.ordinals[res.rank - 1] }}
+              </span>
+              <span class="h-2 w-2 shrink-0 rounded-full" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>
+              <span class="truncate text-[15px] font-medium">{{ res.alternative_name }}</span>
+            </span>
+            <span class="flex items-center gap-2.5">
+              <span class="num text-[15px] font-semibold tracking-tight">{{ res.total_score.toFixed(4) }}</span>
+              <span class="h-1 flex-1 overflow-hidden rounded-full bg-surface-3">
+                <span class="block h-full rounded-full transition-all duration-500"
+                      :style="{ width: barPct(res.total_score) + '%', background: altColor(res.alternative_name) }"></span>
+              </span>
+            </span>
+          </span>
+          <Icon :name="selectedDetail === res.alternative_name ? 'x' : 'chevron-right'"
+                class="shrink-0 text-base sm:hidden"
+                :class="selectedDetail === res.alternative_name ? 'text-accent-ink' : 'text-subtle'" />
 
-        <!-- Section header -->
-        <h2 class="text-xl font-semibold tracking-tight mb-1"
-            :class="dark ? 'text-white/90' : 'text-slate-900'">
-          {{ t.wsmRanking }}
-        </h2>
-        <p class="text-xs tracking-wide mb-6"
-           :class="dark ? 'text-white/40' : 'text-slate-500'">
-          {{ t.tapToExplore }}
-        </p>
-
-        <!-- Ranking cards grid -->
-        <div class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <div v-for="(res, idx) in data.results" :key="res.alternative_name"
-               class="group relative flex flex-col items-center rounded-3xl border p-6 text-center cursor-pointer
-                      transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)]
-                      active:scale-[0.97]"
-               :class="[
-                 dark
-                   ? (selectedDetail === res.alternative_name
-                       ? 'border-teal-400/60 bg-white/15 shadow-[0_0_30px_rgba(45,212,191,0.2)] scale-[1.02]'
-                       : 'border-white/10 bg-white/[0.06] hover:-translate-y-1 hover:bg-white/12')
-                   : (selectedDetail === res.alternative_name
-                       ? 'border-blue-400/50 bg-white/90 shadow-[0_8px_40px_rgb(59,130,246,0.12)] scale-[1.02]'
-                       : 'border-white/80 bg-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 hover:bg-white/80 hover:shadow-[0_12px_40px_rgb(0,0,0,0.07)]'),
-                 selectedDetail && selectedDetail !== res.alternative_name
-                   ? 'opacity-45 grayscale-[40%] hover:opacity-80 hover:grayscale-0' : '',
-                 !dark && res.rank === 1 && selectedDetail !== res.alternative_name
-                   ? 'border-blue-300/60 shadow-[0_8px_30px_rgb(59,130,246,0.08)]' : '',
-                 dark && res.rank === 1 && selectedDetail !== res.alternative_name
-                   ? 'border-amber-400/40 shadow-lg shadow-amber-500/10' : '',
-               ]"
-               @click="toggleDetail(res.alternative_name)">
-
-            <!-- Rank badge — vibrant iOS pill -->
-            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[0.68rem] font-bold uppercase tracking-widest mb-3"
-                  :class="[
-                    res.rank === 1
-                      ? (dark ? 'bg-amber-500/20 text-amber-300 border border-amber-400/20' : 'bg-blue-500 text-white shadow-[0_2px_8px_rgb(59,130,246,0.3)]')
-                      : '',
-                    res.rank === 2
-                      ? (dark ? 'bg-slate-400/15 text-slate-300 border border-white/10' : 'bg-emerald-500 text-white shadow-[0_2px_8px_rgb(16,185,129,0.3)]')
-                      : '',
-                    res.rank === 3
-                      ? (dark ? 'bg-orange-500/15 text-orange-300 border border-orange-400/20' : 'bg-orange-500 text-white shadow-[0_2px_8px_rgb(249,115,22,0.3)]')
-                      : '',
-                    res.rank > 3
-                      ? (dark ? 'bg-white/10 text-white/50 border border-white/10' : 'bg-slate-200/80 text-slate-500')
-                      : '',
-                  ]">
-              <span class="text-sm">{{ RANK_BADGES[res.rank]?.icon || '•' }}</span>
+          <!-- Card (sm and up) -->
+          <span class="hidden items-center justify-between gap-2 sm:flex">
+            <span :class="res.rank === 1 ? 'badge-accent' : 'badge'">
+              <Icon v-if="res.rank === 1" name="trophy" />
               {{ t.ordinals[res.rank - 1] }}
             </span>
-
-            <!-- Alternative name -->
-            <p class="font-semibold text-sm mb-3 tracking-tight">
-<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>
-              {{ res.alternative_name }}
-            </p>
-
-            <!-- Blueprint thumbnail -->
-            <div class="relative mb-4 w-full flex justify-center">
-              <img :src="blueprintUrl(res.alternative_name)" :alt="res.alternative_name + ' schematic'"
-                   class="max-h-36 object-contain drop-shadow-lg transition-transform duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)]
-                          group-hover:scale-105" />
-            </div>
-
-            <!-- WSM Score — hero number -->
-            <p class="text-3xl font-semibold tracking-tight mb-0.5"
-               :class="dark ? 'text-white/90' : 'text-slate-900'">
-              {{ res.total_score.toFixed(4) }}
-            </p>
-            <p class="text-[0.6rem] font-medium uppercase tracking-widest mb-3"
-               :class="dark ? 'text-white/35' : 'text-slate-400'">
-              {{ t.wsmScore }}
-            </p>
-
-            <!-- Score progress bar -->
-            <div class="w-4/5 h-1 rounded-full overflow-hidden"
-                 :class="dark ? 'bg-white/10' : 'bg-black/5'">
-              <div class="h-full rounded-full transition-all duration-500 ease-[cubic-bezier(0.25,0.8,0.25,1)]"
-                   :style="{ width: barPct(res.total_score) + '%', background: altColor(res.alternative_name) }"></div>
-            </div>
-
-            <!-- Detail action label -->
-            <span class="mt-4 inline-flex items-center gap-1 text-[0.68rem] font-semibold tracking-wide
-                         transition-colors duration-200"
-                  :class="selectedDetail === res.alternative_name
-                    ? (dark ? 'text-teal-300' : 'text-blue-500')
-                    : (dark ? 'text-white/40 group-hover:text-white/70' : 'text-slate-400 group-hover:text-slate-600')">
+            <span class="inline-flex items-center gap-0.5 text-xs transition-colors"
+                  :class="selectedDetail === res.alternative_name ? 'text-accent-ink' : 'text-subtle group-hover:text-fg'">
               {{ selectedDetail === res.alternative_name ? t.close : t.details }}
+              <Icon :name="selectedDetail === res.alternative_name ? 'x' : 'chevron-right'" />
             </span>
-          </div>
-        </div>
+          </span>
+
+          <span class="mt-2.5 hidden min-w-0 items-center gap-1.5 text-[13px] font-medium sm:flex">
+            <span class="h-2 w-2 shrink-0 rounded-full" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>
+            <span class="truncate">{{ res.alternative_name }}</span>
+          </span>
+
+          <span class="my-3 hidden justify-center sm:flex">
+            <img :src="blueprintUrl(res.alternative_name)" :alt="res.alternative_name + ' schematic'"
+                 class="max-h-32 object-contain" />
+          </span>
+
+          <span class="mt-auto hidden items-baseline justify-between gap-2 sm:flex">
+            <span class="eyebrow">{{ t.wsmScore }}</span>
+            <span class="num text-lg font-semibold tracking-tight">{{ res.total_score.toFixed(4) }}</span>
+          </span>
+          <span class="mt-1.5 hidden h-1 overflow-hidden rounded-full bg-surface-3 sm:block">
+            <span class="block h-full rounded-full transition-all duration-500"
+                  :style="{ width: barPct(res.total_score) + '%', background: altColor(res.alternative_name) }"></span>
+          </span>
+        </button>
       </div>
-    </div>
+    </section>
 
     <!-- Detailed view -->
-    <div v-if="selResult" class="rounded-[28px] border-2 p-6 mb-6 transition-all backdrop-blur-2xl"
-         :class="dark
-           ? 'bg-slate-800 border-teal-500'
-           : 'bg-white/60 border-blue-400/40 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
-      <div class="flex items-center gap-3 pb-4 border-b mb-4"
-           :class="dark ? 'border-slate-700' : 'border-black/5'">
-        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[0.7rem] font-bold text-white"
-              :class="[
-                selResult.rank === 1 ? 'bg-blue-500' : '',
-                selResult.rank === 2 ? 'bg-emerald-500' : '',
-                selResult.rank === 3 ? 'bg-orange-500' : '',
-                selResult.rank > 3 ? 'bg-slate-400' : '',
-              ]">
-          {{ RANK_BADGES[selResult.rank]?.icon }} {{ t.ordinals[selResult.rank - 1] }}
+    <section v-if="selResult" class="card p-4">
+      <div class="mb-4 flex items-start gap-2 border-b border-line pb-3 sm:items-center">
+        <span :class="selResult.rank === 1 ? 'badge-accent' : 'badge'">
+          <Icon v-if="selResult.rank === 1" name="trophy" />
+          {{ t.ordinals[selResult.rank - 1] }}
         </span>
-        <span class="text-lg font-bold">
-<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(selResult.alternative_name) }" aria-hidden="true"></span>
-          {{ t.detailedAnalysis }}: {{ selResult.alternative_name }}
-        </span>
+        <span class="mt-2 h-2 w-2 shrink-0 rounded-full sm:mt-0" :style="{ background: altColor(selResult.alternative_name) }" aria-hidden="true"></span>
+        <h2 class="card-title min-w-0">{{ t.detailedAnalysis }}: {{ selResult.alternative_name }}</h2>
       </div>
 
       <!-- Criterion breakdown -->
-      <div class="grid gap-3 mb-4 grid-cols-2 sm:grid-cols-4">
-        <div v-for="crit in data.criteria" :key="crit.name"
-             class="rounded-2xl p-3 backdrop-blur-xl"
-             :class="dark
-               ? 'bg-slate-900 border border-slate-700'
-               : 'bg-white/70 border border-white/80 shadow-[0_4px_16px_rgb(0,0,0,0.03)]'">
-          <p class="text-[0.65rem] font-semibold uppercase tracking-wider mb-1"
-             :class="dark ? 'text-slate-400' : 'text-slate-500'">
-            {{ criterionLabels[crit.name] }}
+      <div class="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+        <div v-for="crit in data.criteria" :key="crit.name" class="min-w-0 rounded-lg border border-line p-3">
+          <p class="eyebrow">{{ criterionLabels[crit.name] }}</p>
+          <p class="num mt-0.5 text-sm font-semibold">
+            {{ selResult.raw_values[crit.name] }} <span class="font-normal text-muted">{{ crit.unit }}</span>
           </p>
-          <p class="text-base font-bold" :class="dark ? 'text-slate-100' : 'text-slate-900'">
-            {{ selResult.raw_values[crit.name] }} {{ crit.unit }}
-          </p>
-          <div class="w-full h-1 rounded-full overflow-hidden mt-2 mb-1"
-               :class="dark ? 'bg-slate-700' : 'bg-black/5'">
+          <div class="mt-2 mb-1 h-1 w-full overflow-hidden rounded-full bg-surface-3">
             <div class="h-full rounded-full"
                  :style="{ width: (selResult.normalised_values[crit.name] * 100) + '%', background: altColor(selResult.alternative_name) }"></div>
           </div>
-          <div class="flex justify-between text-[0.6rem]" :class="dark ? 'text-slate-500' : 'text-slate-400'">
-          <span>{{ t.norm }} {{ selResult.normalised_values[crit.name]?.toFixed(3) }}</span>
+          <div class="num flex flex-wrap justify-between gap-x-2 text-[0.65rem] text-subtle">
+            <span>{{ t.norm }} {{ selResult.normalised_values[crit.name]?.toFixed(3) }}</span>
             <span>w·x̄ = {{ selResult.weighted_scores[crit.name]?.toFixed(4) }}</span>
           </div>
         </div>
       </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+      <div class="mb-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 lg:grid-cols-6">
         <div v-for="m in [
-          { l: t.wsmScore,    v: selResult.total_score.toFixed(4) },
-          { l: t.cost,        v: '$' + selResult.raw_values.construction_cost_mln.toFixed(1) + 'M' },
-          { l: t.throughput,  v: Math.round(selResult.raw_values.throughput_vph).toLocaleString() + ' vph' },
-          { l: t.safetyIndex, v: selResult.raw_values.safety_index.toFixed(1) + ' / 10' },
-          { l: t.landArea,    v: selResult.raw_values.land_area_hectares.toFixed(1) + ' ha' },
-          { l: t.feasibility, v: isFeasible(selResult.raw_values) ? t.feasible : t.overLimit },
-        ]" :key="m.l"
-             class="rounded-2xl p-3 backdrop-blur-xl"
-             :class="dark
-               ? 'bg-slate-800 border border-slate-700'
-               : 'bg-white/70 border border-white/80 shadow-[0_4px_16px_rgb(0,0,0,0.03)]'">
-          <p class="text-[0.65rem] font-medium" :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ m.l }}</p>
-          <p class="text-lg font-bold" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ m.v }}</p>
+          { l: t.wsmScore,    v: selResult.total_score.toFixed(4), n: true },
+          { l: t.cost,        v: '$' + selResult.raw_values.construction_cost_mln.toFixed(1) + 'M', n: true },
+          { l: t.throughput,  v: Math.round(selResult.raw_values.throughput_vph).toLocaleString() + ' vph', n: true },
+          { l: t.safetyIndex, v: selResult.raw_values.safety_index.toFixed(1) + ' / 10', n: true },
+          { l: t.landArea,    v: selResult.raw_values.land_area_hectares.toFixed(1) + ' ha', n: true },
+          { l: t.feasibility, v: isFeasible(selResult.raw_values) ? t.feasible : t.overLimit,
+            tone: isFeasible(selResult.raw_values) ? 'text-ok' : 'text-bad' },
+        ]" :key="m.l" class="bg-surface px-3 py-2.5">
+          <p class="text-xs text-muted">{{ m.l }}</p>
+          <p class="mt-0.5 text-sm font-semibold" :class="[m.n ? 'num' : '', m.tone]">{{ m.v }}</p>
         </div>
       </div>
 
       <!-- Description + Map row -->
-      <div class="grid grid-cols-1 md:grid-cols-5 gap-6" v-if="detailInfo">
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-5" v-if="detailInfo">
         <div class="md:col-span-3">
-          <p class="text-[0.65rem] font-semibold uppercase tracking-wider mb-2"
-             :class="dark ? 'text-slate-400' : 'text-slate-500'">{{ t.engineeringDesc }}</p>
-          <div class="text-sm leading-relaxed mb-4" :class="dark ? 'text-slate-200' : 'text-slate-700'"
-               v-html="detailInfo.engineering_desc?.replace(/\*\*(.*?)\*\*/g, '<strong class=\'text-teal-500\'>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/\n\n/g, '<br/><br/>')">
+          <p class="eyebrow mb-1.5">{{ t.engineeringDesc }}</p>
+          <div class="mb-4 text-[13px] leading-relaxed break-words text-fg"
+               v-html="detailInfo.engineering_desc?.replace(/\*\*(.*?)\*\*/g, '<strong class=\'font-semibold text-accent-ink\'>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/\n\n/g, '<br/><br/>')">
           </div>
 
-          <div v-if="detailInfo.pros?.length || detailInfo.cons?.length" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div class="rounded-2xl p-4 backdrop-blur-xl"
-                 :class="dark
-                   ? 'bg-slate-900 border border-slate-700'
-                   : 'bg-white/70 border border-white/80 shadow-[0_4px_16px_rgb(0,0,0,0.03)]'">
-              <h4 class="text-xs font-bold uppercase tracking-wider mb-2"
-                  :class="dark ? 'text-teal-400' : 'text-emerald-600'">{{ t.advantages }}</h4>
-              <ul class="list-disc pl-4 space-y-1 text-sm" :class="dark ? 'text-slate-200' : 'text-slate-700'">
+          <div v-if="detailInfo.pros?.length || detailInfo.cons?.length" class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div class="rounded-lg border border-line p-3">
+              <h4 class="mb-1.5 text-xs font-medium text-ok">{{ t.advantages }}</h4>
+              <ul class="list-disc space-y-1 pl-4 text-[13px] text-fg marker:text-subtle">
                 <li v-for="p in detailInfo.pros" :key="p">{{ p }}</li>
               </ul>
             </div>
-            <div class="rounded-2xl p-4 backdrop-blur-xl"
-                 :class="dark
-                   ? 'bg-slate-900 border border-slate-700'
-                   : 'bg-white/70 border border-white/80 shadow-[0_4px_16px_rgb(0,0,0,0.03)]'">
-              <h4 class="text-xs font-bold uppercase tracking-wider mb-2 text-red-500">{{ t.limitations }}</h4>
-              <ul class="list-disc pl-4 space-y-1 text-sm" :class="dark ? 'text-slate-200' : 'text-slate-700'">
+            <div class="rounded-lg border border-line p-3">
+              <h4 class="mb-1.5 text-xs font-medium text-bad">{{ t.limitations }}</h4>
+              <ul class="list-disc space-y-1 pl-4 text-[13px] text-fg marker:text-subtle">
                 <li v-for="c in detailInfo.cons" :key="c">{{ c }}</li>
               </ul>
             </div>
@@ -457,135 +384,118 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
             :example="detailInfo.example_name"
             :dark="dark"
           />
-          <p class="text-sm mt-2" :class="dark ? 'text-slate-200' : 'text-slate-700'">
-            <strong>{{ t.realWorldExample }}:</strong> {{ detailInfo.example_name }}
+          <p class="mt-2 text-[13px]">
+            <span class="font-medium">{{ t.realWorldExample }}:</span> {{ detailInfo.example_name }}
           </p>
-          <p class="text-xs" :class="dark ? 'text-slate-400' : 'text-slate-500'">
-            {{ t.coordinates }}: {{ Math.abs(detailInfo.lat)?.toFixed(4) }}°{{ detailInfo.lat >= 0 ? 'N' : 'S' }},
-            {{ Math.abs(detailInfo.lon)?.toFixed(4) }}°{{ detailInfo.lon < 0 ? 'W' : 'E' }}
+          <p class="mt-0.5 text-xs text-muted">
+            {{ t.coordinates }}: <span class="num">{{ Math.abs(detailInfo.lat)?.toFixed(4) }}°{{ detailInfo.lat >= 0 ? 'N' : 'S' }},
+            {{ Math.abs(detailInfo.lon)?.toFixed(4) }}°{{ detailInfo.lon < 0 ? 'W' : 'E' }}</span>
             · {{ t.satellite }}
           </p>
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- Multi-method comparison -->
     <MethodComparison :data="data" :dark="dark" />
 
     <!-- Charts -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-      <div class="rounded-[28px] overflow-hidden backdrop-blur-2xl"
-           :class="dark
-             ? 'bg-white/[0.06] border border-white/10'
-             : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
-        <PlotlyChart :chart="radarData()" :dark="dark" />
-      </div>
-      <div class="rounded-[28px] overflow-hidden backdrop-blur-2xl"
-           :class="dark
-             ? 'bg-white/[0.06] border border-white/10'
-             : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
-        <PlotlyChart :chart="barChartData()" :dark="dark" />
-      </div>
+    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <section class="card overflow-hidden">
+        <h2 class="card-title px-4 pt-4">{{ t.chartRadarTitle }} {{ Math.min(data.results.length, 2) }}</h2>
+        <PlotlyChart :chart="radarChart" :dark="dark" />
+      </section>
+      <section class="card overflow-hidden">
+        <h2 class="card-title px-4 pt-4">{{ t.chartBarTitle }}</h2>
+        <PlotlyChart :chart="barChart" :dark="dark" />
+      </section>
     </div>
 
-    <div class="rounded-[28px] overflow-hidden backdrop-blur-2xl mb-6"
-         :class="dark
-           ? 'bg-white/[0.06] border border-white/10'
-           : 'bg-white/60 border border-white/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
-      <PlotlyChart :chart="stackedBarData()" :dark="dark" />
-    </div>
-
-    <hr class="mb-6" :class="dark ? 'border-slate-700' : 'border-black/5'" />
+    <section class="card overflow-hidden">
+      <h2 class="card-title px-4 pt-4">{{ t.chartStackTitle }}</h2>
+      <PlotlyChart :chart="stackedChart" :dark="dark" />
+    </section>
 
     <!-- Raw data table -->
-    <h2 class="text-lg font-bold mb-3" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.criterionValues }}</h2>
-    <div class="overflow-x-auto rounded-2xl border mb-6 backdrop-blur-xl"
-         :class="dark
-           ? 'border-slate-700'
-           : 'border-white/80 bg-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
-      <table class="w-full text-sm">
-        <thead>
-          <tr :class="dark ? 'bg-slate-800' : 'bg-white/50'">
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.rank }}</th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.alternative }}</th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.cost }}</th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.landAreaCol }}</th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.throughputCol }}</th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.safetyCol }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="res in data.results" :key="res.alternative_name"
-              class="border-t" :class="dark ? 'border-slate-700 hover:bg-slate-800' : 'border-black/5 hover:bg-white/60'">
-            <td class="px-4 py-2 font-medium" :class="dark ? '' : 'text-slate-900'">#{{ res.rank }}</td>
-            <td class="px-4 py-2 font-semibold">
-<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>{{ res.alternative_name }}</td>
-            <td class="px-4 py-2" :class="dark ? '' : 'text-slate-700'">${{ res.raw_values.construction_cost_mln.toFixed(1) }} M</td>
-            <td class="px-4 py-2" :class="dark ? '' : 'text-slate-700'">{{ res.raw_values.land_area_hectares.toFixed(1) }} ha</td>
-            <td class="px-4 py-2" :class="dark ? '' : 'text-slate-700'">{{ Math.round(res.raw_values.throughput_vph).toLocaleString() }}</td>
-            <td class="px-4 py-2" :class="dark ? '' : 'text-slate-700'">{{ res.raw_values.safety_index.toFixed(1) }} / 10</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <hr class="mb-6" :class="dark ? 'border-slate-700' : 'border-black/5'" />
+    <section class="card overflow-hidden">
+      <div class="border-b border-line px-4 py-3">
+        <h2 class="card-title">{{ t.criterionValues }}</h2>
+      </div>
+      <div class="table-scroll">
+        <table class="table border-separate border-spacing-0 [&_td]:whitespace-nowrap">
+          <thead>
+            <tr>
+              <th>{{ t.rank }}</th>
+              <th class="sticky-col">{{ t.alternative }}</th>
+              <th class="text-right">{{ t.cost }}</th>
+              <th class="text-right">{{ t.landAreaCol }}</th>
+              <th class="text-right">{{ t.throughputCol }}</th>
+              <th class="text-right">{{ t.safetyCol }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="res in data.results" :key="res.alternative_name">
+              <td class="num text-muted">#{{ res.rank }}</td>
+              <td class="sticky-col font-medium">
+                <span class="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>{{ res.alternative_name }}
+              </td>
+              <td class="num text-right">${{ res.raw_values.construction_cost_mln.toFixed(1) }} M</td>
+              <td class="num text-right">{{ res.raw_values.land_area_hectares.toFixed(1) }} ha</td>
+              <td class="num text-right">{{ Math.round(res.raw_values.throughput_vph).toLocaleString() }}</td>
+              <td class="num text-right">{{ res.raw_values.safety_index.toFixed(1) }} / 10</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
 
     <!-- Normalised scores table -->
-    <h2 class="text-lg font-bold mb-1" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.normScores }}</h2>
-    <p class="text-xs mb-3" :class="dark ? 'text-slate-400' : 'text-slate-500'">
-      {{ t.normDesc }}
-    </p>
-    <div class="overflow-x-auto rounded-2xl border backdrop-blur-xl"
-         :class="dark
-           ? 'border-slate-700'
-           : 'border-white/80 bg-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)]'">
-      <table class="w-full text-sm">
-        <thead>
-          <tr :class="dark ? 'bg-slate-800' : 'bg-white/50'">
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.rank }}</th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.alternative }}</th>
-            <th v-for="crit in data.criteria" :key="crit.name"
-                class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">
-              {{ criterionLabels[crit.name] }}
-              [{{ crit.direction === 'maximize' ? 'Max' : 'Min' }}, w={{ data.normalised_weights[crit.name]?.toFixed(2) }}]
-            </th>
-            <th class="px-4 py-2 text-left font-semibold" :class="dark ? 'text-slate-300' : 'text-slate-500'">{{ t.wsmScore }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="res in data.results" :key="res.alternative_name"
-              class="border-t" :class="dark ? 'border-slate-700 hover:bg-slate-800' : 'border-black/5 hover:bg-white/60'">
-            <td class="px-4 py-2 font-medium" :class="dark ? '' : 'text-slate-900'">#{{ res.rank }}</td>
-            <td class="px-4 py-2 font-semibold">
-<span class="inline-block w-2.5 h-2.5 rounded-full mr-1.5 align-middle" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>{{ res.alternative_name }}</td>
-            <td v-for="crit in data.criteria" :key="crit.name" class="px-4 py-2" :class="dark ? '' : 'text-slate-700'">
-              {{ res.normalised_values[crit.name]?.toFixed(3) }} → {{ res.weighted_scores[crit.name]?.toFixed(3) }}
-            </td>
-            <td class="px-4 py-2 font-bold" :class="dark ? '' : 'text-slate-900'">{{ res.total_score.toFixed(4) }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <section class="card overflow-hidden">
+      <div class="border-b border-line px-4 py-3">
+        <h2 class="card-title">{{ t.normScores }}</h2>
+        <p class="card-desc">{{ t.normDesc }}</p>
+      </div>
+      <div class="table-scroll">
+        <table class="table border-separate border-spacing-0 [&_td]:whitespace-nowrap">
+          <thead>
+            <tr>
+              <th>{{ t.rank }}</th>
+              <th class="sticky-col">{{ t.alternative }}</th>
+              <th v-for="crit in data.criteria" :key="crit.name" class="text-right">
+                {{ criterionLabels[crit.name] }}
+                <span class="num block text-subtle md:inline">[{{ crit.direction === 'maximize' ? 'Max' : 'Min' }}, w={{ data.normalised_weights[crit.name]?.toFixed(2) }}]</span>
+              </th>
+              <th class="text-right">{{ t.wsmScore }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="res in data.results" :key="res.alternative_name">
+              <td class="num text-muted">#{{ res.rank }}</td>
+              <td class="sticky-col font-medium">
+                <span class="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" :style="{ background: altColor(res.alternative_name) }" aria-hidden="true"></span>{{ res.alternative_name }}
+              </td>
+              <td v-for="crit in data.criteria" :key="crit.name" class="num text-right">
+                {{ res.normalised_values[crit.name]?.toFixed(3) }} <span class="text-subtle">→</span> {{ res.weighted_scores[crit.name]?.toFixed(3) }}
+              </td>
+              <td class="num text-right font-semibold">{{ res.total_score.toFixed(4) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.dss-wrapper {
-  border-radius: 1.5rem;
-  padding: 1rem;
+/* The alternative column stays put while the numbers scroll sideways on phones. */
+.sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--surface);
+  box-shadow: inset -1px 0 var(--line);
 }
-
-@media (min-width: 640px) {
-  .dss-wrapper {
-    padding: 1.75rem 2rem;
-  }
-}
-
-.dss-main-container {
-  background:
-    radial-gradient(ellipse at 18% 22%, #e0e5ec 0%, transparent 52%),
-    radial-gradient(ellipse at 82% 70%, #dce3ee 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 50%, #f0f2f6 0%, #eaecf2 100%);
+tbody tr:nth-child(even) .sticky-col {
+  background-image: linear-gradient(color-mix(in oklab, var(--surface-2) 40%, transparent), color-mix(in oklab, var(--surface-2) 40%, transparent));
 }
 </style>
