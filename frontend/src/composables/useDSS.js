@@ -48,25 +48,11 @@ const params = reactive({
 })
 
 function normalizedWeights() {
-  const total = weights.construction_cost_mln + weights.land_area_hectares +
-    weights.throughput_vph + weights.safety_index
-  if (total === 0) return { construction_cost_mln: 0.25, land_area_hectares: 0.25, throughput_vph: 0.25, safety_index: 0.25 }
-  return {
-    construction_cost_mln: weights.construction_cost_mln / total,
-    land_area_hectares: weights.land_area_hectares / total,
-    throughput_vph: weights.throughput_vph / total,
-    safety_index: weights.safety_index / total,
-  }
+  return weightsOf(weights)
 }
 
 function ahpMatrix() {
-  const n = CRITERION_KEYS.length
-  const a = Array.from({ length: n }, () => Array(n).fill(1))
-  AHP_PAIRS.forEach(([i, j], k) => {
-    a[i][j] = ahpJudgements[k]
-    a[j][i] = 1 / ahpJudgements[k]
-  })
-  return a
+  return ahpMatrixOf(ahpJudgements)
 }
 
 function usesAhp() {
@@ -84,16 +70,71 @@ async function loadContexts() {
   }
 }
 
+// Every input of an evaluation as plain data: what a saved scenario or a shared link holds.
+function snapshotState() {
+  return {
+    context: selectedContext.value,
+    params: { ...params },
+    weights: { ...weights },
+    methods: [...methods.value],
+    weighting: { ...weighting },
+    ahpJudgements: [...ahpJudgements],
+    valueSource: valueSource.value,
+  }
+}
+
+// Load a snapshot into the inputs. Unknown or missing fields keep their current value, so a
+// link from an older version still opens.
+function applyState(state) {
+  if (!state || typeof state !== 'object') return
+  if (contexts.value.includes(state.context)) selectedContext.value = state.context
+  for (const [target, source] of [[params, state.params], [weights, state.weights], [weighting, state.weighting]]) {
+    for (const key of Object.keys(target)) {
+      if (source && typeof source[key] === typeof target[key]) target[key] = source[key]
+    }
+  }
+  if (Array.isArray(state.methods)) {
+    const known = state.methods.filter(m => ALL_METHODS.includes(m))
+    if (known.length) methods.value = known
+  }
+  if (Array.isArray(state.ahpJudgements) && state.ahpJudgements.length === AHP_PAIRS.length &&
+      state.ahpJudgements.every(v => typeof v === 'number' && v > 0)) {
+    ahpJudgements.splice(0, AHP_PAIRS.length, ...state.ahpJudgements)
+  }
+  if (VALUE_SOURCES.includes(state.valueSource)) valueSource.value = state.valueSource
+}
+
+function weightsOf(w) {
+  const total = CRITERION_KEYS.reduce((sum, k) => sum + w[k], 0)
+  return Object.fromEntries(CRITERION_KEYS.map(k => [k, total === 0 ? 0.25 : w[k] / total]))
+}
+
+function ahpMatrixOf(judgements) {
+  const n = CRITERION_KEYS.length
+  const a = Array.from({ length: n }, () => Array(n).fill(1))
+  AHP_PAIRS.forEach(([i, j], k) => {
+    a[i][j] = judgements[k]
+    a[j][i] = 1 / judgements[k]
+  })
+  return a
+}
+
+// POST /api/evaluate for a snapshot, without touching the shared state.
+function evaluateState(state, lang = 'en') {
+  const w = state.weighting
+  const ahp = w.mode === 'ahp' || (w.mode === 'combined' && w.subjective === 'ahp')
+  return evaluate(state.context, weightsOf(state.weights), { ...state.params }, lang, {
+    methods: state.methods.length ? state.methods : ['wsm'],
+    weighting: { ...w, ahp_matrix: ahp ? ahpMatrixOf(state.ahpJudgements) : null },
+    value_source: state.valueSource,
+  })
+}
+
 async function runEvaluation(lang = 'en') {
   if (!selectedContext.value) return
   loading.value = true
   try {
-    const nw = normalizedWeights()
-    evalData.value = await evaluate(selectedContext.value, nw, { ...params }, lang, {
-      methods: methods.value.length ? methods.value : ['wsm'],
-      weighting: weightingPayload(),
-      value_source: valueSource.value,
-    })
+    evalData.value = await evaluateState(snapshotState(), lang)
     evalError.value = ''
   } catch (e) {
     // The shown ranking no longer matches the inputs; say so instead of failing silently.
@@ -122,5 +163,8 @@ export function useDSS() {
     normalizedWeights,
     loadContexts,
     runEvaluation,
+    snapshotState,
+    applyState,
+    evaluateState,
   }
 }

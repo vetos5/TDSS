@@ -1078,6 +1078,12 @@ Module-level shared state, following the pattern of `useRobustness.js`: the *Pre
 
 All status-changing calls share one request sequence, and only the newest response is stored. A slow `GET /status` can therefore never overwrite the status returned by a later upload or retrain. Predictions use a separate sequence of their own. `ALLOWED_EXTENSIONS` and `MAX_UPLOAD_BYTES` mirror the backend limits for client-side checks.
 
+#### `useScenarios.js` — Saved Scenarios and Share Links
+
+A scenario is `useDSS().snapshotState()`: the context, the project parameters, the slider weights, the methods, the weighting settings, the AHP judgements and the value source, as plain data. `applyState(state)` loads one back. It skips fields it does not recognise or whose type is wrong, so a link from an older version still opens. `evaluateState(state, lang)` runs `/api/evaluate` for a snapshot without touching the shared state; `runEvaluation` uses it for the current inputs.
+
+`useScenarios()` keeps the named scenarios in `localStorage` (`tdss:scenarios`). Saving under an existing name replaces that scenario. `compared` holds the ids ticked for the comparison. `shareUrl(state, name)` builds a link with the snapshot in the URL hash, as base64url-encoded UTF-8 JSON, `#s=…`, with a format version `v: 1`. Nothing is stored on the server, and the hash never reaches it. On start, `App.vue` calls `takeSharedState()`, applies the snapshot and clears the hash, so later edits are not overwritten by a reload. GIS map points are not part of a scenario.
+
 #### `useLocale.js` — Internationalisation
 
 Provides a complete EN/UA translation dictionary. All UI strings are keyed through `t.value.<key>`. Switching language is instant (reactive computed).
@@ -1233,6 +1239,32 @@ Tab `model` (*Prediction model* / *Модель прогнозу*) for the docum
 4. **Accuracy table**: one row per criterion with the number of observations, the cross-validated MAPE of the expert values and of the model (as %, green where the model wins), the coverage of the prediction interval and the residual σ (log scale). The interval level from the status appears in the labels.
 5. **Chart**: for the current context and parameters and a selected criterion, the expert value (diamond) and the model prediction (circle) for every alternative, with asymmetric error bars for the prediction interval (colours `MODEL_COLORS` in `chartPalette.js`). Below it, a table lists expert, model, interval and the model's change versus the expert value.
 6. **Coefficients** (collapsible `<details>`): feature, posterior mean, sd and the effect \(e^{\text{mean}} - 1\) as a percentage, per criterion. A ● marks effects whose 90 % posterior interval excludes zero (\(|\text{mean}| > 1.645\,\text{sd}\)).
+
+#### `ScenarioPanel.vue` and `ScenarioComparison.vue` — Scenarios (v5)
+
+The *Scenarios* section at the bottom of the inputs panel saves the current inputs under a name, loads a saved scenario (click its name), deletes one, and ticks which ones to compare. *Copy link* copies a share link for the current inputs or for a saved scenario. Over plain http, where the clipboard API is unavailable, the link is shown in a field to copy by hand.
+
+The *Compare scenarios* tab (key 7; in the *More* sheet on phones) shows the current inputs next to every ticked scenario. Each saved scenario is re-evaluated by the backend whenever the tab opens, the language changes or the selection changes, so the scores always reflect the current engine and model. The tab has three tables:
+
+- the inputs, with a marker on rows that differ between columns (weights are the normalised weights the backend used);
+- the recommended alternative and the top alternative of each selected method;
+- the WSM rank and score of every alternative in each scenario, with — where an alternative is infeasible or not part of that scenario's context.
+
+#### `DecisionReport.vue` — Decision Report (v5)
+
+The *Report* button in the toolbar (on phones, the last entry of the *More* sheet) opens a printable report of the current inputs. *Print / Save as PDF* opens the system print dialog, which saves to PDF on macOS, iOS and every desktop browser. In print, `style.css` hides the app and the report's toolbar, and sets A4 pages. Sections are kept whole across page breaks where they fit. The report is always drawn as a light paper document, whatever the app theme, and in the active language.
+
+When it opens, the report re-runs `/api/robustness` (with the settings of the *Robustness* tab) and `/api/model/predict`, so every section matches the inputs on screen. Printing is disabled until both have answered. The report has seven sections:
+
+1. **Recommendation:** the WSM winner with its score and description, and how many of the selected methods also rank it first.
+2. **Inputs and assumptions:** every input, and the normalised weights the backend used.
+3. **Site adjustments:** the notes the §3.4 rules produced.
+4. **Ranking:** criterion values after the adjustments, the WSM score, the rank by each method, and the Borda consensus (§3.8).
+5. **Method agreement:** Kendall's τ_b between the methods.
+6. **Robustness:** SMAA-2 first-rank acceptability per method, the probability of exceeding the budget or the land limit, and for each method the most sensitive weight and how far it can move before the winner changes (§3.9, §3.10).
+7. **Prediction model:** expert value → prediction, with the prediction interval, for each feasible alternative. The section says whether the report's values came from the model or are the expert constants, and how many training records are synthetic.
+
+The footer holds a share link (§7.3, `useScenarios.js`) that reopens the same inputs, so a printed report can be reproduced. If the inputs match a saved scenario, its name appears in the header.
 
 Related changes elsewhere in the UI:
 

@@ -14,6 +14,10 @@ import Methodology from './components/Methodology.vue'
 import RobustnessAnalysis from './components/RobustnessAnalysis.vue'
 import SiteMap from './components/SiteMap.vue'
 import PredictionModel from './components/PredictionModel.vue'
+import ScenarioComparison from './components/ScenarioComparison.vue'
+import DecisionReport from './components/DecisionReport.vue'
+import Icon from './components/Icon.vue'
+import { useScenarios } from './composables/useScenarios.js'
 
 const { dark, toggle } = useTheme()
 const { locale, t } = useLocale()
@@ -21,6 +25,7 @@ const dss = useDSS()
 const model = useModel()
 const { narrow } = useViewport()
 const activeTab = ref('evaluation')
+const reportOpen = ref(false)
 
 const title = computed(() => ({
   inputs: t.value.tabInputs,
@@ -28,6 +33,7 @@ const title = computed(() => ({
   site: t.value.tabSiteAnalysis,
   robustness: t.value.tabRobustness,
   model: t.value.tabModel,
+  compare: t.value.tabCompare,
   gallery: t.value.tabGallery,
   methodology: t.value.tabMethodology,
 }[activeTab.value]))
@@ -37,6 +43,7 @@ const scroller = ref(null)
 const scrollTops = {}
 
 async function selectTab(id) {
+  if (id === 'report') return (reportOpen.value = true)
   // Re-selecting the current view scrolls it back to the top, as on iOS.
   if (id === activeTab.value) return scroller.value?.scrollTo({ top: 0, behavior: 'smooth' })
   scrollTops[activeTab.value] = scroller.value?.scrollTop ?? 0
@@ -61,6 +68,9 @@ function scheduleEvaluation() {
 
 onMounted(async () => {
   await dss.loadContexts()
+  // A shared link (#s=…) opens with its inputs; the input watcher below then re-evaluates.
+  const shared = useScenarios().takeSharedState()
+  if (shared) dss.applyState(shared.state)
   await dss.runEvaluation(locale.value)
 })
 
@@ -88,7 +98,7 @@ watch(() => model.status.value?.revision, (now, before) => {
 
 <template>
   <div class="flex h-dvh overflow-hidden bg-app text-fg">
-    <Sidebar v-if="!narrow" :dark="dark" :dss="dss" @toggle-theme="toggle" />
+    <Sidebar v-if="!narrow" :dark="dark" :dss="dss" @toggle-theme="toggle" @show-compare="selectTab('compare')" />
 
     <main ref="scroller" class="relative min-w-0 flex-1 overflow-y-auto pb-[calc(52px+env(safe-area-inset-bottom))] md:pb-0">
       <!-- Desktop toolbar: title on the left, view switcher centred, activity on the right -->
@@ -100,10 +110,16 @@ watch(() => model.status.value?.revision, (now, before) => {
           </p>
         </div>
         <TabNav :active="activeTab" @update="selectTab" />
-        <div class="flex flex-1 items-center justify-end gap-1.5 text-xs text-subtle transition-opacity duration-200"
-             :class="dss.loading.value ? 'opacity-100' : 'opacity-0'" aria-live="polite">
-          <span class="spinner"></span>
-          <span class="hidden lg:inline">{{ t.updating }}</span>
+        <div class="flex flex-1 items-center justify-end gap-2">
+          <div class="flex items-center gap-1.5 text-xs text-subtle transition-opacity duration-200"
+               :class="dss.loading.value ? 'opacity-100' : 'opacity-0'" aria-live="polite">
+            <span class="spinner"></span>
+            <span class="hidden lg:inline">{{ t.updating }}</span>
+          </div>
+          <button type="button" class="btn" :disabled="!dss.evalData.value" :title="t.report.title"
+                  @click="reportOpen = true">
+            <Icon name="file" class="text-sm" /> {{ t.report.open }}
+          </button>
         </div>
       </header>
 
@@ -122,7 +138,8 @@ watch(() => model.status.value?.revision, (now, before) => {
       <div class="mx-auto max-w-[1400px] px-4 py-4 sm:p-6">
         <!-- Phone only: the inputs as a page of their own -->
         <Sidebar v-if="narrow" v-show="activeTab === 'inputs'" page class="tab-pane"
-                 :dark="dark" :dss="dss" @show-results="selectTab('evaluation')" />
+                 :dark="dark" :dss="dss" @show-results="selectTab('evaluation')"
+                 @show-compare="selectTab('compare')" />
 
         <template v-if="activeTab !== 'inputs'">
           <!-- Full-page spinner only on initial load (no data yet) -->
@@ -165,6 +182,13 @@ watch(() => model.status.value?.revision, (now, before) => {
             :active="activeTab === 'model'"
             :dark="dark"
           />
+          <ScenarioComparison
+            v-show="activeTab === 'compare'"
+            class="tab-pane"
+            :dss="dss"
+            :active="activeTab === 'compare'"
+            :dark="dark"
+          />
           <BlueprintGallery
             v-show="activeTab === 'gallery'"
             class="tab-pane"
@@ -183,5 +207,6 @@ watch(() => model.status.value?.revision, (now, before) => {
     </main>
 
     <MobileTabBar :active="activeTab" @update="selectTab" />
+    <DecisionReport :open="reportOpen" :dss="dss" @close="reportOpen = false" />
   </div>
 </template>

@@ -370,3 +370,32 @@ body {
 .ios-slider--orange { --slider-color: #f97316; }
 .ios-slider--violet { --slider-color: #8b5cf6; }
 .ios-slider--blue { --slider-color: #3b82f6; }
+
+/* Decision report (DecisionReport.vue): a light paper document in any theme. */
+.report-h2 {
+  @apply border-b border-neutral-300 pb-1 text-[14px] font-bold text-neutral-900;
+}
+.report-table {
+  @apply w-full border-collapse text-[11.5px];
+}
+.report-table th,
+.report-table td {
+  @apply border-b border-neutral-200 px-2 py-1 align-top;
+}
+.report-table thead th {
+  @apply border-b border-neutral-400 text-left text-[10.5px] font-semibold text-neutral-600;
+}
+.report-table tbody th {
+  @apply text-left font-medium;
+}
+
+@media print {
+  @page { size: A4; margin: 14mm 12mm; }
+  html, body { background: #fff !important; }
+  #app, .report-toolbar { display: none !important; }
+  .report-overlay { position: static !important; overflow: visible !important; background: none !important; backdrop-filter: none !important; }
+  .report { margin: 0 !important; max-width: none !important; padding: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
+  .report-section { break-inside: avoid; }
+  .report-table thead { display: table-header-group; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

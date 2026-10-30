@@ -21,8 +21,10 @@ const PRIMARY = [
 ]
 const MORE = [
   { id: 'robustness',  icon: 'shield-check', title: 'tabRobustness' },
+  { id: 'compare',     icon: 'columns',      title: 'tabCompare' },
   { id: 'gallery',     icon: 'layout-grid',  title: 'tabGallery' },
   { id: 'methodology', icon: 'book-open',    title: 'tabMethodology' },
+  { id: 'report',      icon: 'file' },   // opens the decision report, not a tab
 ]
 
 const moreOpen = ref(false)
@@ -66,7 +68,7 @@ function pick(id) {
               :class="i ? 'border-t border-line' : ''"
               @click="pick(item.id)">
         <Icon :name="item.icon" class="text-lg text-accent" />
-        <span class="flex-1">{{ t[item.title] }}</span>
+        <span class="flex-1">{{ item.title ? t[item.title] : t.report.title }}</span>
         <Icon v-if="active === item.id" name="check" class="text-base text-accent" />
         <Icon v-else name="chevron-right" class="text-sm text-subtle" />
       </button>

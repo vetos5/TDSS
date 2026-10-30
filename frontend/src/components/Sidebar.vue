@@ -6,6 +6,8 @@ import MethodSelector from './MethodSelector.vue'
 import WeightingControls from './WeightingControls.vue'
 import Icon from './Icon.vue'
 import PanelSection from './PanelSection.vue'
+import ScenarioPanel from './ScenarioPanel.vue'
+import { useScenarios } from '../composables/useScenarios.js'
 
 const props = defineProps({
   dark: Boolean,
@@ -13,7 +15,8 @@ const props = defineProps({
   // Phone layout: the inputs are their own tab, drawn as a grouped card in the page.
   page: Boolean,
 })
-const emit = defineEmits(['toggle-theme', 'show-results'])
+const emit = defineEmits(['toggle-theme', 'show-results', 'show-compare'])
+const { scenarios } = useScenarios()
 
 const { locale, setLocale, t } = useLocale()
 
@@ -59,6 +62,7 @@ const summaries = computed(() => {
   return {
     methods: d.methods.value.map(m => t.value.methodLabels[m]).join(' · '),
     weights: t.value.weightingModes[d.weighting.mode],
+    scenarios: scenarios.value.length ? `${scenarios.value.length}` : '',
     params: `${d.params.design_speed} km/h · ${d.params.aadt.toLocaleString()} · ${terrain}`,
   }
 })
@@ -207,6 +211,10 @@ const envOptions = computed(() => [
         </div>
         <p class="mt-1.5 text-xs text-subtle">{{ t.valueSourceHint[dss.valueSource.value] }}</p>
       </section>
+
+      <PanelSection id="scenarios" :title="t.scenariosTitle" :summary="summaries.scenarios">
+        <ScenarioPanel :dss="dss" @compare="emit('show-compare')" />
+      </PanelSection>
 
       <p v-if="!page" class="p-4 text-[0.68rem] leading-snug text-subtle">{{ t.dataFooter }}</p>
     </div>

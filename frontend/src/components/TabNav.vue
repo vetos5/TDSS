@@ -4,7 +4,7 @@ import { useLocale } from '../composables/useLocale.js'
 import Icon from './Icon.vue'
 
 // Toolbar view switcher (macOS segmented control, as in Activity Monitor). Labels show on
-// wide windows, icons only below that. Keys 1–6 switch views when no field has focus.
+// wide windows, icons only below that. Keys 1–7 switch views when no field has focus.
 const props = defineProps({ active: String })
 const emit = defineEmits(['update'])
 
@@ -15,6 +15,7 @@ const tabs = computed(() => [
   { id: 'site',        label: t.value.tabSiteAnalysis, icon: 'map' },
   { id: 'robustness',  label: t.value.tabRobustness,   icon: 'shield-check' },
   { id: 'model',       label: t.value.tabModel,        icon: 'activity' },
+  { id: 'compare',     label: t.value.tabCompare,      icon: 'columns' },
   { id: 'gallery',     label: t.value.tabGallery,      icon: 'layout-grid' },
   { id: 'methodology', label: t.value.tabMethodology,  icon: 'book-open' },
 ])
