@@ -30,3 +30,29 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
+
+  # The ZimaOS deployer (deploy/zima) waits for every job here, so a commit whose images do not
+  # build or start is never deployed.
+  docker:
+    runs-on: ubuntu-latest
+    env:
+      TDSS_DATA: /tmp/tdss-ci
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the deploy scripts
+        run: shellcheck -s sh -S warning -e SC3043 deploy/zima/deployer.sh scripts/deploy_zima.sh backend/docker-entrypoint.sh
+      - name: Validate the compose files
+        run: |
+          docker compose -f docker-compose.zima.yml config --quiet
+          docker compose -f deploy/zima/docker-compose.yml config --quiet
+      - name: Build the images
+        run: docker compose -f docker-compose.zima.yml build
+      - name: Start the stack and smoke-test it through nginx
+        run: |
+          docker compose -f docker-compose.zima.yml up -d --wait --wait-timeout 120
+          curl -fsS http://localhost:8580/ > /dev/null
+          curl -fsS http://localhost:8580/api/contexts
+          curl -fsS http://localhost:8580/api/model/status | python3 -c "import sys, json; print('model records:', json.load(sys.stdin)['n_records'])"
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.zima.yml logs --tail 100

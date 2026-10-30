@@ -1,0 +1,64 @@
+# TDSS continuous deployment on ZimaOS: copy this one file to the box and start it.
+#
+#   mkdir -p /DATA/AppData/tdss-deployer && cd /DATA/AppData/tdss-deployer
+#   # put this file here as docker-compose.yml, then:
+#   docker compose up -d
+#   docker compose logs -f              # watch deploys
+#
+# (or ZimaOS: App Store → Custom Install → Import, and paste this file).
+#
+# It watches github.com/vetos5/TDSS. Every commit on main whose CI passes is built on the box and
+# replaces the running site at http://<zima-ip>:8580, with an automatic rollback if the new
+# version does not start. App settings (TDSS_PORT, TZ, TDSS_SEED_DEMO, ANTHROPIC_API_KEY, ...)
+# go in /DATA/AppData/tdss/app.env. The deploy logic is deploy/zima/deployer.sh in the repo; it
+# is fetched at start and updates itself with each deploy.
+name: tdss-deployer
+
+services:
+  deployer:
+    image: docker:cli
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Kyiv}
+      TDSS_REPO: ${TDSS_REPO:-vetos5/TDSS}
+      TDSS_BRANCH: ${TDSS_BRANCH:-main}
+      TDSS_POLL_SECONDS: ${TDSS_POLL_SECONDS:-60}
+      TDSS_REQUIRE_CI: ${TDSS_REQUIRE_CI:-1}           # 0 = deploy without waiting for CI
+      TDSS_HOME: ${TDSS_HOME:-/DATA/AppData/tdss}
+      TDSS_HEALTH_TIMEOUT: ${TDSS_HEALTH_TIMEOUT:-180}   # seconds a new version gets to start
+      TDSS_GITHUB_API: ${TDSS_GITHUB_API:-https://api.github.com}
+      # Only for a private repository, or more than 60 API requests an hour (read-only token).
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same path inside and out, shared with scripts/deploy_zima.sh: source, data, deploy state.
+      - ${TDSS_HOME:-/DATA/AppData/tdss}:${TDSS_HOME:-/DATA/AppData/tdss}
+    entrypoint: ["/bin/sh", "-c"]
+    # $$ is a literal $ for docker compose. The script is fetched from the branch at start; the
+    # last good copy is used when GitHub is unreachable.
+    command:
+      - |
+        set -u
+        until apk add --no-cache curl jq tar >/dev/null; do echo "waiting for network"; sleep 30; done
+        state="$$TDSS_HOME/deployer"; mkdir -p "$$state"
+        url="$$TDSS_GITHUB_API/repos/$$TDSS_REPO/contents/deploy/zima/deployer.sh?ref=$$TDSS_BRANCH"
+        set -- -H "Accept: application/vnd.github.raw"
+        [ -n "$$GITHUB_TOKEN" ] && set -- "$$@" -H "Authorization: Bearer $$GITHUB_TOKEN"
+        if curl -fsSL "$$@" "$$url" -o "$$state/deployer.sh.new" && [ -s "$$state/deployer.sh.new" ]; then
+          mv "$$state/deployer.sh.new" "$$state/deployer.sh"
+        elif [ ! -s "$$state/deployer.sh" ]; then
+          echo "cannot fetch $$url and no cached copy; retrying in 60s"; sleep 60; exit 1
+        fi
+        exec sh "$$state/deployer.sh"
+
+x-casaos:
+  main: deployer
+  title:
+    en_us: TDSS deployer
+  tagline:
+    en_us: Redeploys TDSS on every passing commit to main
+  description:
+    en_us: Watches the TDSS GitHub repository and rebuilds the TDSS app on this machine when a commit on main passes CI.
+  developer: Vitalii Kovtun
+  author: Vitalii Kovtun
+  category: Developer

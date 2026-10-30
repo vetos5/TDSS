@@ -26,6 +26,33 @@ npm run dev          # http://localhost:5173, proxies /api to localhost:8000
 
 Docker: `docker compose up --build`, then open http://localhost.
 
+## Deploy to ZimaOS
+
+`docker-compose.zima.yml` runs TDSS on a ZimaOS machine, or any other Docker host. The images
+are built on the machine itself, so their CPU architecture always matches. From a development
+machine with SSH access to the box:
+
+```bash
+scripts/deploy_zima.sh root@<zima-ip>      # copy the source, build, (re)start
+```
+
+Then open `http://<zima-ip>:8580`. Port 80 stays free for the ZimaOS dashboard. Running the same
+command again redeploys. On the machine itself, run `docker compose -f docker-compose.zima.yml
+build` and then `docker compose -f docker-compose.zima.yml up -d --force-recreate`. Plain `up
+--build` can leave the containers running on the previous images.
+
+- **Data** lives in `/DATA/AppData/tdss`: `corpus/` holds the prediction-model documents, and
+  `cache/` holds the GIS responses. Both survive rebuilds. On first start an empty `corpus/` is
+  seeded with the demo documents once. Documents you delete stay deleted. With
+  `TDSS_SEED_DEMO=0`, the corpus starts empty.
+- **Settings** go in a `.env` file in the repository root, which the deploy script copies along:
+  `TDSS_PORT` (default 8580), `TZ`, `PUID` / `PGID` (owner of the data folders, default 1000),
+  `TDSS_DATA` (data folder) and `TDSS_SEED_DEMO`. For the optional LLM extractor, set
+  `TDSS_WITH_LLM=1`, `TDSS_LLM_EXTRACTION=1` and `ANTHROPIC_API_KEY`. `.env` is gitignored and
+  never copied into an image.
+- **Logs and status:** `docker compose -f docker-compose.zima.yml logs -f` or `ps` in
+  `/DATA/AppData/tdss/src`. The backend has a health check, and the frontend starts once it passes.
+
 ## Prediction model
 
 The *Prediction model* tab learns from past interchange project documents how real projects
@@ -51,7 +78,50 @@ evaluation and robustness analysis, set the sidebar's *Criterion values* control
   `ANTHROPIC_API_KEY` are set, and it sends the document text to the Anthropic API.
   `TDSS_LLM_MODEL` overrides the default model.
 - **Docker:** the image includes `corpus/`, but uploaded documents stay inside the container.
-  Mount a volume at `/opt/tdss/corpus/documents` to keep them.
+  Mount a volume at `/opt/tdss/corpus/documents` to keep them, as `docker-compose.zima.yml` does.
+  An empty volume is seeded with the demo documents on first start.
+
+## Continuous deployment to ZimaOS
+
+`deploy/zima/docker-compose.yml` turns the ZimaOS machine into its own deployment target. A small
+deployer container checks GitHub every minute. When `main` has a new commit and every CI job for
+it has passed (backend, frontend and the Docker build and smoke test), it builds that commit on
+the box and replaces the running site. The box only makes outbound requests, so it needs no open
+ports and no GitHub token, and pull requests from forks cannot run anything on it.
+
+**Setup.** This needs a one-time step: `main` must contain `deploy/zima/` and
+`docker-compose.zima.yml`, so merge this work first. Then, on the box:
+
+```bash
+mkdir -p /DATA/AppData/tdss-deployer && cd /DATA/AppData/tdss-deployer
+# copy deploy/zima/docker-compose.yml here as docker-compose.yml
+docker compose up -d
+docker compose logs -f        # "watching vetos5/TDSS@main", then each deploy
+```
+
+ZimaOS can also import the same file under *App Store → Custom Install*.
+
+- **Each deploy** downloads the commit and builds the images while the old site keeps running.
+  It then recreates the containers and checks that the backend is healthy and that nginx serves
+  the API.
+  - If the build fails, the site is untouched, and the build is retried twice.
+  - If the new version does not start, the previous images are restored and the commit is not
+    retried.
+  - A commit whose CI failed is never deployed.
+- **App settings** (`TDSS_PORT`, `TZ`, `TDSS_SEED_DEMO`, `ANTHROPIC_API_KEY`, ...) go in
+  `/DATA/AppData/tdss/app.env`.
+- **Deployer settings** go in a `.env` next to the deployer's compose file:
+  - `TDSS_BRANCH` (default `main`) and `TDSS_POLL_SECONDS` (default 60);
+  - `TDSS_REQUIRE_CI=0` to deploy without waiting for CI;
+  - `GITHUB_TOKEN`, a read-only token, only for a private repository.
+- **Polling cost.** Polls use conditional requests, and an unchanged answer does not count
+  against GitHub's anonymous limit of 60 requests an hour.
+- **State** lives in `/DATA/AppData/tdss/deployer`. `deployed` holds the commit that is live, and
+  `history.log` lists every deploy. To force a redeploy of the current commit, delete `deployed`
+  and run `docker compose restart`.
+- **Self-updating.** The deploy logic is `deploy/zima/deployer.sh`. It is fetched when the
+  container starts and replaces itself when a deploy brings a new version.
+- **Manual deploys** with `scripts/deploy_zima.sh` still work and use the same folders.
 
 ## Tests and lint
 

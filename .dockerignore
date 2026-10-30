@@ -12,3 +12,7 @@ legacy
 *.md
 # ...except the prediction-model corpus documents (synthetic_report_*.md, README).
 !corpus/**/*.md
+
+# Secrets for docker compose (ANTHROPIC_API_KEY); never part of an image
+.env
+.env.*

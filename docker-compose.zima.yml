@@ -1,0 +1,65 @@
+# TDSS on ZimaOS (or any Docker host). Built on the machine itself, so the images match its CPU.
+#
+#   scripts/deploy_zima.sh root@zimaos.local        # from a development machine, or on the box:
+#   docker compose -f docker-compose.zima.yml build
+#   docker compose -f docker-compose.zima.yml up -d --force-recreate
+#
+# Then open http://<zima-ip>:8580. Port 80 is left to the ZimaOS dashboard. Data stays in
+# /DATA/AppData/tdss across rebuilds; settings can go in a .env file next to this one.
+name: tdss
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        WITH_LLM: ${TDSS_WITH_LLM:-0}
+    image: tdss-backend:5
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Kyiv}
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TDSS_SEED_DEMO: ${TDSS_SEED_DEMO:-1}
+      # Optional LLM fallback for unreadable documents (needs TDSS_WITH_LLM=1 at build time).
+      TDSS_LLM_EXTRACTION: ${TDSS_LLM_EXTRACTION:-0}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ${TDSS_DATA:-/DATA/AppData/tdss}/corpus:/opt/tdss/corpus/documents
+      - ${TDSS_DATA:-/DATA/AppData/tdss}/cache:/opt/tdss/.cache
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: tdss-frontend:5
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Kyiv}
+    ports:
+      - "${TDSS_PORT:-8580}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+# ZimaOS / CasaOS dashboard metadata (ignored by plain Docker).
+x-casaos:
+  main: frontend
+  title:
+    en_us: TDSS
+    uk_ua: TDSS
+  tagline:
+    en_us: Interchange decision support
+    uk_ua: Підтримка вибору транспортної розв’язки
+  description:
+    en_us: Multi-criteria selection of highway interchange types with GIS site analysis and a document-trained prediction model.
+    uk_ua: Багатокритеріальний вибір типу транспортної розв’язки з GIS-аналізом ділянки та моделлю прогнозу, навченою на документах.
+  developer: Vitalii Kovtun
+  author: Vitalii Kovtun
+  category: Utilities
+  port_map: "${TDSS_PORT:-8580}"
+  scheme: http
+  index: /
