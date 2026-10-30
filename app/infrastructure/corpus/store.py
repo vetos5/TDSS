@@ -30,7 +30,12 @@ from app.application.prediction import (
     cross_validate,
     expert_baseline,
 )
-from app.data.prediction_defaults import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, TARGETS
+from app.data.prediction_defaults import (
+    ALLOWED_EXTENSIONS,
+    MAX_UPLOAD_BYTES,
+    OUTLIER_WEIGHT,
+    TARGETS,
+)
 from app.infrastructure.corpus.llm_extraction import extract_records_with_llm, llm_available
 from app.infrastructure.corpus.readers import (
     DocumentResult,
@@ -120,6 +125,26 @@ def _implausible_values(records: List[ProjectRecord]) -> List[str]:
     return warnings
 
 
+def _downweighted(
+    records: List[ProjectRecord], data: Dict[str, Any], model: ResidualModel
+) -> Dict[int, List[str]]:
+    """Per record index, warnings for observations the Student-t fit gave a weight below
+    ``OUTLIER_WEIGHT`` — far from the pattern of the other projects, so they barely count."""
+    warnings: Dict[int, List[str]] = {}
+    for criterion in TARGETS:
+        weights = model.posteriors[criterion].weights
+        if weights is None:
+            continue
+        rows = data[criterion]
+        for i, weight, observed in zip(rows.record_index, weights, rows.observed, strict=True):
+            if weight < OUTLIER_WEIGHT:
+                warnings.setdefault(int(i), []).append(
+                    f"{records[i].name}: {criterion} {observed:g} is far from the other projects "
+                    f"and was downweighted to {weight:.2f} in training"
+                )
+    return warnings
+
+
 # ---------------------------------------------------------------------------
 # Store
 # ---------------------------------------------------------------------------
@@ -176,6 +201,12 @@ class CorpusStore:
                 n_synthetic=sum(1 for r in records if r.synthetic),
             )
             train_ms = (time.perf_counter() - start) * 1000.0
+            downweighted = _downweighted(records, data, model)
+            i = 0
+            for document in documents:
+                for _ in document.records:
+                    document.warnings.extend(downweighted.get(i, []))
+                    i += 1
 
             metrics = cross_validate(data, interval_level=model.interval_level)
             criteria = {

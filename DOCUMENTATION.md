@@ -385,23 +385,33 @@ $$a_n = a_0 + \frac{n}{2}, \qquad b_n = b_0 + \frac{1}{2}\left(r^\top r - m_n^\t
 
 `fit_nig` Cholesky-factorises the 16 × 16 precision matrix \(V_n^{-1}\) (`scipy.linalg.cho_factor`) and solves for \(m_n\) and \(V_n\) without an explicit inverse. It computes \(m_n^\top V_n^{-1} m_n\) as \(m_n^\top X^\top r\) (the two are equal because \(V_n^{-1} m_n = X^\top r\)) and clamps the sum of squares at 0 to absorb rounding error. Retraining is four such solves, a fraction of a millisecond in total. Reading the documents dominates the measured `train_ms` (≈ 5 ms for the 64 demo records).
 
+**Robust likelihood (Student-t noise).** A Gaussian likelihood lets one gross error, usually a unit mistake, pull the whole fit. The model therefore uses Student-t noise with \(\nu_t = 8\) degrees of freedom (`ROBUST_NU`), written as a scale mixture of normals (Lange, Little & Taylor, 1989):
+
+$$\varepsilon_i \mid w_i \sim \mathcal{N}\!\left(0,\ \sigma^2 / w_i\right), \qquad w_i \sim \text{Gamma}\!\left(\tfrac{\nu_t}{2},\ \tfrac{\nu_t}{2}\right)$$
+
+Given the weights \(w_i\), the posterior is the closed form above with the rows of \(X\) and \(r\) multiplied by \(\sqrt{w_i}\). Given the fit, the expected weight of observation \(i\) is
+
+$$w_i = \frac{\nu_t + 1}{\nu_t + e_i^2 / \hat\sigma^2}, \qquad e_i = r_i - x_i^\top m_n, \qquad \hat\sigma^2 = \frac{b_n}{a_n - 1}$$
+
+`fit_robust` alternates the two steps (EM) from \(w = 1\) until no weight changes by more than \(10^{-8}\), 16 – 23 iterations on the demo corpus. Each step is one Cholesky solve, so retraining stays well under a millisecond. On clean data the weights stay near 1. A ×10 unit mistake gets \(w \approx 0.05\) and barely moves the fit. Observations with \(w < 0.25\) (`OUTLIER_WEIGHT`; about 4.6 noise sds off the fit, or a ×3 error) are named in their document's warnings. With one ×10 cost typo added to 60 synthetic records, the Turbine cost prediction is \$53.1 M (90 % interval \$38.7 – 72.9 M) against \$51.5 M without the typo. The Gaussian fit gives \$72.2 M (\$41.7 – 125.3 M). Under \(t_{\nu_t}\) noise, \(\sigma\) is a scale and the noise sd is \(\sigma\sqrt{\nu_t/(\nu_t - 2)}\). So that \(\sigma_{0,c}\) and \(\tau_j\) keep their meaning as prior sds, `fit_criterion` divides \(b_0\) by \(k = \nu_t/(\nu_t - 2)\) and multiplies \(V_0\) by \(k\). \(\nu_t = 8\) is a compromise. Lange et al.'s default, \(\nu_t = 4\), resists outliers more strongly but lost up to 0.6 percentage points of accuracy on the clean demo corpus. \(\nu_t = 8\) stays within 0.2 points of the Gaussian fit.
+
 **Posterior predictive.** For a query \(x_* = x(k, z)\), the residual has a Student-t predictive distribution:
 
-$$\tilde r \mid x_* \sim t_{\nu}\!\left(\mu,\ s^2\right), \qquad \nu = 2a_n, \quad \mu = x_*^\top m_n, \quad s = \sqrt{\frac{b_n}{a_n}\left(1 + x_*^\top V_n\, x_*\right)}$$
+$$\tilde r \mid x_* \sim t_{\nu}\!\left(\mu,\ s^2\right), \qquad \nu = \min(2a_n,\ \nu_t), \quad \mu = x_*^\top m_n, \quad s = \sqrt{\frac{b_n}{a_n}\left(1 + x_*^\top V_n\, x_*\right)}$$
 
 The point prediction and the prediction interval at level \(\gamma = 0.90\) (`INTERVAL_LEVEL`) are:
 
 $$\hat y_c = b_c(k, z)\, e^{\mu}, \qquad \left[\ b_c(k, z)\, e^{\mu - t_{(1+\gamma)/2,\,\nu}\, s},\ \ b_c(k, z)\, e^{\mu + t_{(1+\gamma)/2,\,\nu}\, s}\ \right]$$
 
-The quantile \(t_{0.95,\nu}\) comes from `scipy.stats.t.ppf`. \(\hat y\) is the **median** of the posterior predictive, because exp is monotonic and the t distribution is symmetric. The median is the natural point estimate here: the mean of \(e^{\tilde r}\) is infinite when \(\tilde r\) is t-distributed. The interval is symmetric on the log scale, so on the natural scale it is right-skewed, like real cost overruns. Predicted safety (the point and both bounds) is clamped to [1, 10]. The term \(x_*^\top V_n x_*\) widens the interval for conditions far from the training data.
+Strictly, the predictive is the sum of the parameter uncertainty (\(t_{2a_n}\)) and a new observation's own \(t_{\nu_t}\) noise, which has no closed form. Capping \(\nu\) at \(\nu_t\) gives the interval the heavier tails of the noise. The quantile \(t_{0.95,\nu}\) comes from `scipy.stats.t.ppf`. \(\hat y\) is the **median** of the posterior predictive, because exp is monotonic and the t distribution is symmetric. The median is the natural point estimate here: the mean of \(e^{\tilde r}\) is infinite when \(\tilde r\) is t-distributed. The interval is symmetric on the log scale, so on the natural scale it is right-skewed, like real cost overruns. Predicted safety (the point and both bounds) is clamped to [1, 10]. The term \(x_*^\top V_n x_*\) widens the interval for conditions far from the training data.
 
-**No records ⇒ expert values.** With \(n = 0\), \(V_n = V_0\) and \(m_n = 0\), so \(\mu = 0\) and \(\hat y_c = b_c(k, z)\) **exactly** for every type and condition. Nothing changes until data exist. Tests check this for all 8 types under several conditions, and end-to-end through `/api/evaluate`. The interval is then the prior predictive. At the reference conditions \(s = \sqrt{\tfrac{2}{3}(\sigma_{0,c}^2 + 0.30^2)}\) and \(\nu = 6\), which gives about ×0.56 … ×1.77 for cost and ×0.61 … ×1.65 for throughput. Without evidence, the model does not claim to know how far off the expert values are.
+**No records ⇒ expert values.** With \(n = 0\), \(V_n = V_0\) and \(m_n = 0\), so \(\mu = 0\) and \(\hat y_c = b_c(k, z)\) **exactly** for every type and condition. Nothing changes until data exist. Tests check this for all 8 types under several conditions, and end-to-end through `/api/evaluate`. The interval is then the prior predictive. At the reference conditions \(s = \sqrt{\tfrac{2}{3}(\sigma_{0,c}^2 / k + 0.30^2)}\) and \(\nu = 6\), which gives about ×0.58 … ×1.73 for cost and ×0.61 … ×1.64 for throughput. Without evidence, the model does not claim to know how far off the expert values are.
 
 **Coefficients and noise.** For each criterion and feature, the status reports the posterior mean \(m_{n,j}\) and the exact marginal posterior sd
 
 $$\text{sd}(\beta_j) = \sqrt{(V_n)_{jj}\, \frac{b_n}{a_n - 1}}$$
 
-together with the residual noise \(\sqrt{E[\sigma^2 \mid r]} = \sqrt{b_n / (a_n - 1)}\). The UI shows \(e^{m_{n,j}} - 1\) as a percentage effect (for example, a cost `lanes` coefficient of 0.124 means +13 % per extra lane) and marks coefficients with \(|m_{n,j}| > 1.645\,\text{sd}\).
+together with the residual noise sd \(\sqrt{b_n / (a_n - 1)}\,\sqrt{\nu_t / (\nu_t - 2)}\). The UI shows \(e^{m_{n,j}} - 1\) as a percentage effect (for example, a cost `lanes` coefficient of 0.124 means +13 % per extra lane) and marks coefficients with \(|m_{n,j}| > 1.645\,\text{sd}\).
 
 **Out-of-sample accuracy.** For each criterion with \(n_c \ge 3\) observations, every record \(i\) is predicted by a model refitted without it (leave-one-out). Above 200 observations a deterministic 10-fold split replaces leave-one-out, with record \(i\) in fold \(i \bmod 10\).
 
@@ -411,12 +421,12 @@ Here \(\hat y_{-i}\), \(l_{-i}\) and \(h_{-i}\) are the prediction and interval 
 
 | Criterion | \(n_c\) | MAPE expert | MAPE model | Coverage 90 % |
 |---|---|---|---|---|
-| Construction cost | 52 | 19.6 % | 14.9 % | 0.88 |
-| Land area | 55 | 13.6 % | 12.7 % | 0.89 |
-| Throughput | 58 | 20.8 % | 7.8 % | 0.86 |
-| Safety index | 59 | 9.7 % | 11.6 % | 0.85 |
+| Construction cost | 52 | 19.6 % | 15.0 % | 0.87 |
+| Land area | 55 | 13.6 % | 12.7 % | 0.84 |
+| Throughput | 58 | 20.8 % | 8.0 % | 0.83 |
+| Safety index | 59 | 9.7 % | 11.8 % | 0.85 |
 
-The model recovers all planted effects within two posterior sds, and the lane and speed slopes within a fraction of one: cost per extra lane 0.124 ± 0.020 (true 0.12), throughput per extra lane 0.216 ± 0.011 (0.22), safety per +20 km/h −0.047 ± 0.015 (−0.05). The type effects and the AADT elasticity are less precise (cost `log_aadt` 0.159 ± 0.040, true 0.10). Safety is the exception in the table. Its planted effect is small compared with the noise, so fitting 16 coefficients to 59 records most likely adds more variance than it removes bias, and the model is slightly *worse* than the expert values for this criterion. The accuracy table in the UI reports this per criterion for whichever corpus is loaded.
+Coverage is slightly below 0.90 because the demo noise is Gaussian and the Student-t fit gives its tail points less weight. The Gaussian fit covered 0.85 – 0.89 with about the same MAPE; the robust fit pays this small price on clean data so that one gross error cannot dominate a real corpus. The model recovers all planted effects within about two posterior sds, and the lane and speed slopes within a fraction of one: cost per extra lane 0.127 ± 0.018 (true 0.12), throughput per extra lane 0.217 ± 0.010 (0.22), safety per +20 km/h −0.047 ± 0.013 (−0.05). The type effects and the AADT elasticity are less precise (cost `log_aadt` 0.173 ± 0.037, true 0.10). Safety is the exception in the table. Its planted effect is small compared with the noise, so fitting 16 coefficients to 59 records most likely adds more variance than it removes bias, and the model is slightly *worse* than the expert values for this criterion. The accuracy table in the UI reports this per criterion for whichever corpus is loaded.
 
 **Use in evaluation (`value_source = "model"`).** `/api/evaluate` and `/api/robustness` accept a `value_source` field. The default, `"expert"`, behaves byte-for-byte as before, which the snapshot test guards. With `"model"`, `_prepare` (in `backend/routes.py`) multiplies each alternative's raw constants by the model's correction at the request's conditions, *before* the §3.4 rules run:
 
@@ -428,14 +438,14 @@ The terrain, environment and speed rules, the capacity penalty and the feasibili
 
 $$l_c = \min_{k \in A} \frac{\text{low}_{c,k}}{\hat y_{c,k}}, \qquad h_c = \max_{k \in A} \frac{\text{high}_{c,k}}{\hat y_{c,k}}, \qquad \text{clamped to } 0 < l_c \le 1 \le h_c \le 10$$
 
-The distribution is **triangular**, with its mode at 1 (the point prediction). This is a deliberate approximation of the log-t predictive. It keeps the support (the 90 % interval) and the right skew, but it has no tails beyond the interval and a smaller spread. On a symmetric interval of half-width \(w\), its sd is \(w/\sqrt{6} \approx 0.41w\), compared with \(w/1.645 \approx 0.61w\) for a normal distribution with the same 90 % interval. Taking the widest interval over all alternatives errs in the opposite direction, so the two approximations partly cancel. Explicit ranges in the request still take precedence. The response's `value_uncertainty` reports the ranges actually used, and a second `model` note names the criteria whose ranges came from the model. A criterion with no training observations keeps its §3.9 default range: its interval would only be the prior (about ×0.54 … ×1.86 for cost at the default parameters), which says nothing about real projects. With an empty corpus, model mode therefore matches expert mode exactly, in the evaluated values and in the robustness ranges.
+The distribution is **triangular**, with its mode at 1 (the point prediction). This is a deliberate approximation of the log-t predictive. It keeps the support (the 90 % interval) and the right skew, but it has no tails beyond the interval and a smaller spread. On a symmetric interval of half-width \(w\), its sd is \(w/\sqrt{6} \approx 0.41w\), compared with \(w/1.645 \approx 0.61w\) for a normal distribution with the same 90 % interval. Taking the widest interval over all alternatives errs in the opposite direction, so the two approximations partly cancel. Explicit ranges in the request still take precedence. The response's `value_uncertainty` reports the ranges actually used, and a second `model` note names the criteria whose ranges came from the model. A criterion with no training observations keeps its §3.9 default range: its interval would only be the prior (about ×0.55 … ×1.82 for cost at the default parameters), which says nothing about real projects. With an empty corpus, model mode therefore matches expert mode exactly, in the evaluated values and in the robustness ranges.
 
 **Limitations.**
 
 - **Small data.** Tens of records spread over 8 types leave each type intercept close to its prior. With 64 coefficients, a few will look "credible" at the 90 % level by chance. On the demo corpus, for example, Cloverleaf safety comes out at +0.16 ± 0.05 although no type effect was planted. The prior shrinkage limits this effect but does not remove it.
 - **Model form.** The correction is linear on the log scale and additive. There are no interactions (an extra lane changes cost by the same percentage on every type), and there is one noise level per criterion for all types. Records are assumed independent: projects from one programme or country are not grouped, and `year` and `country` are stored but not used. Conditions outside the range of the corpus are extrapolated linearly; only the interval widens.
 - **Imputation.** A missing condition is set to its reference value. The record still informs its type's correction. However, if many records lack, say, AADT, the AADT slope is pulled towards zero and the deviation is attributed to the type intercept instead. Imputed fields are listed in the document warnings.
-- **Outliers.** The likelihood is Gaussian, so a gross error (usually a unit mistake) pulls the fit. Values more than 10× off the expert baseline are flagged in the document warnings but still used.
+- **Outliers.** The Student-t likelihood downweights a gross error instead of letting it pull the fit, and the document warnings name every observation it downweighted. Values more than 10× off the expert baseline are also flagged. Two errors of the same kind in one type can still look like a real effect, and outliers in the site conditions (a wrong AADT) are not detected.
 - **Synthetic demo data.** The shipped corpus is **invented**. It contains 60 CSV rows from `scripts/make_synthetic_corpus.py` (the real `expert_baseline` times planted effects and log-normal noise, `default_rng(2026)`) and four records from three Markdown examples. Its accuracy table shows that the method works; it says nothing about whether the expert values are wrong. The UI flags synthetic records with an amber badge, and the files should be deleted once real documents exist.
 - **USD only.** Costs in other currencies (UAH, EUR, GBP, PLN, CHF) are skipped with a warning rather than converted, because exchange rates and price years would add more error than the field is worth. USD amounts are not adjusted for inflation either.
 
@@ -714,8 +724,8 @@ Returns the state of the document-trained prediction model (§3.12). The corpus 
       "extractor": "table", "warnings": [], "size_bytes": 6722 }
   ],
   "criteria": {
-    "construction_cost_mln": { "n_obs": 52, "noise_sd": 0.149, "loo_mape_expert": 0.196,
-                               "loo_mape_model": 0.149, "coverage90": 0.885 }
+    "construction_cost_mln": { "n_obs": 52, "noise_sd": 0.155, "loo_mape_expert": 0.196,
+                               "loo_mape_model": 0.150, "coverage90": 0.865 }
   },
   "coefficients": {
     "construction_cost_mln": [ { "feature": "type:Cloverleaf", "mean": 0.128, "sd": 0.065 },
@@ -1511,6 +1521,7 @@ TDSS/
 18. **Murphy, K. P.** (2007). *Conjugate Bayesian analysis of the Gaussian distribution.* Technical note, University of British Columbia. (Normal-Inverse-Gamma posterior and Student-t predictive.)
 19. **Murphy, K. P.** (2012). *Machine Learning: A Probabilistic Perspective.* MIT Press. (§7.6: Bayesian linear regression.)
 20. **Stone, M.** (1974). Cross-validatory choice and assessment of statistical predictions. *Journal of the Royal Statistical Society, Series B*, 36(2), 111–147.
+21. **Lange, K. L., Little, R. J. A., Taylor, J. M. G.** (1989). Robust statistical modeling using the t distribution. *Journal of the American Statistical Association*, 84(408), 881–896.
 
 ---
 

@@ -30,8 +30,14 @@ Assumptions
 * **Uploads.** Plain-text, Markdown, CSV, JSON / JSONL and (optionally) PDF documents up to 5 MB —
   ample for a project report; larger files are almost certainly scans or archives.
 
+* **Robust likelihood.** The noise is Student-t with ν = 8 rather than Gaussian, so one gross error
+  (a unit mistake) is downweighted instead of pulling the whole fit. On clean data the weights stay
+  close to 1 and the fit is close to the Gaussian one.
+
 Flyvbjerg, B., Holm, M. S., Buhl, S. (2002). Underestimating costs in public works projects:
     error or lie? Journal of the American Planning Association, 68(3), 279–295.
+Lange, K. L., Little, R. J. A., Taylor, J. M. G. (1989). Robust statistical modeling using the t
+    distribution. Journal of the American Statistical Association, 84(408), 881–896.
 """
 
 from __future__ import annotations
@@ -90,6 +96,16 @@ PRIOR_TAU_SLOPE = 0.15       # prior sd of a condition slope
 PRIOR_A0 = 3.0               # Inverse-Gamma shape; b0 = σ0² (a0 − 1) so that E[σ²] = σ0²
 
 INTERVAL_LEVEL = 0.90
+
+# Student-t likelihood (outlier resistance). Lange, Little & Taylor (1989) suggest ν = 4; on the
+# demo corpus ν = 8 keeps the clean-data accuracy within 0.2 pp of the Gaussian fit while a ×10 unit
+# mistake still gets a weight of ≈ 0.05. An observation whose final weight falls below
+# OUTLIER_WEIGHT (≈ 5.3 noise scales, ≈ 4.6 sd off the fit; a ×3 error) is reported in its
+# document's warnings.
+ROBUST_NU = 8.0
+ROBUST_MAX_ITER = 100
+ROBUST_TOL = 1e-8            # max change of any weight between iterations
+OUTLIER_WEIGHT = 0.25
 
 # Cross-validation of the accuracy table.
 CV_MIN_OBS = 3               # fewer observations → metrics are null

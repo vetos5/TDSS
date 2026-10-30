@@ -27,13 +27,21 @@ s = √((bn / an)(1 + x*ᵀ Vn x*)). The point prediction is the posterior media
 the interval baseline · e^(μ ± t_ν · s). With no records the prior mean β = 0 gives e^μ = 1, so
 the model reproduces the expert values exactly until data exist.
 
+Robust likelihood: the noise is Student-t (ν = 8), written as a scale mixture
+ε_i | w_i ~ N(0, σ² / w_i), w_i ~ Gamma(ν/2, ν/2). Given the weights the posterior is the closed
+form above with X, r scaled by √w; given the fit, E[w_i] = (ν + 1) / (ν + e_i² / σ²) with e_i the
+residual and σ² the posterior mean noise. Alternating the two (EM, Lange et al., 1989) converges
+in a few iterations. A gross error gets a small weight instead of pulling the fit.
+
 Murphy, K. P. (2012). Machine Learning: A Probabilistic Perspective. MIT Press.
+Lange, K. L., Little, R. J. A., Taylor, J. M. G. (1989). Robust statistical modeling using the t
+    distribution. JASA, 84(408), 881–896.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
@@ -60,6 +68,9 @@ from app.data.prediction_defaults import (
     PRIOR_TAU_SLOPE,
     PRIOR_TAU_TYPE,
     REFERENCE_CONDITIONS,
+    ROBUST_MAX_ITER,
+    ROBUST_NU,
+    ROBUST_TOL,
     SAFETY_BOUNDS,
     SPEED_FEATURE_STEP,
     TARGETS,
@@ -159,15 +170,29 @@ class NIGPosterior:
     a: float
     b: float
     n: int
+    weights: Optional[np.ndarray] = None    # Student-t weights of the training rows (1 = typical)
+    nu: Optional[float] = None              # Student-t noise df; None = Gaussian likelihood
 
     @property
     def df(self) -> float:
         return 2.0 * self.a
 
     @property
-    def noise_sd(self) -> float:
+    def predictive_df(self) -> float:
+        """df of the predictive interval: a new observation's own t_ν noise caps it at ν."""
+        return self.df if self.nu is None else min(self.df, self.nu)
+
+    @property
+    def noise_scale(self) -> float:
         """Posterior mean of σ², square-rooted: √(bn / (an − 1))."""
         return math.sqrt(self.b / (self.a - 1.0))
+
+    @property
+    def noise_sd(self) -> float:
+        """sd of the noise: σ, or σ √(ν / (ν − 2)) under the Student-t likelihood."""
+        if self.nu is None:
+            return self.noise_scale
+        return self.noise_scale * math.sqrt(self.nu / (self.nu - 2.0))
 
     @property
     def coef_sd(self) -> np.ndarray:
@@ -183,11 +208,22 @@ class NIGPosterior:
 
 
 def fit_nig(
-    X: np.ndarray, r: np.ndarray, v0_diag: np.ndarray, a0: float, b0: float
+    X: np.ndarray,
+    r: np.ndarray,
+    v0_diag: np.ndarray,
+    a0: float,
+    b0: float,
+    weights: Optional[np.ndarray] = None,
 ) -> NIGPosterior:
-    """Closed-form NIG posterior for r = Xβ + ε with prior β | σ² ~ N(0, σ² diag(v0_diag))."""
+    """Closed-form NIG posterior for r = Xβ + ε with prior β | σ² ~ N(0, σ² diag(v0_diag)).
+
+    With *weights*, observation i has noise variance σ² / w_i.
+    """
     X = np.asarray(X, dtype=float).reshape(-1, len(v0_diag))
     r = np.asarray(r, dtype=float).reshape(-1)
+    if weights is not None:
+        root = np.sqrt(weights)
+        X, r = X * root[:, None], r * root
     precision = X.T @ X + np.diag(1.0 / v0_diag)          # Vn⁻¹
     factor = linalg.cho_factor(precision, lower=True)
     xtr = X.T @ r
@@ -196,7 +232,33 @@ def fit_nig(
     # mnᵀ Vn⁻¹ mn = mnᵀ Xᵀ r because Vn⁻¹ mn = Xᵀ r; the difference is ≥ 0 analytically.
     sse = max(float(r @ r - mean @ xtr), 0.0)
     n = len(r)
-    return NIGPosterior(mean=mean, scale=scale, a=a0 + n / 2.0, b=b0 + 0.5 * sse, n=n)
+    return NIGPosterior(
+        mean=mean, scale=scale, a=a0 + n / 2.0, b=b0 + 0.5 * sse, n=n, weights=weights
+    )
+
+
+def fit_robust(
+    X: np.ndarray,
+    r: np.ndarray,
+    v0_diag: np.ndarray,
+    a0: float,
+    b0: float,
+    nu: float = ROBUST_NU,
+) -> NIGPosterior:
+    """NIG posterior under a Student-t likelihood, by EM over the scale-mixture weights."""
+    X = np.asarray(X, dtype=float).reshape(-1, len(v0_diag))
+    r = np.asarray(r, dtype=float).reshape(-1)
+    weights = np.ones(len(r))
+    posterior = fit_nig(X, r, v0_diag, a0, b0, weights)
+    for _ in range(ROBUST_MAX_ITER):
+        z2 = (r - X @ posterior.mean) ** 2 / posterior.noise_scale**2
+        updated = (nu + 1.0) / (nu + z2)
+        converged = np.max(np.abs(updated - weights), initial=0.0) < ROBUST_TOL
+        weights = updated
+        posterior = fit_nig(X, r, v0_diag, a0, b0, weights)
+        if converged:
+            break
+    return replace(posterior, nu=nu)
 
 
 def prior_hyperparameters(criterion: str) -> Tuple[np.ndarray, float, float]:
@@ -207,7 +269,10 @@ def prior_hyperparameters(criterion: str) -> Tuple[np.ndarray, float, float]:
 
 def fit_criterion(criterion: str, X: np.ndarray, r: np.ndarray) -> NIGPosterior:
     v0, a0, b0 = prior_hyperparameters(criterion)
-    return fit_nig(X, r, v0, a0, b0)
+    # σ0 is the prior noise sd; the t_ν scale with that sd is σ0 √((ν − 2) / ν). V0 grows by the
+    # inverse factor so that the coefficient prior σ² V0 (sd τ) is unchanged.
+    k = ROBUST_NU / (ROBUST_NU - 2.0)
+    return fit_robust(X, r, v0 * k, a0, b0 / k, nu=ROBUST_NU)
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +288,7 @@ class CriterionData:
     r: np.ndarray            # (n,) log residuals
     observed: np.ndarray     # (n,)
     baseline: np.ndarray     # (n,)
+    record_index: np.ndarray  # (n,) position of each row's record in the training records
 
     @property
     def n(self) -> int:
@@ -231,20 +297,24 @@ class CriterionData:
 
 def build_training_data(records: Iterable[ProjectRecord]) -> Dict[str, CriterionData]:
     """Per criterion, the rows of the records that have that target."""
-    rows: Dict[str, List[Tuple[np.ndarray, float, float]]] = {c: [] for c in TARGETS}
-    for record in records:
+    rows: Dict[str, List[Tuple[np.ndarray, float, float, int]]] = {c: [] for c in TARGETS}
+    for i, record in enumerate(records):
         x = features(record.interchange_type, record.conditions)
         baseline = expert_baseline(record.interchange_type, record.conditions)
         for criterion, observed in record.targets.items():
             if criterion in rows:
-                rows[criterion].append((x, float(observed), baseline[criterion]))
+                rows[criterion].append((x, float(observed), baseline[criterion], i))
     data: Dict[str, CriterionData] = {}
     for criterion, items in rows.items():
-        X = np.array([x for x, _, _ in items]).reshape(-1, len(FEATURE_NAMES))
-        observed = np.array([o for _, o, _ in items], dtype=float)
-        baseline = np.array([b for _, _, b in items], dtype=float)
+        X = np.array([x for x, _, _, _ in items]).reshape(-1, len(FEATURE_NAMES))
+        observed = np.array([o for _, o, _, _ in items], dtype=float)
+        baseline = np.array([b for _, _, b, _ in items], dtype=float)
         data[criterion] = CriterionData(
-            X=X, r=np.log(observed / baseline), observed=observed, baseline=baseline
+            X=X,
+            r=np.log(observed / baseline),
+            observed=observed,
+            baseline=baseline,
+            record_index=np.array([i for _, _, _, i in items], dtype=int),
         )
     return data
 
@@ -264,7 +334,7 @@ def _predict_values(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """(predicted, low, high) on the natural scale; safety clamped to [1, 10]."""
     mu, s = posterior.predictive(X)
-    half = _t_quantile(level, posterior.df) * s
+    half = _t_quantile(level, posterior.predictive_df) * s
     return (
         _clamp(criterion, baseline * np.exp(mu)),
         _clamp(criterion, baseline * np.exp(mu - half)),

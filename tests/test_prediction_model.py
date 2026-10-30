@@ -18,12 +18,15 @@ from app.application.prediction import (
     expert_baseline,
     features,
     fit_nig,
+    fit_robust,
+    prior_hyperparameters,
     validate_record,
 )
 from app.application.prediction.model import _folds
 from app.data.adjustment_rules import LOOP_RAMP_ALTERNATIVES
 from app.data.interchange_data import INTERCHANGE_DATA, get_alternatives_for_context
 from app.data.prediction_defaults import (
+    OUTLIER_WEIGHT,
     PRIOR_SIGMA0,
     PRIOR_TAU_SLOPE,
     PRIOR_TAU_TYPE,
@@ -182,13 +185,38 @@ def test_nig_posterior_matches_direct_numpy():
     assert post.coef_sd == pytest.approx(np.sqrt(np.diag(Vn) * bn / (an - 1)))
 
 
+def test_robust_fit_of_an_empty_corpus_is_the_prior():
+    v0, a0, b0 = prior_hyperparameters("construction_cost_mln")
+    post = fit_robust(np.zeros((0, len(v0))), np.zeros(0), v0, a0, b0)
+    assert post.n == 0 and np.all(post.mean == 0)
+    assert post.predictive_df == min(2 * a0, post.nu)
+
+
+def test_robust_fit_downweights_a_unit_mistake():
+    records = synthetic_records(60, seed=3)
+    clean = ResidualModel.fit(records)
+    (bad, _) = validate_record({"type": "Turbine", "cost": 450}, source="typo.csv")  # ×10 typo
+    robust = ResidualModel.fit([*records, bad])
+    rows = build_training_data([*records, bad])["construction_cost_mln"]
+    v0, a0, b0 = prior_hyperparameters("construction_cost_mln")
+    gaussian = fit_nig(rows.X, rows.r, v0, a0, b0)
+
+    weights = robust.posteriors["construction_cost_mln"].weights
+    assert weights[-1] < OUTLIER_WEIGHT
+    assert np.median(weights[:-1]) > 0.9
+    x = features("Turbine")
+    clean_mu = (clean.posteriors["construction_cost_mln"].mean @ x)
+    robust_mu = (robust.posteriors["construction_cost_mln"].mean @ x)
+    assert abs(robust_mu - clean_mu) < 0.25 * abs(gaussian.mean @ x - clean_mu)
+
+
 def test_prediction_is_baseline_times_exp_mu_with_t_interval():
     record, _ = validate_record({"type": "Turbine", "cost": 60, "aadt": 60000, "lanes": 3})
     model = ResidualModel.fit([record])
     cond = {"aadt": 60000, "num_lanes": 3}
     post = model.posteriors["construction_cost_mln"]
     mu, s = post.predictive(features("Turbine", cond))
-    q = student_t.ppf(0.95, post.df)
+    q = student_t.ppf(0.95, post.predictive_df)
     p = model.predict("Turbine", cond)["construction_cost_mln"]
     assert p["expert"] == 45.0
     assert p["predicted"] == pytest.approx(45.0 * np.exp(mu[0]))
@@ -431,6 +459,18 @@ def test_store_warns_about_implausible_values(store):
     assert doc["records"] == 1
     assert doc["warnings"][-1] == (
         "units row 2: construction_cost_mln 950 is 95× the expert value 10 — check the units")
+
+
+def test_store_warns_about_downweighted_records(store):
+    rows = generate_rows(40, np.random.default_rng(5))
+    header = ",".join(rows[0])
+    lines = [header, *(",".join(str(row[k]) for k in rows[0]) for row in rows)]
+    store.save_document("clean.csv", "\n".join(lines).encode())
+    status = store.save_document("typo.csv", b"type,cost\nTurbine,450\n")
+    typo = next(d for d in status["documents"] if d["name"] == "typo.csv")
+    assert any("downweighted" in w for w in typo["warnings"])
+    clean = next(d for d in status["documents"] if d["name"] == "clean.csv")
+    assert not any("downweighted" in w for w in clean["warnings"])
 
 
 def test_store_survives_malformed_documents(store):

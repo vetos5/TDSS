@@ -31,6 +31,7 @@ from app.application.prediction.model import (
     expert_baseline,
     features,
     fit_nig,
+    fit_robust,
     prior_hyperparameters,
 )
 from app.application.prediction.records import (
@@ -70,6 +71,7 @@ __all__ = [
     "extract_records_from_text",
     "features",
     "fit_nig",
+    "fit_robust",
     "is_synthetic_source",
     "normalise_fields",
     "parse_field_value",
