@@ -1,3 +1,5 @@
 -r requirements.txt
 pytest>=8.0
 ruff>=0.5
+# Exercises the PDF reader in tests (optional at runtime: pip install -e .[documents]).
+pypdf>=4.0

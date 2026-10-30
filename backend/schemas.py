@@ -34,6 +34,9 @@ class ProjectParams(BaseModel):
 
 MethodId = Literal["wsm", "topsis", "ahp", "promethee", "vikor"]
 WeightingMode = Literal["manual", "entropy", "critic", "ahp", "combined"]
+# expert — the fixed expert constants; model — the constants corrected by the document-trained
+# prediction model (the site rules, capacity penalty and feasibility filter run afterwards).
+ValueSource = Literal["expert", "model"]
 
 
 class WeightingInput(BaseModel):
@@ -61,6 +64,7 @@ class EvaluateRequest(BaseModel):
     params: ProjectParams
     methods: List[MethodId] = Field(default_factory=lambda: ["wsm"], min_length=1)
     weighting: WeightingInput = Field(default_factory=WeightingInput)
+    value_source: ValueSource = "expert"
 
     @field_validator("methods")
     @classmethod
@@ -70,7 +74,8 @@ class EvaluateRequest(BaseModel):
 
 class AdjustmentNote(BaseModel):
     """A single human-readable note describing a parameter-driven adjustment."""
-    kind: str   # one of: terrain, env_sensitivity, design_speed, traffic_demand, feasibility
+    kind: str   # terrain, env_sensitivity, design_speed, traffic_demand, feasibility, weighting,
+    #             model
     message: str
 
 
@@ -133,6 +138,7 @@ class EvaluateResponse(BaseModel):
     method_results: Dict[str, MethodResultSchema] = {}
     rank_agreement: Optional[RankAgreementSchema] = None
     weighting: Optional[WeightingInfo] = None
+    value_source: str = "expert"
 
 
 class ValueRangeInput(BaseModel):
@@ -211,6 +217,75 @@ class RobustnessResponse(BaseModel):
     exceedance: Dict[str, Dict[str, float]]  # alternative → {criterion: P(value > limit)}
     sensitivity: Dict[str, SensitivitySchema]
     adjustments: List[AdjustmentNote] = []
+    value_source: str = "expert"
+
+
+# ── Prediction model (document-trained criterion values) ─────────────────────
+# Criterion keys of the dicts below are the four CRITERIA names.
+
+
+class ModelDocumentSchema(BaseModel):
+    name: str
+    kind: Literal["csv", "json", "text", "pdf"]
+    synthetic: bool
+    records: int
+    extractor: Literal["table", "rules", "llm", "none"]
+    warnings: List[str]
+    size_bytes: int
+
+
+class ModelCriterionSchema(BaseModel):
+    """Out-of-sample accuracy of one criterion (metrics null below 3 observations)."""
+
+    n_obs: int
+    noise_sd: float
+    loo_mape_expert: Optional[float]
+    loo_mape_model: Optional[float]
+    coverage90: Optional[float]
+
+
+class ModelCoefficientSchema(BaseModel):
+    feature: str
+    mean: float      # posterior mean of the log-scale coefficient
+    sd: float
+
+
+class ModelStatus(BaseModel):
+    trained_at: Optional[str]
+    train_ms: float
+    revision: int                 # changes on every refit; increases over time
+    n_records: int
+    n_synthetic: int
+    documents: List[ModelDocumentSchema]
+    criteria: Dict[str, ModelCriterionSchema]
+    coefficients: Dict[str, List[ModelCoefficientSchema]]
+    interval_level: float
+    llm_available: bool
+    pdf_available: bool
+
+
+class PredictRequest(BaseModel):
+    context: str
+    params: ProjectParams = Field(default_factory=ProjectParams)
+
+
+class PredictedValueSchema(BaseModel):
+    expert: float       # expert pipeline under the request's conditions
+    predicted: float    # model point prediction (posterior median)
+    low: float          # prediction interval at ``interval_level``
+    high: float
+
+
+class PredictedAlternativeSchema(BaseModel):
+    name: str
+    values: Dict[str, PredictedValueSchema]
+
+
+class PredictResponse(BaseModel):
+    context: str
+    n_records: int
+    interval_level: float
+    alternatives: List[PredictedAlternativeSchema]
 
 
 class InterchangeDetailSchema(BaseModel):

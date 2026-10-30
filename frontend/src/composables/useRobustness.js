@@ -27,6 +27,14 @@ function resetRanges() {
   for (const k of CRITERION_KEYS) Object.assign(settings.values[k], DEFAULT_RANGES[k])
 }
 
+// With the prediction model as the value source, send no per-criterion ranges: the backend
+// then derives each range from the model's prediction intervals.
+function uncertaintyPayload(valueSource) {
+  const body = JSON.parse(JSON.stringify(settings))
+  if (valueSource === 'model') body.values = {}
+  return body
+}
+
 async function run(dss, lang = 'en') {
   if (!dss.selectedContext.value) return
   const id = ++requestId
@@ -39,7 +47,8 @@ async function run(dss, lang = 'en') {
       params: { ...dss.params },
       methods: dss.methods.value.length ? dss.methods.value : ['wsm'],
       weighting: dss.weightingPayload(),
-      uncertainty: JSON.parse(JSON.stringify(settings)),
+      value_source: dss.valueSource.value,
+      uncertainty: uncertaintyPayload(dss.valueSource.value),
     }, lang)
     if (id === requestId) data.value = result
   } catch (e) {

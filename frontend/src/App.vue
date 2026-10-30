@@ -3,6 +3,7 @@ import { onMounted, watch, ref } from 'vue'
 import { useDSS } from './composables/useDSS.js'
 import { useTheme } from './composables/useTheme.js'
 import { useLocale } from './composables/useLocale.js'
+import { useModel } from './composables/useModel.js'
 import Sidebar from './components/Sidebar.vue'
 import TabNav from './components/TabNav.vue'
 import DssEvaluation from './components/DssEvaluation.vue'
@@ -10,10 +11,12 @@ import BlueprintGallery from './components/BlueprintGallery.vue'
 import Methodology from './components/Methodology.vue'
 import RobustnessAnalysis from './components/RobustnessAnalysis.vue'
 import SiteMap from './components/SiteMap.vue'
+import PredictionModel from './components/PredictionModel.vue'
 
 const { dark, toggle } = useTheme()
 const { locale, t } = useLocale()
 const dss = useDSS()
+const model = useModel()
 const activeTab = ref('evaluation')
 const sidebarOpen = ref(false)
 
@@ -41,12 +44,18 @@ watch(
     () => [...dss.methods.value],
     () => ({ ...dss.weighting }),
     () => [...dss.ahpJudgements],
+    () => dss.valueSource.value,
   ],
   scheduleEvaluation,
   { deep: true }
 )
 
 watch(locale, scheduleEvaluation)
+
+// A retrain / upload / delete refits the model; model-sourced values must follow it.
+watch(() => model.status.value?.revision, (now, before) => {
+  if (before && now !== before && dss.valueSource.value === 'model') scheduleEvaluation()
+})
 </script>
 
 <template>
@@ -106,6 +115,12 @@ watch(locale, scheduleEvaluation)
                :class="dark ? 'border-teal-400' : 'border-teal-700'"></div>
         </div>
 
+        <div v-if="dss.evalError.value && activeTab === 'evaluation'"
+             class="rounded-2xl px-4 py-3 mb-4 text-sm"
+             :class="dark ? 'bg-red-500/10 border border-red-500/30 text-red-200' : 'bg-red-50 border border-red-200 text-red-800'">
+          <span class="font-semibold">{{ t.evaluationFailed }}</span> {{ dss.evalError.value }}
+        </div>
+
         <template v-if="dss.evalData.value">
           <!-- Subtle re-evaluation indicator -->
           <div class="flex items-center gap-2 mb-3 h-5 transition-opacity duration-200"
@@ -131,6 +146,12 @@ watch(locale, scheduleEvaluation)
             v-show="activeTab === 'robustness'"
             :dss="dss"
             :active="activeTab === 'robustness'"
+            :dark="dark"
+          />
+          <PredictionModel
+            v-show="activeTab === 'model'"
+            :dss="dss"
+            :active="activeTab === 'model'"
             :dark="dark"
           />
           <BlueprintGallery

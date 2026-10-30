@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import numpy as np
@@ -20,6 +20,7 @@ from app.application.evaluation import (
 )
 from app.application.mcda import METHODS, DecisionMatrix
 from app.application.mcda.smaa import ValueUncertainty, WeightUncertainty
+from app.application.prediction import ResidualModel
 from app.data.interchange_data import (
     ALTERNATIVE_COLORS,
     ALTERNATIVE_COLORS_DARK,
@@ -33,6 +34,7 @@ from app.data.interchange_data import (
 )
 from app.data.mcda_methods import resolve_method_info
 from app.data.uncertainty_defaults import DEFAULT_VALUE_UNCERTAINTY
+from backend.model_routes import current_model, require_model_params
 from backend.schemas import (
     AdjustmentNote,
     ContextListResponse,
@@ -73,6 +75,43 @@ class _Prepared:
     selection: WeightSelection
     weights: dict[str, float]
     notes: list[AdjustmentNote]
+    model: ResidualModel | None = None   # set when value_source == "model"
+
+
+# Model-corrected values keep the precision of the site rules' output (0.01 for cost / land /
+# safety, whole veh/h for throughput) — the model is far less precise than that, and the expert
+# constants are already this round, so with no records nothing changes.
+_THROUGHPUT_DECIMALS = 0
+_VALUE_DECIMALS = 2
+
+
+def _model_raw_values(model: ResidualModel, alt: Any, params: Any) -> dict[str, float]:
+    """The expert constants of *alt* × the model's correction e^μ under *params* (rounded)."""
+    values = model.correct_values(alt.name, alt.raw_values, params)
+    return {
+        c: round(v, _THROUGHPUT_DECIMALS if c == "throughput_vph" else _VALUE_DECIMALS)
+        for c, v in values.items()
+    }
+
+
+def _model_note(model: ResidualModel) -> AdjustmentNote:
+    n, synthetic = model.n_records, model.n_synthetic
+    if n == 0:
+        message = (
+            "Criterion values: the prediction model has no training records yet, so the expert "
+            "constants are used unchanged."
+        )
+    else:
+        source = f"{n} project record{'' if n == 1 else 's'}"
+        if synthetic == n:
+            source += " (all synthetic demo data)"
+        elif synthetic:
+            source += f" ({synthetic} of them synthetic demo data)"
+        message = (
+            f"Criterion values: expert constants corrected by the prediction model trained on "
+            f"{source}; the site rules and hard constraints are applied to the corrected values."
+        )
+    return AdjustmentNote(kind="model", message=message)
 
 
 def _prepare(req: EvaluateRequest, lang: str) -> _Prepared:
@@ -95,8 +134,21 @@ def _prepare(req: EvaluateRequest, lang: str) -> _Prepared:
         norm_w = {k: v / total_w for k, v in weights.items()}
 
     base_alternatives = get_alternatives_for_context(req.context)
+    model = None
+    adjustment_notes: list[AdjustmentNote] = []
+    if req.value_source == "model":
+        # Replace the constants by constants × e^μ (the model's correction at these conditions)
+        # *before* the site rules, so terrain / env. / speed rules, the capacity penalty and the
+        # feasibility filter all still apply on top of the learned values.
+        require_model_params(req.params)
+        model = current_model()
+        base_alternatives = [
+            replace(alt, raw_values=_model_raw_values(model, alt, req.params))
+            for alt in base_alternatives
+        ]
+        adjustment_notes.append(_model_note(model))
     alternatives, notes = apply_project_params(base_alternatives, req.params)
-    adjustment_notes = [AdjustmentNote(kind=n.kind, message=n.message) for n in notes]
+    adjustment_notes += [AdjustmentNote(kind=n.kind, message=n.message) for n in notes]
 
     if not alternatives:
         raise HTTPException(
@@ -123,7 +175,7 @@ def _prepare(req: EvaluateRequest, lang: str) -> _Prepared:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     adjustment_notes += [AdjustmentNote(kind=n.kind, message=n.message) for n in selection.notes]
     norm_w = {c.name: float(w) for c, w in zip(CRITERIA, selection.weights, strict=True)}
-    return _Prepared(locale, alternatives, matrix, selection, norm_w, adjustment_notes)
+    return _Prepared(locale, alternatives, matrix, selection, norm_w, adjustment_notes, model)
 
 
 @router.post("/evaluate", response_model=EvaluateResponse)
@@ -170,6 +222,7 @@ def evaluate(req: EvaluateRequest, lang: str = Query(default="en")):
         criterion_labels=criterion_labels,
         normalised_weights=norm_w,
         adjustments=adjustment_notes,
+        value_source=req.value_source,
         **_multi_method_fields(multi, locale),
     )
 
@@ -186,6 +239,31 @@ def robustness(req: RobustnessRequest, lang: str = Query(default="en")):
         name: ValueRangeInput(low=lo, high=hi, distribution=dist)
         for name, (lo, hi, dist) in DEFAULT_VALUE_UNCERTAINTY.items()
     }
+    notes = list(prep.notes)
+    if prep.model is not None:
+        # Defaults from the model: the widest relative prediction interval over the evaluated
+        # alternatives. Explicit per-criterion ranges in the request still win, and a criterion
+        # without training observations keeps the expert default (its interval is only the prior).
+        model_ranges = prep.model.value_ranges(
+            [a.name for a in prep.alternatives], req.params
+        )
+        used = [
+            c for c in model_ranges
+            if c not in req.uncertainty.values and prep.model.n_obs(c) > 0
+        ]
+        for c in used:
+            low, high = model_ranges[c]
+            ranges[c] = ValueRangeInput(low=low, high=high, distribution="triangular")
+        if used:
+            labels = resolve_criterion_labels("en")
+            notes.append(AdjustmentNote(
+                kind="model",
+                message=(
+                    f"Value uncertainty from the prediction model's "
+                    f"{prep.model.interval_level * 100:.0f} % prediction intervals "
+                    f"(triangular) for: {', '.join(labels.get(c, c) for c in used)}."
+                ),
+            ))
     ranges.update(req.uncertainty.values)
     u = req.uncertainty
     analysis = analyse_robustness(
@@ -274,7 +352,8 @@ def robustness(req: RobustnessRequest, lang: str = Query(default="en")):
             for i, n in enumerate(names)
         },
         sensitivity=sensitivity,
-        adjustments=prep.notes,
+        adjustments=notes,
+        value_source=req.value_source,
     )
 
 

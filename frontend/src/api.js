@@ -34,6 +34,35 @@ export async function getFootprint(body, lang = 'en') {
   return data
 }
 
+// ── Prediction model (document-trained criterion values) ─────────────────────
+
+export async function modelStatus() {
+  const { data } = await api.get('/model/status')
+  return data
+}
+
+export async function retrainModel() {
+  const { data } = await api.post('/model/retrain')
+  return data
+}
+
+export async function uploadDocument(file, overwrite = false) {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await api.post('/model/documents', form, { params: { overwrite } })
+  return data
+}
+
+export async function deleteDocument(name) {
+  const { data } = await api.delete(`/model/documents/${encodeURIComponent(name)}`)
+  return data
+}
+
+export async function predictValues(body, lang = 'en') {
+  const { data } = await api.post('/model/predict', body, { params: { lang } })
+  return data
+}
+
 export function blueprintUrl(name) {
   const map = {
     'Cloverleaf': 'cloverleaf.png',

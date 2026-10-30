@@ -34,3 +34,10 @@ export function chartInk(dark) {
     grid: dark ? '#334155' : '#e2e8f0',
   }
 }
+
+// Prediction-model chart: expert constant vs model prediction (two categorical slots,
+// validated as a pair in both themes; markers also differ in shape: diamond vs circle).
+export const MODEL_COLORS = {
+  light: { expert: '#eb6834', model: '#2a78d6' },
+  dark:  { expert: '#d95926', model: '#3987e5' },
+}

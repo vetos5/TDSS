@@ -1,0 +1,61 @@
+name,interchange_type,year,country,aadt,num_lanes,design_speed,terrain,env_sensitivity,construction_cost_mln,land_area_hectares,throughput_vph,safety_index,synthetic
+Synthetic precedent 001 — Cloverleaf,Cloverleaf,2011,Spain,21800,1,110,Flat,Medium,14.06,19.44,3111,3.44,true
+Synthetic precedent 002 — Turbine,Turbine,2024,Germany,71800,1,100,Mountainous,Medium,96.9,24.89,,7.55,true
+Synthetic precedent 003 — Stack (4-Level),Stack (4-Level),2013,Spain,22500,2,100,Flat,Low,59.07,14.7,8152,10.0,true
+Synthetic precedent 004 — Diamond,Diamond,2020,Netherlands,28800,1,80,Rolling,Low,14.15,5.05,2156,6.83,true
+Synthetic precedent 005 — SPUI,SPUI,2012,Ukraine,39900,1,110,Rolling,Medium,21.81,,3715,7.97,true
+Synthetic precedent 006 — DDI,DDI,2006,Germany,31600,3,110,Flat,Medium,15.74,7.43,6068,,true
+Synthetic precedent 007 — Trumpet,Trumpet,2017,Spain,26900,1,110,Flat,Low,9.76,11.61,2614,5.84,true
+Synthetic precedent 008 — Directional T,Directional T,2017,USA,59100,1,100,Mountainous,Low,37.8,11.43,,10.0,true
+Synthetic precedent 009 — Cloverleaf,Cloverleaf,2024,Spain,55400,4,80,Rolling,Low,,23.34,6541,4.46,true
+Synthetic precedent 010 — Turbine,Turbine,2014,Canada,93700,3,80,Flat,Low,80.57,29.02,9058,7.96,true
+Synthetic precedent 011 — Stack (4-Level),Stack (4-Level),2006,Ukraine,23500,2,110,Rolling,High,,17.64,6478,8.31,true
+Synthetic precedent 012 — Diamond,Diamond,2018,USA,32200,3,60,Flat,Critical,,10.94,3637,5.9,true
+Synthetic precedent 013 — SPUI,SPUI,2014,Netherlands,47500,2,90,Flat,High,,5.6,4847,7.73,true
+Synthetic precedent 014 — DDI,DDI,2021,Spain,109900,1,130,Flat,High,16.96,7.84,4125,9.76,true
+Synthetic precedent 015 — Trumpet,Trumpet,2022,Germany,69800,3,60,Rolling,Low,15.28,12.13,4873,8.47,true
+Synthetic precedent 016 — Directional T,Directional T,2011,Netherlands,31500,4,120,Rolling,Low,62.71,18.32,7924,7.16,true
+Synthetic precedent 017 — Cloverleaf,Cloverleaf,2023,Germany,25900,3,90,Flat,Low,16.52,22.51,5470,3.66,true
+Synthetic precedent 018 — Turbine,Turbine,2020,Spain,28600,3,100,Mountainous,Medium,101.94,30.08,7581,7.43,true
+Synthetic precedent 019 — Stack (4-Level),Stack (4-Level),2015,Canada,32100,2,90,Rolling,Critical,83.68,,,8.99,true
+Synthetic precedent 020 — Diamond,Diamond,2014,USA,21000,2,60,Mountainous,Medium,26.17,6.37,2669,4.83,true
+Synthetic precedent 021 — SPUI,SPUI,2008,Ukraine,57300,4,70,Rolling,Low,32.6,4.82,6220,8.34,true
+Synthetic precedent 022 — DDI,DDI,2019,USA,18800,4,80,Flat,High,16.54,6.69,7522,9.65,true
+Synthetic precedent 023 — Trumpet,Trumpet,2022,Ukraine,35700,2,80,Mountainous,Medium,16.23,13.05,4057,7.39,true
+Synthetic precedent 024 — Directional T,Directional T,2009,Poland,45500,2,70,Flat,Medium,37.08,14.37,5255,8.94,true
+Synthetic precedent 025 — Cloverleaf,Cloverleaf,2009,Canada,34400,4,100,Flat,Low,23.06,29.85,6251,4.4,true
+Synthetic precedent 026 — Turbine,Turbine,2014,Canada,82000,2,80,Mountainous,Medium,85.69,23.99,6557,9.34,true
+Synthetic precedent 027 — Stack (4-Level),Stack (4-Level),2015,Ukraine,20400,1,110,Rolling,Medium,,15.45,,9.27,true
+Synthetic precedent 028 — Diamond,Diamond,2014,Ukraine,59200,3,80,Flat,Low,12.34,5.79,3252,5.05,true
+Synthetic precedent 029 — SPUI,SPUI,2009,Ukraine,118500,2,70,Flat,Low,26.4,5.29,4030,7.78,true
+Synthetic precedent 030 — DDI,DDI,2023,Germany,44700,4,90,Flat,Medium,22.89,6.25,7905,8.34,true
+Synthetic precedent 031 — Trumpet,Trumpet,2010,Germany,56600,2,110,Flat,High,16.18,,,5.79,true
+Synthetic precedent 032 — Directional T,Directional T,2012,Netherlands,67100,3,60,Rolling,Low,,17.8,6745,,true
+Synthetic precedent 033 — Cloverleaf,Cloverleaf,2006,Ukraine,15200,1,90,Rolling,High,16.4,30.92,2970,,true
+Synthetic precedent 034 — Turbine,Turbine,2022,Poland,104200,2,60,Flat,High,68.5,35.2,7007,8.14,true
+Synthetic precedent 035 — Stack (4-Level),Stack (4-Level),2017,Poland,72100,4,70,Rolling,Medium,178.84,,10640,10.0,true
+Synthetic precedent 036 — Diamond,Diamond,2014,Spain,18300,3,120,Rolling,Critical,12.37,,3170,4.41,true
+Synthetic precedent 037 — SPUI,SPUI,2021,Ukraine,22500,3,130,Flat,High,18.45,5.5,5519,6.05,true
+Synthetic precedent 038 — DDI,DDI,2009,Germany,109700,4,60,Flat,High,23.2,10.74,8661,10.0,true
+Synthetic precedent 039 — Trumpet,Trumpet,2010,Germany,18800,2,70,Mountainous,Low,19.91,,3120,7.9,true
+Synthetic precedent 040 — Directional T,Directional T,2007,Spain,41900,1,130,Flat,Medium,,13.27,3592,9.02,true
+Synthetic precedent 041 — Cloverleaf,Cloverleaf,2020,Ukraine,31200,4,110,Mountainous,Critical,35.3,43.16,6410,4.89,true
+Synthetic precedent 042 — Turbine,Turbine,2006,Canada,67700,2,100,Rolling,High,66.39,41.51,6641,8.53,true
+Synthetic precedent 043 — Stack (4-Level),Stack (4-Level),2015,USA,18500,1,90,Mountainous,Medium,88.78,12.67,5774,9.25,true
+Synthetic precedent 044 — Diamond,Diamond,2011,Netherlands,35900,3,90,Mountainous,High,22.18,8.15,2717,4.09,true
+Synthetic precedent 045 — SPUI,SPUI,2007,Netherlands,17000,4,70,Rolling,High,,9.52,7340,5.97,true
+Synthetic precedent 046 — DDI,DDI,2022,Germany,51500,2,130,Flat,Low,,5.75,5567,8.79,true
+Synthetic precedent 047 — Trumpet,Trumpet,2008,Netherlands,81100,1,100,Mountainous,Low,16.43,9.55,2842,4.93,true
+Synthetic precedent 048 — Directional T,Directional T,2021,Germany,78600,2,80,Flat,High,45.52,22.03,5473,8.98,true
+Synthetic precedent 049 — Cloverleaf,Cloverleaf,2011,Poland,26500,1,100,Mountainous,Medium,22.82,21.46,2811,3.52,true
+Synthetic precedent 050 — Turbine,Turbine,2010,Poland,17100,3,70,Rolling,Critical,67.81,46.46,8185,7.3,true
+Synthetic precedent 051 — Stack (4-Level),Stack (4-Level),2017,Canada,101700,4,130,Mountainous,High,201.32,,11395,9.41,true
+Synthetic precedent 052 — Diamond,Diamond,2021,Netherlands,26800,4,130,Mountainous,High,15.55,,,3.89,true
+Synthetic precedent 053 — SPUI,SPUI,2011,USA,75000,3,100,Rolling,High,,6.19,4887,7.47,true
+Synthetic precedent 054 — DDI,DDI,2019,Spain,86000,1,120,Rolling,High,22.75,7.28,4296,10.0,true
+Synthetic precedent 055 — Trumpet,Trumpet,2019,Canada,44000,2,90,Flat,Critical,11.53,16.95,3590,,true
+Synthetic precedent 056 — Directional T,Directional T,2019,Ukraine,57900,1,130,Mountainous,High,44.52,19.62,4415,9.59,true
+Synthetic precedent 057 — Cloverleaf,Cloverleaf,2010,USA,20500,3,90,Flat,High,18.14,,5429,5.08,true
+Synthetic precedent 058 — Turbine,Turbine,2012,USA,19200,2,100,Mountainous,High,,26.95,5756,8.87,true
+Synthetic precedent 059 — Stack (4-Level),Stack (4-Level),2020,Spain,96300,1,130,Rolling,Medium,,11.61,4745,7.72,true
+Synthetic precedent 060 — Diamond,Diamond,2015,USA,41200,1,80,Rolling,High,13.14,6.21,2428,5.38,true

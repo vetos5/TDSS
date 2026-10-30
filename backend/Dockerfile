@@ -8,6 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ app/
 COPY backend/ backend/
 COPY assets/ assets/
+COPY corpus/ corpus/
 
 EXPOSE 8000
 

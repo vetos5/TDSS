@@ -5,6 +5,7 @@ const contexts = ref([])
 const selectedContext = ref('')
 const loading = ref(false)
 const evalData = ref(null)
+const evalError = ref('')
 
 export const ALL_METHODS = ['wsm', 'topsis', 'ahp', 'promethee', 'vikor']
 export const CRITERION_KEYS = ['construction_cost_mln', 'land_area_hectares', 'throughput_vph', 'safety_index']
@@ -12,6 +13,11 @@ export const CRITERION_KEYS = ['construction_cost_mln', 'land_area_hectares', 't
 export const AHP_PAIRS = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]]
 
 const methods = ref([...ALL_METHODS])
+
+// Where criterion values come from: the fixed expert constants, or the document-trained
+// prediction model (the backend then applies the same site rules and feasibility filter).
+export const VALUE_SOURCES = ['expert', 'model']
+const valueSource = ref('expert')
 
 const weighting = reactive({
   mode: 'manual',          // manual | entropy | critic | ahp | combined
@@ -86,7 +92,13 @@ async function runEvaluation(lang = 'en') {
     evalData.value = await evaluate(selectedContext.value, nw, { ...params }, lang, {
       methods: methods.value.length ? methods.value : ['wsm'],
       weighting: weightingPayload(),
+      value_source: valueSource.value,
     })
+    evalError.value = ''
+  } catch (e) {
+    // The shown ranking no longer matches the inputs; say so instead of failing silently.
+    const detail = e?.response?.data?.detail
+    evalError.value = detail ? (typeof detail === 'string' ? detail : JSON.stringify(detail)) : String(e)
   } finally {
     loading.value = false
   }
@@ -98,11 +110,13 @@ export function useDSS() {
     selectedContext,
     loading,
     evalData,
+    evalError,
     weights,
     params,
     methods,
     weighting,
     ahpJudgements,
+    valueSource,
     usesAhp,
     weightingPayload,
     normalizedWeights,

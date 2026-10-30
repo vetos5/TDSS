@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useLocale } from '../composables/useLocale.js'
-import { CRITERION_KEYS } from '../composables/useDSS.js'
+import { CRITERION_KEYS, VALUE_SOURCES } from '../composables/useDSS.js'
 import MethodSelector from './MethodSelector.vue'
 import WeightingControls from './WeightingControls.vue'
 
@@ -167,6 +167,29 @@ const envOptions = computed(() => [
             <span class="text-xs font-semibold" :class="dark ? 'text-slate-300' : 'text-blue-600'">{{ dss.weights.safety_index }}%</span>
           </div>
         </div>
+      </div>
+
+      <hr class="mb-4" :class="dark ? 'border-slate-700' : 'border-black/5'" />
+
+      <!-- Criterion value source: expert constants or the document-trained model -->
+      <div class="mb-4">
+        <p class="font-bold text-sm mb-2" :class="dark ? 'text-slate-100' : 'text-slate-900'">{{ t.valueSourceTitle }}</p>
+        <div role="radiogroup" :aria-label="t.valueSourceTitle"
+             class="grid grid-cols-2 gap-0.5 p-0.5 rounded-xl"
+             :class="dark ? 'bg-slate-700 border border-slate-600' : 'bg-black/5'">
+          <button v-for="src in VALUE_SOURCES" :key="src" type="button" role="radio"
+                  :aria-checked="dss.valueSource.value === src"
+                  @click="dss.valueSource.value = src"
+                  class="px-2 py-1.5 rounded-[10px] text-xs font-semibold transition-colors"
+                  :class="dss.valueSource.value === src
+                    ? (dark ? 'bg-teal-500/25 text-teal-100' : 'bg-white text-teal-700 shadow-[0_1px_3px_rgb(0,0,0,0.1)]')
+                    : (dark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800')">
+            {{ t.valueSources[src] }}
+          </button>
+        </div>
+        <p class="text-xs mt-1.5" :class="dark ? 'text-slate-400' : 'text-slate-500'">
+          {{ t.valueSourceHint[dss.valueSource.value] }}
+        </p>
       </div>
 
       <hr class="mb-4" :class="dark ? 'border-slate-700' : 'border-black/5'" />

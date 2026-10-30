@@ -10,3 +10,5 @@ frontend/dist
 legacy
 .git
 *.md
+# ...except the prediction-model corpus documents (synthetic_report_*.md, README).
+!corpus/**/*.md

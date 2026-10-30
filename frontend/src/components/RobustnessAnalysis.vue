@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import PlotlyChart from './PlotlyChart.vue'
 import { useLocale } from '../composables/useLocale.js'
 import { useRobustness } from '../composables/useRobustness.js'
+import { useModel } from '../composables/useModel.js'
 import { CRITERION_KEYS } from '../composables/useDSS.js'
 import { METHOD_COLORS, SURFACE, chartInk, rankColors } from '../chartPalette.js'
 
@@ -15,11 +16,15 @@ const props = defineProps({
 const { t, locale } = useLocale()
 const rob = useRobustness()
 const { settings } = rob
+const model = useModel()
 
 const selectedMethod = ref('wsm')
 const sweepCriterion = ref(CRITERION_KEYS[0])
 let stale = true
 let timer = null
+
+const modelMode = computed(() => props.dss.valueSource.value === 'model')
+const intervalPct = computed(() => Math.round((model.status.value?.interval_level ?? 0.9) * 100))
 
 // ── Running ──────────────────────────────────────────────────────────────────
 function schedule(delay = 500) {
@@ -42,11 +47,21 @@ watch(
     () => ({ ...props.dss.weighting }),
     () => [...props.dss.ahpJudgements],
     () => JSON.stringify(settings),
+    () => props.dss.valueSource.value,
     locale,
   ],
   () => schedule(),
   { deep: true },
 )
+
+// Model-sourced values and ranges change whenever the model is refitted.
+watch(() => model.status.value?.revision, (now, before) => {
+  if (before && now !== before && modelMode.value) schedule()
+})
+
+// In model mode the value ranges come from the model's prediction intervals; load the model
+// status once so the hint can name the interval level.
+watch(modelMode, m => { if (m && !model.status.value) model.load() }, { immediate: true })
 
 // Keep the per-method views on a method that was actually run.
 watch(() => props.dss.methods.value, ms => {
@@ -87,8 +102,22 @@ function baseLayout(height) {
 }
 
 // ── Value-range editor (shown as ± percentages) ─────────────────────────────
-function lowPct(k) { return Math.round((1 - settings.values[k].low) * 100) }
-function highPct(k) { return Math.round((settings.values[k].high - 1) * 100) }
+// In model mode the editor is read-only and shows the ranges the backend actually used.
+function shownRange(k) {
+  return modelMode.value ? (data.value?.value_uncertainty?.[k] ?? null) : settings.values[k]
+}
+function lowPct(k) {
+  const r = shownRange(k)
+  if (!r) return ''
+  const v = (1 - r.low) * 100
+  return modelMode.value ? +v.toFixed(1) : Math.round(v)
+}
+function highPct(k) {
+  const r = shownRange(k)
+  if (!r) return ''
+  const v = (r.high - 1) * 100
+  return modelMode.value ? +v.toFixed(1) : Math.round(v)
+}
 function setLow(k, v) { settings.values[k].low = Math.min(Math.max(1 - Number(v) / 100, 0.05), 1) }
 function setHigh(k, v) { settings.values[k].high = Math.min(Math.max(1 + Number(v) / 100, 1), 10) }
 
@@ -290,7 +319,11 @@ const strong = computed(() => props.dark ? 'text-slate-100' : 'text-slate-900')
       <details class="text-sm">
         <summary class="cursor-pointer text-xs font-semibold" :class="strong">{{ t.valueRanges }}</summary>
         <p class="text-xs mt-1 mb-2" :class="muted">{{ t.valueRangesDesc }}</p>
-        <div class="overflow-x-auto">
+        <p v-if="modelMode" class="text-xs mb-2 rounded-lg px-2.5 py-1.5"
+           :class="dark ? 'bg-blue-500/10 text-blue-200' : 'bg-blue-50 text-blue-800'">
+          {{ t.modelRangesHint.replace('{level}', intervalPct) }}
+        </p>
+        <div class="overflow-x-auto" :class="modelMode ? 'opacity-60' : ''">
           <table class="text-xs">
             <thead>
               <tr :class="muted">
@@ -305,14 +338,19 @@ const strong = computed(() => props.dark ? 'text-slate-100' : 'text-slate-900')
                 <td class="pr-4 py-1" :class="strong">{{ criterionLabel[k] }}</td>
                 <td class="pr-3 py-1">
                   −<input type="number" min="0" max="95" step="5" :value="lowPct(k)" @change="setLow(k, $event.target.value)"
-                          class="w-14 rounded-md px-1.5 py-0.5 mx-1" :class="input" />%
+                          :disabled="modelMode"
+                          class="w-14 rounded-md px-1.5 py-0.5 mx-1 disabled:cursor-not-allowed" :class="input" />%
                 </td>
                 <td class="pr-3 py-1">
                   +<input type="number" min="0" max="900" step="5" :value="highPct(k)" @change="setHigh(k, $event.target.value)"
-                          class="w-14 rounded-md px-1.5 py-0.5 mx-1" :class="input" />%
+                          :disabled="modelMode"
+                          class="w-14 rounded-md px-1.5 py-0.5 mx-1 disabled:cursor-not-allowed" :class="input" />%
                 </td>
                 <td class="py-1">
-                  <select v-model="settings.values[k].distribution" class="rounded-md px-1.5 py-0.5" :class="input">
+                  <select v-if="modelMode" disabled class="rounded-md px-1.5 py-0.5 cursor-not-allowed" :class="input">
+                    <option>{{ shownRange(k)?.distribution === 'uniform' ? t.distUniform : t.distTriangular }}</option>
+                  </select>
+                  <select v-else v-model="settings.values[k].distribution" class="rounded-md px-1.5 py-0.5" :class="input">
                     <option value="triangular">{{ t.distTriangular }}</option>
                     <option value="uniform">{{ t.distUniform }}</option>
                   </select>
@@ -321,7 +359,7 @@ const strong = computed(() => props.dark ? 'text-slate-100' : 'text-slate-900')
             </tbody>
           </table>
         </div>
-        <button type="button" class="mt-2 text-xs underline" :class="muted" @click="rob.resetRanges()">{{ t.resetDefaults }}</button>
+        <button v-if="!modelMode" type="button" class="mt-2 text-xs underline" :class="muted" @click="rob.resetRanges()">{{ t.resetDefaults }}</button>
       </details>
     </div>
 

@@ -170,6 +170,13 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
               : 'bg-blue-500/10 text-blue-600 border border-blue-200/60'">
         {{ t.context }}: {{ data.context }}
       </span>
+      <span v-if="data.value_source === 'model'"
+            class="inline-block px-3 py-1 rounded-full text-xs font-semibold"
+            :class="dark
+              ? 'bg-blue-500/15 border border-blue-400/40 text-blue-200'
+              : 'bg-blue-500/10 text-blue-700 border border-blue-200/60'">
+        {{ t.valueSourceTitle }}: {{ t.valueSources.model }}
+      </span>
     </div>
 
     <div class="rounded-2xl px-4 py-3 mb-6 flex items-start gap-2 backdrop-blur-xl"

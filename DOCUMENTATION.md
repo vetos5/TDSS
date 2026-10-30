@@ -20,6 +20,7 @@
    - 3.9 [Uncertainty Analysis — SMAA-2 (v5)](#39-uncertainty-analysis--smaa-2-v5)
    - 3.10 [Weight Sensitivity (v5)](#310-weight-sensitivity-v5)
    - 3.11 [GIS Site Analysis and Footprint Placement (v5, Phase 3)](#311-gis-site-analysis-and-footprint-placement-v5-phase-3)
+   - 3.12 [Criterion-Value Prediction Model (v5, Phase 4)](#312-criterion-value-prediction-model-v5-phase-4)
 4. [Decision Alternatives](#4-decision-alternatives)
 5. [Evaluation Criteria](#5-evaluation-criteria)
 6. [Backend (FastAPI)](#6-backend-fastapi)
@@ -29,6 +30,7 @@
    - 6.4 [Data Layer](#64-data-layer)
    - 6.5 [MCDA Package (v5)](#65-mcda-package-v5)
    - 6.6 [GIS Infrastructure (v5, Phase 3)](#66-gis-infrastructure-v5-phase-3)
+   - 6.7 [Prediction Model and Corpus Packages (v5, Phase 4)](#67-prediction-model-and-corpus-packages-v5-phase-4)
 7. [Frontend (Vue 3)](#7-frontend-vue-3)
    - 7.1 [Project Setup](#71-project-setup)
    - 7.2 [Component Tree](#72-component-tree)
@@ -56,6 +58,7 @@ The system applies **Multi-Criteria Decision Analysis (MCDA)** via the **Weighte
 - **8 project parameters** for site-specific calibration
 - **4 parameter adjustment rules** that modify raw criterion values before evaluation
 - **Hard feasibility filtering** (budget and land constraints)
+- **Document-trained prediction model** (v5, Phase 4) — a Bayesian residual correction of the expert criterion values, learnt from past project documents (CSV, JSON, text, PDF; English or Ukrainian), with 90 % prediction intervals. It retrains in milliseconds and reproduces the expert values exactly while the corpus is empty (§3.12)
 - **Interactive ranked results** with blueprint schematics, satellite maps, and Plotly charts
 - **Full bilingual support** (English / Ukrainian)
 - **Dark / Light mode**
@@ -68,6 +71,8 @@ The system applies **Multi-Criteria Decision Analysis (MCDA)** via the **Weighte
 | v3 | Python · Streamlit · Folium | `legacy/streamlit_ui/` |
 | v4 | Python · FastAPI · Vue 3 · Vite · Tailwind CSS | `backend/` + `frontend/` |
 | **v5** | **v4 + multi-method MCDA engine (WSM, TOPSIS, AHP, PROMETHEE II, VIKOR), objective/AHP weighting, rank agreement** | `app/application/mcda/` |
+| v5, Phase 3 | GIS site analysis (OpenStreetMap, SRTM elevation) and real-scale footprint placement (§3.11) | `app/application/site_analysis.py`, `app/application/footprint.py`, `app/infrastructure/gis/` |
+| v5, Phase 4 | Document-trained criterion-value prediction model: Bayesian residual correction, corpus upload / retrain API, *Prediction model* tab, `value_source` switch for evaluation and SMAA (§3.12) | `app/application/prediction/`, `app/infrastructure/corpus/`, `corpus/` |
 
 ---
 
@@ -121,6 +126,7 @@ graph TD
 | **Data** | `app/data/interchange_data.py` | Expert constants only — no I/O, no maths |
 | **Logic** | `app/application/dss_engine.py` | Pure WSM computation — no data, no I/O |
 | **Integration** | `backend/routes.py` | Joins data + logic, applies param adjustments |
+| **Prediction** | `app/application/prediction/` (pure) + `app/infrastructure/corpus/` (I/O) | Learns corrections of the expert values from the documents in `corpus/documents/` (§3.12, §6.7) |
 | **View** | `frontend/src/` | Renders results — never computes scores |
 | **Legacy** | `legacy/streamlit_ui/` | Deprecated v3 prototype (preserved) |
 
@@ -320,6 +326,118 @@ All thresholds live in `app/data/site_analysis_defaults.py`, documented and over
 **Footprint placement** (`app/application/footprint.py`) reuses the five existing geometry generators (`app/infrastructure/generators.py`) unchanged. A real bug in those generators shaped the design: each one scales both local axes by the same flat `0.0005` degrees/metre constant when placed at a real `center_lon`/`center_lat` — but at Kyiv's latitude (~50.45°N) a degree of longitude spans only \(\cos(50.45°) \approx 0.638\) of a degree of latitude, so that uniform scale compresses east–west distances by roughly 36 %. Rather than fix the generators (used elsewhere for the legacy Streamlit "engineering view", which never geo-references them), footprint placement instantiates a generator at the origin (`center_lon=0, center_lat=0`), multiplies its raw output by `METRES_PER_COORD` (`app/domain/geometry.py`) to recover true local metres, rotates by a bearing (the direction from the clicked point to a second, optional click), and projects to the real site with a **latitude-corrected** equirectangular projection (`app/infrastructure/gis/projection.py`) — verified against the haversine formula to well under 1 % error at interchange scale. Only 4 of the 8 catalogue alternatives have a generator today (Cloverleaf, DDI, SPUI, Turbine); the other 4 (Stack, Diamond, Trumpet, Directional T) report `available: false` until a generator is written for them.
 
 **Right-of-way estimate.** The footprint's buffered polygon (half the road width either side of each centreline) is intersected with OSM building polygons in the same local-metre plane, giving a demolished-area and cost figure per building affected. This is **display-only**: it is inherently per-alternative, while `ProjectParams` adjustments (§3.4) apply one cost scalar across every alternative uniformly, so folding it into the WSM/MCDA scoring would break that contract. Wiring a per-alternative cost override into the ranking is a natural extension once saved projects/scenarios exist (roadmap module 5), not part of this phase.
+
+---
+
+### 3.12 Criterion-Value Prediction Model (v5, Phase 4)
+
+Every criterion value in §4 is an expert constant, adjusted by the rules of §3.4. Real projects deviate from these values, and part of the deviation is systematic: wider interchanges cost more and take more land, and some types overrun more than others. Interchange project documents are scarce. A corpus will hold tens of projects, not thousands, which is far too few to learn criterion values from scratch but enough to learn **how real projects deviate from the expert pipeline**. The model is therefore *grey-box*: the expert constants and rules remain the structural part, and a Bayesian linear regression learns a multiplicative correction together with its uncertainty. Code: `app/application/prediction/` (pure logic), `app/infrastructure/corpus/` (documents and the trained model), constants in `app/data/prediction_defaults.py` (§6.7).
+
+**Training records.** Each document yields one or more `ProjectRecord`s. A record has an interchange type \(k\) (one of the 8 alternatives; the context follows from the type), site conditions \(z\) = (AADT, lanes per direction \(L\), design speed \(V\), terrain, environmental sensitivity) and at least one observed criterion value \(y_c\). A missing or invalid condition is replaced by its reference value, with a warning (see *Limitations*). §6.7 and `corpus/README.md` describe the document formats and extraction rules.
+
+**Expert baseline.** The expert value of type \(k\) under conditions \(z\) is the value the rest of the system would show for it:
+
+$$b_c(k, z) = \text{adj}_c\!\left(x^{\text{exp}}_{k},\ z\right)$$
+
+Here \(x^{\text{exp}}_k\) are the constants of `INTERCHANGE_DATA`, and \(\text{adj}\) is the existing `apply_site_adjustments` (§3.4) run with peak factor \(p = 0\) and no budget or land limit. The terrain cost multiplier, the environmental land penalty and the loop-ramp speed penalty apply. The capacity penalty does not (there is no demand), so the throughput baseline is the rated capacity. In code this is `expert_baseline(type, conditions)`.
+
+The constants are interpreted as values at the **reference conditions**: AADT 45 000 veh/day, \(L = 2\), \(V = 100\) km/h, Flat terrain, Low sensitivity. These are the `ProjectParams` defaults, except that sensitivity is Low (the level at which the environmental land penalty is 1.00) instead of Medium. The loop-ramp rule already fires at 100 km/h, so the reference baseline safety of Cloverleaf (3.6) and Trumpet (6.3) is below the constant. Every other reference baseline equals its constant.
+
+**Residual target.** For each criterion \(c\), the model learns the log ratio of the observed value to the baseline:
+
+$$r_c = \ln\frac{y_c}{b_c(k, z)}$$
+
+Deviations in cost, land take and capacity are naturally relative: a 20 % overrun means the same on a Diamond as on a Stack. The log also keeps every prediction positive.
+
+**Features** (16, in the fixed order of `FEATURE_NAMES`):
+
+| Feature | Value | Meaning |
+|---|---|---|
+| `type:<Name>` × 8 | \(\mathbb{1}[k = \text{Name}]\) | Per-type correction at the reference conditions. There is no global intercept, because the eight indicators always sum to 1 |
+| `log_aadt` | \(\ln(\text{AADT} / 45\,000)\) | Traffic volume, as an elasticity |
+| `lanes` | \(L - 2\) | Through lanes per direction |
+| `speed` | \((V - 100)/20\) | Design speed per 20 km/h (the step of the §3.4 speed rule) |
+| `terrain:Rolling`, `terrain:Mountainous` | indicators | Terrain effect beyond the §3.4 cost multiplier (Flat = reference) |
+| `env:Medium`, `env:High`, `env:Critical` | indicators | Sensitivity effect beyond the §3.4 land penalty (Low = reference) |
+
+One regression per criterion covers all eight types, so a lanes slope learnt mostly from Turbines also informs Diamonds. `num_lanes` is one of the eight project parameters, but none of the §3.4 rules uses it. The model is therefore the first part of the system through which lanes (and AADT, outside the capacity penalty) can change cost, land and capacity. A record contributes only to the criteria it has an observed value for, so each criterion has its own \(n_c\), design matrix \(X_c\) (\(n_c \times 16\)) and residual vector \(r_c\).
+
+**Prior.** A conjugate Normal-Inverse-Gamma prior, separately for each criterion:
+
+$$\beta \mid \sigma^2 \sim \mathcal{N}\!\left(0,\ \sigma^2 V_0\right), \qquad \sigma^2 \sim \text{Inv-Gamma}(a_0, b_0)$$
+
+$$V_0 = \operatorname{diag}\!\left(\frac{\tau_j^2}{\sigma_{0,c}^2}\right), \quad \tau_j = \begin{cases} 0.30 & \text{type intercepts} \\ 0.15 & \text{slopes} \end{cases}, \quad a_0 = 3, \quad b_0 = \sigma_{0,c}^2\,(a_0 - 1)$$
+
+The prior mean \(\beta = 0\) means "the expert values are right". Since \(E[\sigma^2] = b_0/(a_0 - 1) = \sigma_{0,c}^2\), the prior sd of each coefficient is exactly \(\tau_j\) (a prior sd, unrelated to the §3.4 terrain factor), because \(\operatorname{Var}\beta_j = E[\sigma^2]\,\tau_j^2/\sigma_{0,c}^2\). So a type may be off by about ±30 % overall, and a condition slope by about ±15 % per unit. \(a_0 = 3\) is a weak prior on the noise, worth about \(2a_0 = 6\) observations. The prior noise level \(\sigma_{0,c}\) (log scale) is the expected scatter of individual projects around the expert pipeline:
+
+| Criterion | \(\sigma_{0,c}\) | Rationale |
+|---|---|---|
+| Construction cost | 0.20 | ≈ ±20 %, in line with road-project overruns (Flyvbjerg et al., 2002) |
+| Land area | 0.15 | Alignment and mitigation requirements |
+| Throughput | 0.10 | HCM capacities are comparatively well calibrated |
+| Safety index | 0.12 | Expert score |
+
+**Posterior** (closed form; Gelman et al., 2013; Murphy, 2007):
+
+$$V_n = \left(V_0^{-1} + X^\top X\right)^{-1}, \qquad m_n = V_n X^\top r$$
+
+$$a_n = a_0 + \frac{n}{2}, \qquad b_n = b_0 + \frac{1}{2}\left(r^\top r - m_n^\top V_n^{-1} m_n\right)$$
+
+`fit_nig` Cholesky-factorises the 16 × 16 precision matrix \(V_n^{-1}\) (`scipy.linalg.cho_factor`) and solves for \(m_n\) and \(V_n\) without an explicit inverse. It computes \(m_n^\top V_n^{-1} m_n\) as \(m_n^\top X^\top r\) (the two are equal because \(V_n^{-1} m_n = X^\top r\)) and clamps the sum of squares at 0 to absorb rounding error. Retraining is four such solves, a fraction of a millisecond in total. Reading the documents dominates the measured `train_ms` (≈ 5 ms for the 64 demo records).
+
+**Posterior predictive.** For a query \(x_* = x(k, z)\), the residual has a Student-t predictive distribution:
+
+$$\tilde r \mid x_* \sim t_{\nu}\!\left(\mu,\ s^2\right), \qquad \nu = 2a_n, \quad \mu = x_*^\top m_n, \quad s = \sqrt{\frac{b_n}{a_n}\left(1 + x_*^\top V_n\, x_*\right)}$$
+
+The point prediction and the prediction interval at level \(\gamma = 0.90\) (`INTERVAL_LEVEL`) are:
+
+$$\hat y_c = b_c(k, z)\, e^{\mu}, \qquad \left[\ b_c(k, z)\, e^{\mu - t_{(1+\gamma)/2,\,\nu}\, s},\ \ b_c(k, z)\, e^{\mu + t_{(1+\gamma)/2,\,\nu}\, s}\ \right]$$
+
+The quantile \(t_{0.95,\nu}\) comes from `scipy.stats.t.ppf`. \(\hat y\) is the **median** of the posterior predictive, because exp is monotonic and the t distribution is symmetric. The median is the natural point estimate here: the mean of \(e^{\tilde r}\) is infinite when \(\tilde r\) is t-distributed. The interval is symmetric on the log scale, so on the natural scale it is right-skewed, like real cost overruns. Predicted safety (the point and both bounds) is clamped to [1, 10]. The term \(x_*^\top V_n x_*\) widens the interval for conditions far from the training data.
+
+**No records ⇒ expert values.** With \(n = 0\), \(V_n = V_0\) and \(m_n = 0\), so \(\mu = 0\) and \(\hat y_c = b_c(k, z)\) **exactly** for every type and condition. Nothing changes until data exist. Tests check this for all 8 types under several conditions, and end-to-end through `/api/evaluate`. The interval is then the prior predictive. At the reference conditions \(s = \sqrt{\tfrac{2}{3}(\sigma_{0,c}^2 + 0.30^2)}\) and \(\nu = 6\), which gives about ×0.56 … ×1.77 for cost and ×0.61 … ×1.65 for throughput. Without evidence, the model does not claim to know how far off the expert values are.
+
+**Coefficients and noise.** For each criterion and feature, the status reports the posterior mean \(m_{n,j}\) and the exact marginal posterior sd
+
+$$\text{sd}(\beta_j) = \sqrt{(V_n)_{jj}\, \frac{b_n}{a_n - 1}}$$
+
+together with the residual noise \(\sqrt{E[\sigma^2 \mid r]} = \sqrt{b_n / (a_n - 1)}\). The UI shows \(e^{m_{n,j}} - 1\) as a percentage effect (for example, a cost `lanes` coefficient of 0.124 means +13 % per extra lane) and marks coefficients with \(|m_{n,j}| > 1.645\,\text{sd}\).
+
+**Out-of-sample accuracy.** For each criterion with \(n_c \ge 3\) observations, every record \(i\) is predicted by a model refitted without it (leave-one-out). Above 200 observations a deterministic 10-fold split replaces leave-one-out, with record \(i\) in fold \(i \bmod 10\).
+
+$$\text{MAPE}_{\text{expert}} = \frac{1}{n_c}\sum_i \frac{|y_i - b_i|}{y_i}, \qquad \text{MAPE}_{\text{model}} = \frac{1}{n_c}\sum_i \frac{|y_i - \hat y_{-i}|}{y_i}, \qquad \text{coverage}_{90} = \frac{1}{n_c}\sum_i \mathbb{1}\!\left[\,l_{-i} \le y_i \le h_{-i}\,\right]$$
+
+Here \(\hat y_{-i}\), \(l_{-i}\) and \(h_{-i}\) are the prediction and interval bounds of the model fitted without record \(i\). The expert values have no fitted parameters, so their MAPE is out-of-sample by construction. A well-calibrated model has coverage close to 0.90. Below 3 observations all three metrics are `null`. Cross-validation runs after the fit and is not included in `train_ms`; it takes ≈ 14 ms on the demo corpus. Results on the shipped **synthetic** demo corpus (64 records, §6.7):
+
+| Criterion | \(n_c\) | MAPE expert | MAPE model | Coverage 90 % |
+|---|---|---|---|---|
+| Construction cost | 52 | 19.6 % | 14.9 % | 0.88 |
+| Land area | 55 | 13.6 % | 12.7 % | 0.89 |
+| Throughput | 58 | 20.8 % | 7.8 % | 0.86 |
+| Safety index | 59 | 9.7 % | 11.6 % | 0.85 |
+
+The model recovers all planted effects within two posterior sds, and the lane and speed slopes within a fraction of one: cost per extra lane 0.124 ± 0.020 (true 0.12), throughput per extra lane 0.216 ± 0.011 (0.22), safety per +20 km/h −0.047 ± 0.015 (−0.05). The type effects and the AADT elasticity are less precise (cost `log_aadt` 0.159 ± 0.040, true 0.10). Safety is the exception in the table. Its planted effect is small compared with the noise, so fitting 16 coefficients to 59 records most likely adds more variance than it removes bias, and the model is slightly *worse* than the expert values for this criterion. The accuracy table in the UI reports this per criterion for whichever corpus is loaded.
+
+**Use in evaluation (`value_source = "model"`).** `/api/evaluate` and `/api/robustness` accept a `value_source` field. The default, `"expert"`, behaves byte-for-byte as before, which the snapshot test guards. With `"model"`, `_prepare` (in `backend/routes.py`) multiplies each alternative's raw constants by the model's correction at the request's conditions, *before* the §3.4 rules run:
+
+$$x'_{c,k} = \text{round}\!\left(x^{\text{exp}}_{c,k}\; e^{\mu_c(k, z)}\right) \quad \text{(safety clamped to [1, 10])}$$
+
+The terrain, environment and speed rules, the capacity penalty and the feasibility filter (§3.5) then run as usual. Because the terrain, environment and speed rules are multiplicative, the result equals \(\hat y_c\) from `/api/model/predict` up to rounding (0.01 for cost, land and safety; whole veh/h for throughput). Throughput also gets the capacity penalty, computed against the corrected capacity. A note of kind `model`, placed first in `adjustments`, states how many training records (and how many of them synthetic) the values came from. With an empty corpus, the note says that the expert constants are used unchanged. In this mode AADT must be positive, because the feature is \(\ln \text{AADT}\); otherwise the API returns HTTP 422.
+
+**SMAA value ranges from the model.** In `/api/robustness` with `value_source = "model"`, each criterion *without* an explicit range in `uncertainty.values` takes its range from the model's prediction intervals instead of `DEFAULT_VALUE_UNCERTAINTY` (§3.9). The SMAA engine accepts one multiplicative range per criterion, so it uses the widest relative interval over the evaluated (feasible) alternatives \(A\):
+
+$$l_c = \min_{k \in A} \frac{\text{low}_{c,k}}{\hat y_{c,k}}, \qquad h_c = \max_{k \in A} \frac{\text{high}_{c,k}}{\hat y_{c,k}}, \qquad \text{clamped to } 0 < l_c \le 1 \le h_c \le 10$$
+
+The distribution is **triangular**, with its mode at 1 (the point prediction). This is a deliberate approximation of the log-t predictive. It keeps the support (the 90 % interval) and the right skew, but it has no tails beyond the interval and a smaller spread. On a symmetric interval of half-width \(w\), its sd is \(w/\sqrt{6} \approx 0.41w\), compared with \(w/1.645 \approx 0.61w\) for a normal distribution with the same 90 % interval. Taking the widest interval over all alternatives errs in the opposite direction, so the two approximations partly cancel. Explicit ranges in the request still take precedence. The response's `value_uncertainty` reports the ranges actually used, and a second `model` note names the criteria whose ranges came from the model. A criterion with no training observations keeps its §3.9 default range: its interval would only be the prior (about ×0.54 … ×1.86 for cost at the default parameters), which says nothing about real projects. With an empty corpus, model mode therefore matches expert mode exactly, in the evaluated values and in the robustness ranges.
+
+**Limitations.**
+
+- **Small data.** Tens of records spread over 8 types leave each type intercept close to its prior. With 64 coefficients, a few will look "credible" at the 90 % level by chance. On the demo corpus, for example, Cloverleaf safety comes out at +0.16 ± 0.05 although no type effect was planted. The prior shrinkage limits this effect but does not remove it.
+- **Model form.** The correction is linear on the log scale and additive. There are no interactions (an extra lane changes cost by the same percentage on every type), and there is one noise level per criterion for all types. Records are assumed independent: projects from one programme or country are not grouped, and `year` and `country` are stored but not used. Conditions outside the range of the corpus are extrapolated linearly; only the interval widens.
+- **Imputation.** A missing condition is set to its reference value. The record still informs its type's correction. However, if many records lack, say, AADT, the AADT slope is pulled towards zero and the deviation is attributed to the type intercept instead. Imputed fields are listed in the document warnings.
+- **Outliers.** The likelihood is Gaussian, so a gross error (usually a unit mistake) pulls the fit. Values more than 10× off the expert baseline are flagged in the document warnings but still used.
+- **Synthetic demo data.** The shipped corpus is **invented**. It contains 60 CSV rows from `scripts/make_synthetic_corpus.py` (the real `expert_baseline` times planted effects and log-normal noise, `default_rng(2026)`) and four records from three Markdown examples. Its accuracy table shows that the method works; it says nothing about whether the expert values are wrong. The UI flags synthetic records with an amber badge, and the files should be deleted once real documents exist.
+- **USD only.** Costs in other currencies (UAH, EUR, GBP, PLN, CHF) are skipped with a warning rather than converted, because exchange rates and price years would add more error than the field is worth. USD amounts are not adjusted for inflation either.
 
 ---
 
@@ -580,6 +698,99 @@ Response: `available` (`false` with a `message` for the 4 alternatives without a
 
 ---
 
+#### `GET /api/model/status` (v5, Phase 4)
+
+Returns the state of the document-trained prediction model (§3.12). The corpus store trains lazily, so the first call reads the corpus and fits the model.
+
+```json
+{
+  "trained_at": "2026-10-29T19:35:12+00:00",
+  "revision": 1793301312000000,
+  "train_ms": 5.4,
+  "n_records": 64,
+  "n_synthetic": 64,
+  "documents": [
+    { "name": "synthetic_precedents.csv", "kind": "csv", "synthetic": true, "records": 60,
+      "extractor": "table", "warnings": [], "size_bytes": 6722 }
+  ],
+  "criteria": {
+    "construction_cost_mln": { "n_obs": 52, "noise_sd": 0.149, "loo_mape_expert": 0.196,
+                               "loo_mape_model": 0.149, "coverage90": 0.885 }
+  },
+  "coefficients": {
+    "construction_cost_mln": [ { "feature": "type:Cloverleaf", "mean": 0.128, "sd": 0.065 },
+                               { "feature": "lanes", "mean": 0.124, "sd": 0.020 } ]
+  },
+  "interval_level": 0.9,
+  "llm_available": false,
+  "pdf_available": true
+}
+```
+
+| Field | Content |
+|---|---|
+| `train_ms` | Wall-clock time of reading the documents and fitting the model; cross-validation is not included |
+| `documents[].kind` | `csv`, `json` (`.json`, `.jsonl`), `text` (`.txt`, `.md`) or `pdf` |
+| `documents[].extractor` | `table` (CSV/JSON), `rules` (text/PDF), `llm` (LLM fallback used) or `none` (no records found) |
+| `documents[].warnings` | Row- and field-level messages: imputed conditions, skipped values, unsupported currency, implausible ratios |
+| `criteria.<c>` | `n_obs`, `noise_sd` (log scale) and the cross-validated metrics (`null` below 3 observations) |
+| `coefficients.<c>` | 16 rows in `FEATURE_NAMES` order: posterior mean and sd on the log scale |
+| `llm_available`, `pdf_available` | Whether the optional extras are installed and enabled |
+
+#### `POST /api/model/retrain` (v5, Phase 4)
+
+Re-reads every document in the corpus directory, refits the model and returns the new `ModelStatus`. Use it after copying files into `corpus/documents/` by hand.
+
+#### `POST /api/model/documents` (v5, Phase 4)
+
+Uploads a document as `multipart/form-data` (field `file`), with the query parameter `overwrite` (default `false`). The file is stored, the model is retrained, and the new `ModelStatus` is returned.
+
+| Status | When |
+|---|---|
+| `400` | Unsafe name (path separators, `..`, a leading dot, control characters), an extension other than `.csv .json .jsonl .txt .md .pdf`, or an empty file |
+| `409` | A document with that name already exists and `overwrite` is false |
+| `413` | The file is larger than 5 MB (the handler reads at most 5 MB + 1 byte) |
+| `422` | No `file` field |
+
+The name is checked before the body is read. The file is written atomically (a temporary `.partial` file, then `os.replace`), so a concurrent retrain never reads half a document. A browser-style `C:\fakepath\x.csv` name is reduced to `x.csv` by the multipart parser.
+
+#### `DELETE /api/model/documents/{name}` (v5, Phase 4)
+
+Deletes a document, retrains and returns the new `ModelStatus`. Returns `404` if the document does not exist (also for a name with a disallowed extension) and `400` for unsafe names. The route is declared as `{name:path}` so that encoded separators (`..%2Fx.csv`, `a%5Cb.csv`) reach the name check. A bare `..` path segment is resolved by the HTTP stack before routing and therefore ends in `404`.
+
+#### `POST /api/model/predict` (v5, Phase 4)
+
+```json
+{ "context": "System (Highway + Highway)",
+  "params": { "design_speed": 100, "aadt": 45000, "num_lanes": 2, "terrain": "Flat", "env_sensitivity": "Low", "...": "..." } }
+```
+
+`params` is the usual `ProjectParams` object and defaults to the standard parameters. Only the five site conditions affect the prediction. The response lists every alternative of the context, with no feasibility filter:
+
+```json
+{
+  "context": "System (Highway + Highway)",
+  "n_records": 64,
+  "interval_level": 0.9,
+  "alternatives": [
+    { "name": "Turbine",
+      "values": { "construction_cost_mln": { "expert": 45.0, "predicted": 52.46, "low": 40.07, "high": 68.69 } } }
+  ]
+}
+```
+
+`expert` is `expert_baseline` under the request's conditions; `predicted`, `low` and `high` come from the model (§3.12). Errors: `404` for an unknown context, `422` if AADT ≤ 0. A `lang` query parameter, which the frontend sends, is accepted and ignored.
+
+#### `value_source` on `/api/evaluate` and `/api/robustness` (v5, Phase 4)
+
+```json
+{ "value_source": "model" }
+```
+
+Accepts `"expert"` (default) or `"model"`. Both responses echo the field as `value_source`. With `"model"`, the evaluation uses the model-corrected constants before the site rules, and the robustness analysis takes value ranges from the model's prediction intervals for every criterion that has no explicit range (§3.12). Both add `AdjustmentNote`s of the new kind `model`. With `"expert"`, the corpus store is never touched and the responses are unchanged.
+
+---
+
 ### 6.3 DSS Engine
 
 `app/application/dss_engine.py` holds the core dataclasses and the `DecisionSupportSystem` WSM interface. Since v5 its arithmetic is delegated to `app.application.mcda.methods.wsm`, while the class keeps the v4 rounding and ordering contract. It has no knowledge of HTTP, data files, or UI concerns.
@@ -688,6 +899,69 @@ agreement = rank_agreement(results)
 
 ---
 
+### 6.7 Prediction Model and Corpus Packages (v5, Phase 4)
+
+`app/application/prediction/` contains the pure logic of §3.12, with no file or network I/O:
+
+| Module | Contents |
+|---|---|
+| `records.py` | `ProjectRecord`, `Conditions`, and `validate_record(dict) -> (record \| None, warnings)`: the single gate that every reader's output passes through. Also EN/UK synonym resolution for field names, types, terrain and sensitivity, and `parse_number` (thousands separators, decimal comma) |
+| `text_extraction.py` | `extract_records_from_text(str) -> (dicts, warnings)` (rule-based "Field: value" extraction with unit conversion) and `normalise_fields` for CSV/JSON rows |
+| `model.py` | `expert_baseline`, `features` / `FEATURE_NAMES`, `fit_nig` / `NIGPosterior`, `ResidualModel` (`fit`, `predict`, `corrections`, `correct_values`, `value_ranges`, `coefficients`) and `cross_validate` |
+| `__init__.py` | Re-exports the public API |
+
+`app/infrastructure/corpus/` handles the documents and holds the trained model:
+
+| Module | Contents |
+|---|---|
+| `readers.py` | `read_document(path)` / `read_document_bytes(name, data) -> DocumentResult`, dispatched by kind. CSV is `,`, `;` or tab delimited (the delimiter is chosen from the header); JSON is a list or `{"records": [...]}`; JSONL has one object per line; text and PDF go through the rule-based extractor. PDF needs `pypdf`; without it the document gets the warning *PDF support not installed: pip install -e .[documents]*. Files are decoded as UTF-8 (with or without BOM), falling back to Windows-1251 with a warning. A malformed file or row produces a warning; it never breaks the retrain |
+| `llm_extraction.py` | Optional Claude fallback (below) |
+| `store.py` | `CorpusStore`, the `get_store()` singleton, `reset_store(path)` for tests, `sanitize_document_name`, and `CorpusError` subclasses that carry their HTTP status (400 / 404 / 409 / 413) |
+
+The constants live in `app/data/prediction_defaults.py`: reference conditions, priors, interval level, cross-validation thresholds, EN/UK synonyms, allowed extensions and the 5 MB limit. As in `uncertainty_defaults.py`, its docstring explains each assumption. `backend/model_routes.py` only maps the store to HTTP (§6.2); `routes.py` imports `current_model()` and `require_model_params()` from it. The model can also be used without the store:
+
+```python
+from app.application.prediction import ResidualModel, validate_record
+record, warnings = validate_record({"type": "Turbine", "cost": 52.0, "aadt": 60000})
+model = ResidualModel.fit([record])
+model.predict("Turbine", {"aadt": 60000, "num_lanes": 3})["construction_cost_mln"]
+# {'expert': 45.0, 'predicted': 49.77, 'low': 32.09, 'high': 77.20}
+```
+
+**Text extraction.** A document holds one record, or several separated by a line of three or more dashes. A field line has the form `<field> [(<unit>)] <separator> <value>`. The separator is `:`, `=`, `—`, `–`, or `-` followed by a space (so *right-of-way* is not split). Markdown bullets, bold text and two-column table rows (`| Field | value |`) are also accepted. Other lines are ignored, so the facts can sit inside an ordinary report. If a field appears twice, the first value wins. Values are converted as follows:
+
+| Field | Input | Result |
+|---|---|---|
+| Cost | `$48.5M`, `48.5 M USD`, `USD 48.5 million`, `48,5 млн дол.`; `bn` / `млрд` × 1000, `k` / `тис` ÷ 1000; a bare number ≥ 10 000 is read as dollars (`$48,500,000` → 48.5) | M USD. Another currency (₴ / грн / UAH, € / EUR, £ / GBP, PLN, CHF) is not converted: the field is skipped with the warning *currency X not supported (USD only)* |
+| Land | hectares by default (`ha`, `га`); `m²`, `м2`, `sq m`, `кв. м` ÷ 10 000 | ha |
+| AADT, throughput | unit words (`veh/day`, `veh/h`, `vph`, `авт/год`) are ignored; `k` / `тис.` × 1000 | veh/day, veh/h |
+| Numbers | thousands separators (comma, space, NBSP, thin space, apostrophe) when followed by exactly three digits; decimal comma or point | `52 000` → 52000, `48,5` → 48.5 |
+
+A block with fields but no recognised interchange type produces a warning, not a record. Validation then requires a known type and at least one target (> 0; safety in [1, 10]). Conditions outside their ranges (lanes 1–6, speed 40–140 km/h, AADT > 0) are imputed in the same way as missing ones. A record is synthetic when its document name starts with `synthetic_` or its `synthetic` field is truthy (`yes` / `true` / `так`). `corpus/README.md` has the full field and synonym list, with templates in English and Ukrainian.
+
+**Corpus store.** `CorpusStore` serves the directory `$TDSS_CORPUS_DIR` (default `<repo>/corpus/documents`). Every change (upload, delete, retrain) re-reads the whole directory and refits from scratch. At tens to hundreds of records this takes milliseconds, and there is no incremental state that could drift out of sync with the files. Training is lazy (on first access) and runs under a re-entrant lock. Each run produces an immutable snapshot that replaces the previous one atomically: the model, the document reports, the records, the cross-validation metrics, `trained_at` (UTC, ISO 8601) and `train_ms` (wall-clock time of ingest and fit, `time.perf_counter`). Hidden files and files with other extensions are ignored. Observed values more than 10× off the expert baseline get a "check the units" warning.
+
+In Docker, the image ships `corpus/`: `backend/Dockerfile` copies it, and `.dockerignore` re-includes `corpus/**/*.md`. Uploaded documents, however, live in the container's file system unless a volume is mounted at `/opt/tdss/corpus/documents`, and `docker-compose.yml` does not define one yet.
+
+**Optional LLM extraction** (`llm_extraction.py`). When the rules find **no** record in a text or PDF document, Claude can read the text and return the records. The fallback is enabled only when all three conditions hold:
+
+- `TDSS_LLM_EXTRACTION=1` is set (an explicit opt-in, because the document text leaves the machine);
+- `ANTHROPIC_API_KEY` is set;
+- the `anthropic` package is installed (`pip install -e .[documents]`).
+
+The request uses structured outputs: a JSON schema in which `interchange_type` is an enum of the eight names and every other field is nullable. It runs with low effort on the model `claude-haiku-5-5` by default; `TDSS_LLM_MODEL` overrides the model. The system prompt tells the model to treat the document as data, not instructions, to copy only stated values, and to return `null` for costs in other currencies. The output goes through the same `validate_record` as a CSV row. API errors, refusals and truncated output become document warnings. Successful results are cached in memory, keyed by a hash of the model and the text, so a retrain does not pay twice for the same document. The tests use an injected fake client only and never call the network.
+
+**Synthetic corpus.** `scripts/make_synthetic_corpus.py` (run as `python -m scripts.make_synthetic_corpus`) regenerates `corpus/documents/synthetic_precedents.csv` deterministically with `default_rng(2026)`. It writes 60 rows:
+
+- types cycle through all eight; AADT is log-uniform between 15 000 and 120 000; lanes range over 1–4 and speed over 60–130 km/h; all terrains and sensitivity levels occur;
+- each observed value is `expert_baseline` × \(e^{\text{effect} + \varepsilon}\), with \(\varepsilon \sim \mathcal{N}(0, \sigma_{0,c})\);
+- the planted effects are: cost +0.12 per lane, +0.10 · `log_aadt`, Turbine +0.20, DDI −0.10; land +0.08 per lane; throughput +0.22 per lane; safety −0.05 per +20 km/h;
+- about 15 % of the target cells are left empty.
+
+Three `synthetic_report_*.md` files show the text format: Turbine (English), Diamond (English, two records) and Trumpet (Ukrainian). Each starts with a *SYNTHETIC EXAMPLE — not a real project* banner.
+
+---
+
 ## 7. Frontend (Vue 3)
 
 ### 7.1 Project Setup
@@ -721,6 +995,7 @@ graph TD
     MC["MethodComparison.vue\n(Rank table, consensus)"]
     RA["RobustnessAnalysis.vue\n(SMAA, sensitivity)"]
     SM["SiteMap.vue\n(GIS site picker, footprint)"]
+    PM["PredictionModel.vue\n(Corpus, accuracy, intervals)"]
     BG["BlueprintGallery.vue\n(Blueprint grid)"]
     ME["Methodology.vue\n(Formula documentation)"]
     PC["PlotlyChart.vue\n(Chart wrapper)"]
@@ -731,6 +1006,7 @@ graph TD
     APP --> DE
     APP --> RA
     APP --> SM
+    APP --> PM
     APP --> BG
     APP --> ME
     DE --> MC
@@ -738,9 +1014,10 @@ graph TD
     DE --> LM
     MC --> PC
     RA --> PC
+    PM --> PC
 ```
 
-All components except `PlotlyChart`, `LeafletMap` and `SiteMap` are displayed via `v-show` (kept in DOM; no re-mount cost on tab switch) with no special handling needed. `SiteMap` also uses `v-show` but holds a Leaflet map, which breaks if initialised in a hidden (`display:none`) container -- it takes an `active` prop and calls `map.invalidateSize()` when the tab actually becomes visible (see §3.11 / §7.4).
+All components except `PlotlyChart`, `LeafletMap` and `SiteMap` are displayed via `v-show` (kept in DOM; no re-mount cost on tab switch) with no special handling needed. `SiteMap` also uses `v-show` but holds a Leaflet map, which breaks if initialised in a hidden (`display:none`) container -- it takes an `active` prop and calls `map.invalidateSize()` when the tab actually becomes visible (see §3.11 / §7.4). `RobustnessAnalysis` and `PredictionModel` also take `active`, so that SMAA runs and model predictions are only requested while their tab is visible.
 
 ---
 
@@ -768,9 +1045,28 @@ Exports:
 | `evalData` | `Ref<object\|null>` | Last `EvaluateResponse` from API |
 | `weights` | `Reactive<object>` | Raw slider values (0–100) per criterion |
 | `params` | `Reactive<object>` | 8 project parameters |
+| `valueSource` | `Ref<'expert'\|'model'>` | Where criterion values come from (v5, Phase 4); sent as `value_source` |
 | `normalizedWeights()` | `Function` | Converts raw weights → fractions summing to 1 |
 | `loadContexts()` | `async Function` | Fetches `/api/contexts`, sets `selectedContext` |
 | `runEvaluation()` | `async Function` | POSTs to `/api/evaluate`, updates `evalData` |
+
+`useRobustness.js` sends the same `value_source` with every SMAA request. In `model` mode it sends `uncertainty.values = {}`, so that the backend derives every range from the model's prediction intervals (§3.12).
+
+#### `useModel.js` — Prediction-Model State (v5, Phase 4)
+
+Module-level shared state, following the pattern of `useRobustness.js`: the *Prediction model* tab, the robustness tab and `App.vue` all see the same model status.
+
+| Export | Type | Description |
+|---|---|---|
+| `status` | `Ref<object\|null>` | Last `ModelStatus` from `/api/model/*` |
+| `prediction` | `Ref<object\|null>` | Last `/api/model/predict` response |
+| `loading`, `uploading`, `predicting` | `Computed<boolean>` | Driven by in-flight counters, so overlapping requests never clear a spinner that is still needed |
+| `error`, `predictError` | `Ref<string>` | Backend `detail` or network error text |
+| `load()`, `retrain()`, `remove(name)` | `async Function` | Status / retrain / delete, each storing the returned status |
+| `upload(file, overwrite)` | `async Function` | Resolves to `'ok'`, `'conflict'` (HTTP 409) or `'error'` |
+| `predict(dss, lang)` | `async Function` | `/api/model/predict` for the current context and parameters |
+
+All status-changing calls share one request sequence, and only the newest response is stored. A slow `GET /status` can therefore never overwrite the status returned by a later upload or retrain. Predictions use a separate sequence of their own. `ALLOWED_EXTENSIONS` and `MAX_UPLOAD_BYTES` mirror the backend limits for client-side checks.
 
 #### `useLocale.js` — Internationalisation
 
@@ -789,7 +1085,8 @@ Manages the `dark` boolean ref and syncs the `dark` CSS class on the `<html>` el
 Responsible for:
 - Mounting all top-level components
 - Triggering initial data load (`loadContexts` → `runEvaluation`)
-- Watching `selectedContext`, `weights`, `params` with a 300ms debounce and re-running evaluation on change
+- Watching `selectedContext`, `weights`, `params` with a 300ms debounce and re-running evaluation on change (since v5 also the methods, the weighting settings and `valueSource`)
+- Re-running the evaluation when the prediction model is refitted (`revision` changes) while `valueSource` is `model`
 - Passing `evalData` as `:data` prop to all three tab components
 - Rendering the ambient glassmorphism background blobs (light mode)
 - Showing a loading spinner overlay while `dss.loading` is true
@@ -813,6 +1110,10 @@ Fixed-position left panel (320px). Contains all user inputs.
 │  Throughput ████░ 25%   │
 │  Safety     ████░ 25%   │
 ├─────────────────────────┤
+│ Criterion Values        │
+│  [Expert | Model]       │
+│  one-line hint          │
+├─────────────────────────┤
 │ Project Parameters      │
 │  Design Speed: 100 km/h │
 │  AADT: 45,000 veh/day   │
@@ -832,6 +1133,8 @@ Fixed-position left panel (320px). Contains all user inputs.
 ```
 
 Emits `toggle-theme`; calls `useLocale.toggleLang()` directly (shared singleton).
+
+**Criterion values** (v5, Phase 4) is a two-option segmented control (*Expert constants* | *Prediction model*), placed just above the project parameters. It sets `useDSS`'s `valueSource`, and a one-line hint below it explains the active option. Switching it re-runs the evaluation, and the robustness analysis too while its tab is open.
 
 ---
 
@@ -898,6 +1201,36 @@ Leaflet map for the Site Analysis tab (§3.11). A click places a draggable marke
 
 ---
 
+#### `PredictionModel.vue` — Prediction Model (v5, Phase 4)
+
+Tab `model` (*Prediction model* / *Модель прогнозу*) for the document-trained model of §3.12. It takes the props `dss`, `active` and `dark`. When the tab becomes active it loads the model status. While the tab is active, it re-runs `/api/model/predict` (300 ms debounce) when the context, the parameters or the locale change, and after every refit.
+
+**Sections (top to bottom):**
+
+1. **Header**: title, a one-paragraph explanation (a grey-box Bayesian residual correction of the expert values that retrains in milliseconds), and a button that switches the evaluation's value source between expert constants and the model.
+2. **Status cards**:
+   - documents (count, total size, how many have warnings);
+   - training records, split into real and synthetic, with an amber badge whenever synthetic records are present (demo data to be replaced by real documents);
+   - last training time and `train_ms`.
+
+   With an empty corpus, a notice says that the model reproduces the expert values exactly.
+3. **Document manager**:
+   - a drop zone and file picker for `.csv .json .jsonl .txt .md .pdf` up to 5 MB, checked on the client before uploading;
+   - a 409 response opens a confirm dialog and, if accepted, the upload is repeated with `overwrite=true`;
+   - chips show whether PDF reading and the LLM fallback are available;
+   - each document row shows format, extractor, record count, size, a *synthetic* badge, expandable warnings and a delete button with a confirm dialog;
+   - a **Retrain** button.
+4. **Accuracy table**: one row per criterion with the number of observations, the cross-validated MAPE of the expert values and of the model (as %, green where the model wins), the coverage of the prediction interval and the residual σ (log scale). The interval level from the status appears in the labels.
+5. **Chart**: for the current context and parameters and a selected criterion, the expert value (diamond) and the model prediction (circle) for every alternative, with asymmetric error bars for the prediction interval (colours `MODEL_COLORS` in `chartPalette.js`). Below it, a table lists expert, model, interval and the model's change versus the expert value.
+6. **Coefficients** (collapsible `<details>`): feature, posterior mean, sd and the effect \(e^{\text{mean}} - 1\) as a percentage, per criterion. A ● marks effects whose 90 % posterior interval excludes zero (\(|\text{mean}| > 1.645\,\text{sd}\)).
+
+Related changes elsewhere in the UI:
+
+- `RobustnessAnalysis.vue`: in `model` mode, the value-range editor is read-only and greyed out. It shows the ranges the backend actually used, with a hint that they come from the model's prediction intervals. In this mode the SMAA analysis also re-runs after every refit.
+- `DssEvaluation.vue`: shows a *Criterion values: Prediction model* badge next to the context badge when the response's `value_source` is `model`.
+
+---
+
 ## 8. Data Flow
 
 The complete request/response cycle for a user interaction:
@@ -931,13 +1264,28 @@ sequenceDiagram
     DssEvaluation->>User: Re-renders ranking, charts, tables
 ```
 
+**Prediction-model path (v5, Phase 4).** With `valueSource = 'model'`, the same request carries `value_source: "model"`. `_prepare` then takes the fitted model from the corpus store and multiplies the expert constants by \(e^{\mu}\) *before* `apply_project_params`. Everything after that step (site rules, feasibility, MCDA) is unchanged (§3.12). The model itself is fed through `/api/model/*`:
+
+```mermaid
+flowchart LR
+    TAB["PredictionModel.vue\nupload / delete / Retrain"] -->|"/api/model/*"| STORE["CorpusStore\n(lock, lazy training)"]
+    STORE --> DOCS["corpus/documents/\ncsv json jsonl txt md pdf"]
+    DOCS -->|"readers + validate_record"| REC["ProjectRecord list"]
+    REC -->|"ResidualModel.fit"| MODEL["ResidualModel\n(in-memory snapshot)"]
+    MODEL -->|"/api/model/predict"| TAB
+    MODEL -->|"constants × e^μ"| PREP["_prepare()\nsite rules → feasibility → MCDA"]
+    MODEL -->|"interval ratios → triangular ranges"| SMAA["/api/robustness"]
+```
+
+Each refit changes `status.revision`, a counter that increases on every fit (`trained_at` has one-second resolution, so two quick uploads could share it). `useModel.js` keeps the status with the highest revision, so a GET answered before a slower upload finished cannot hide that upload's result. When it changes, `App.vue` re-runs the evaluation and `RobustnessAnalysis.vue` re-runs SMAA, both only while `valueSource` is `model`. `PredictionModel.vue` re-runs `/api/model/predict` after every refit.
+
 ---
 
 ## 9. Localisation & Theming
 
 ### Localisation
 
-All user-visible strings are stored in `useLocale.js` under `STRINGS.EN` and `STRINGS.UA`. The `t` computed ref provides the active language's string map.
+All user-visible strings are stored in `frontend/src/locales/en.json` and `uk.json` and loaded by vue-i18n (`frontend/src/i18n.js`). Ukrainian is the default, and the user's choice is kept in `localStorage`. `useLocale()` exposes the active language's messages as the `t` computed ref.
 
 ```javascript
 // Example usage in a component
@@ -945,7 +1293,7 @@ const { t } = useLocale()
 // Template: {{ t.appTitle }}
 ```
 
-Supported string categories: app title/subtitle, tab labels, sidebar labels, criterion names and units, parameter labels, table headers, chart titles, methodology text, ordinal strings (1st/2nd/3rd...).
+Supported string categories: app title/subtitle, tab labels, sidebar labels, criterion names and units, parameter labels, table headers, chart titles, methodology text, ordinal strings (1st/2nd/3rd...). The prediction-model strings (`tabModel`, `valueSource*`, `modelRangesHint`, `model*`) exist in both files.
 
 ### Theming
 
@@ -993,12 +1341,24 @@ npm run dev
 
 The Vite dev server proxies `/api/*` and `/blueprints/*` to `http://localhost:8000`; set `TDSS_API=http://localhost:<port>` to use another backend port.
 
+**Prediction model (optional settings, §6.7):**
+
+| Variable | Effect |
+|---|---|
+| `TDSS_CORPUS_DIR` | Corpus directory (default `corpus/documents/`) |
+| `TDSS_LLM_EXTRACTION=1` + `ANTHROPIC_API_KEY` | Enables the LLM fallback for text/PDF documents (needs `pip install -e .[documents]`) |
+| `TDSS_LLM_MODEL` | Overrides the LLM model id (default `claude-haiku-5-5`) |
+
+`pip install -e '.[documents]'` adds `pypdf` (PDF text) and `anthropic` (quote the argument in zsh). `requirements-dev.txt` already includes `pypdf`, so the PDF tests run in CI.
+
 ### Tests
 
 ```bash
-pytest -q          # engine, weighting, API and v4-snapshot regression tests
+pytest -q          # engine, weighting, API, prediction model and v4-snapshot regression tests
 ruff check .
 ```
+
+The prediction-model tests (`tests/test_prediction_extraction.py`, `test_prediction_model.py`, `test_api_model.py`) point the corpus store at a temporary directory with `reset_store(tmp_path)` and restore it afterwards. They test the LLM extractor with a fake client only.
 
 ### Production Build
 
@@ -1020,9 +1380,23 @@ uvicorn backend.main:app --port 8000
 ```
 TDSS/
 │
-├── pyproject.toml              PEP 621 project: tdss 5.0.0-dev, Python >=3.11, ruff/pytest config
-├── requirements.txt            Pip dependencies (httpx included -- Overpass/elevation clients)
+├── pyproject.toml              PEP 621 project: tdss 5.0.0-dev, Python >=3.11, ruff/pytest config,
+│                               extras: dev, documents (pypdf + anthropic), legacy
+├── requirements.txt            Pip dependencies (httpx -- GIS clients; python-multipart -- uploads)
+├── requirements-dev.txt        requirements.txt + pytest, ruff, pypdf (PDF reader tests)
 ├── .gitignore                  Includes .cache/ (GIS response cache)
+├── .dockerignore               Excludes *.md except corpus/**/*.md
+│
+├── corpus/                     Prediction-model training documents (§3.12, §6.7)
+│   ├── README.md               Formats, fields + units, EN/UK text templates, retraining
+│   └── documents/              The corpus directory ($TDSS_CORPUS_DIR overrides it)
+│       ├── synthetic_precedents.csv        60 generated SYNTHETIC demo records
+│       ├── synthetic_report_turbine_en.md  Text-format example (EN)
+│       ├── synthetic_report_diamond_en.md  Text-format example, two records (EN)
+│       └── synthetic_report_trumpet_uk.md  Text-format example (UK keys and units)
+│
+├── scripts/
+│   └── make_synthetic_corpus.py  Regenerates synthetic_precedents.csv (default_rng(2026))
 │
 ├── app/                        Shared application logic (used by backend AND legacy)
 │   ├── application/
@@ -1031,23 +1405,34 @@ TDSS/
 │   │   ├── evaluation.py       Weighting-mode resolution, multi-method run
 │   │   ├── site_analysis.py    Context/terrain/environment/land inference (§3.11)
 │   │   ├── footprint.py        Real-scale footprint placement + right-of-way (§3.11)
-│   │   └── mcda/                Multi-method MCDA engine (see §6.5), incl. smaa.py, sensitivity.py
+│   │   ├── mcda/                Multi-method MCDA engine (see §6.5), incl. smaa.py, sensitivity.py
+│   │   └── prediction/          Prediction model, pure (§3.12, §6.7)
+│   │       ├── records.py          ProjectRecord, Conditions, validate_record, EN/UK synonyms
+│   │       ├── text_extraction.py  "Field: value" extraction, units, currencies
+│   │       └── model.py            expert_baseline, features, NIG regression, ResidualModel, CV
 │   ├── infrastructure/
 │   │   ├── generators.py       5 procedural interchange geometry generators
-│   │   └── gis/                 Overpass/elevation clients + cache (see §6.6)
+│   │   ├── gis/                 Overpass/elevation clients + cache (see §6.6)
+│   │   └── corpus/              Prediction-model documents and store (§6.7)
+│   │       ├── readers.py          CSV / JSON / JSONL / text / PDF readers
+│   │       ├── llm_extraction.py   Optional Claude fallback extractor
+│   │       └── store.py            CorpusStore, get_store(), reset_store(), name checks
 │   └── data/
 │       ├── interchange_data.py All expert constants (8 interchanges, 3 contexts, 4 criteria)
 │       ├── adjustment_rules.py Terrain / environment / speed / capacity factors
 │       ├── mcda_methods.py     EN/UK method labels
 │       ├── uncertainty_defaults.py     SMAA value-uncertainty defaults
-│       └── site_analysis_defaults.py   GIS classification thresholds (§3.11)
+│       ├── site_analysis_defaults.py   GIS classification thresholds (§3.11)
+│       └── prediction_defaults.py      Prediction-model priors, reference conditions, synonyms
 │
 ├── backend/                    FastAPI REST API (v5)
 │   ├── __init__.py
 │   ├── main.py                 App factory: CORS, static files, router mounts
 │   ├── routes.py               Evaluate/robustness route handlers + JSON mapping
 │   ├── site_routes.py          /api/site/analyse, /api/site/footprint (§6.6)
-│   └── schemas.py              Pydantic request/response models
+│   ├── model_routes.py         /api/model/* — status, retrain, documents, predict (§6.2)
+│   ├── schemas.py              Pydantic request/response models
+│   └── Dockerfile              Backend image (copies app/, backend/, assets/, corpus/)
 │
 ├── assets/
 │   └── blueprints/             Served as /blueprints/* static files
@@ -1067,24 +1452,29 @@ TDSS/
 │   └── src/
 │       ├── main.js             createApp + mount
 │       ├── App.vue             Root: orchestration, debounced watcher, layout
-│       ├── api.js              Axios client (evaluate, robustness, analyseSite, getFootprint, ...)
-│       ├── chartPalette.js     Colour-vision-safe chart palette (methods, ranks, diverging)
+│       ├── api.js              Axios client (evaluate, robustness, analyseSite, modelStatus, ...)
+│       ├── chartPalette.js     Colour-vision-safe chart palette (methods, ranks, diverging, MODEL_COLORS)
+│       ├── i18n.js             vue-i18n setup (uk default, en fallback)
+│       ├── locales/            en.json, uk.json — every UI string in both languages
 │       ├── style.css           Tailwind base + custom slider CSS + theme tokens
 │       ├── composables/
-│       │   ├── useDSS.js       Global reactive state: methods, weighting, weights, params, evalData
+│       │   ├── useDSS.js       Global reactive state: methods, weighting, weights, params, valueSource, evalData
 │       │   ├── useRobustness.js    SMAA/sensitivity request state (Robustness tab)
 │       │   ├── useSiteAnalysis.js  Click-to-place state, /api/site/* calls (Site Analysis tab)
+│       │   ├── useModel.js     Prediction-model status, documents, predictions (Prediction model tab)
 │       │   ├── useLocale.js    EN/UA i18n string store
 │       │   └── useTheme.js     Dark/light mode toggle
 │       └── components/
-│           ├── Sidebar.vue     Left panel: context, methods, weighting mode, sliders, params
+│           ├── Sidebar.vue     Left panel: context, methods, weighting mode, sliders, value source, params
 │           ├── MethodSelector.vue    MCDA method toggle chips
 │           ├── WeightingControls.vue Weighting mode + AHP pairwise editor
-│           ├── TabNav.vue      Tab bar: Evaluation / Site Analysis / Robustness / Gallery / Methodology
+│           ├── TabNav.vue      Tab bar: Evaluation / Site Analysis / Robustness / Prediction model /
+│           │                   Gallery / Methodology
 │           ├── DssEvaluation.vue     Main results: ranking, detail, charts, tables
 │           ├── MethodComparison.vue  Rank table, consensus, agreement heatmap
 │           ├── RobustnessAnalysis.vue  SMAA rank acceptability, sensitivity views
 │           ├── SiteMap.vue     Leaflet site picker, GIS overlay, footprint (§3.11, §6.6)
+│           ├── PredictionModel.vue  Corpus manager, accuracy, expert-vs-model chart, coefficients (§7.4)
 │           ├── BlueprintGallery.vue  Blueprint schematic grid
 │           ├── Methodology.vue    Formula docs (WSM, TOPSIS, AHP, PROMETHEE, VIKOR, SMAA, ...)
 │           ├── PlotlyChart.vue    Plotly.react() wrapper
@@ -1117,6 +1507,10 @@ TDSS/
 14. **Flyvbjerg, B., Holm, M. S., Buhl, S.** (2002). Underestimating costs in public works projects: error or lie? *Journal of the American Planning Association*, 68(3), 279–295.
 15. **OpenStreetMap contributors.** Overpass API — road, building, water and land-use data, queried live at `overpass-api.de/api/interpreter`. Data © OpenStreetMap contributors, ODbL.
 16. **Open Topo Data.** SRTM 90 m elevation dataset, queried live at `api.opentopodata.org/v1/srtm90m`.
+17. **Gelman, A., Carlin, J. B., Stern, H. S., Dunson, D. B., Vehtari, A., Rubin, D. B.** (2013). *Bayesian Data Analysis*, 3rd Edition. CRC Press. (Ch. 14: Bayesian regression models.)
+18. **Murphy, K. P.** (2007). *Conjugate Bayesian analysis of the Gaussian distribution.* Technical note, University of British Columbia. (Normal-Inverse-Gamma posterior and Student-t predictive.)
+19. **Murphy, K. P.** (2012). *Machine Learning: A Probabilistic Perspective.* MIT Press. (§7.6: Bayesian linear regression.)
+20. **Stone, M.** (1974). Cross-validatory choice and assessment of statistical predictions. *Journal of the Royal Statistical Society, Series B*, 36(2), 111–147.
 
 ---
 
