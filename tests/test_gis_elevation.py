@@ -9,7 +9,8 @@ from app.infrastructure.gis.elevation import (
     ElevationClient,
     grid_points,
 )
-from app.infrastructure.gis.errors import GisUnavailableError
+from app.infrastructure.gis.errors import QUOTA_MESSAGE, GisUnavailableError
+from app.infrastructure.gis.outbound import OutboundBudget
 from app.infrastructure.gis.projection import LocalOrigin, haversine_m
 
 KYIV = LocalOrigin(lat=50.4501, lon=30.5234)
@@ -167,4 +168,37 @@ def test_caching_avoids_a_second_request(tmp_path):
     client = ElevationClient(httpx.Client(transport=transport), cache_dir=tmp_path)
     client.fetch_grid(KYIV.lat, KYIV.lon, radius_m=400, n=5)
     client.fetch_grid(KYIV.lat, KYIV.lon, radius_m=400, n=5)
+    assert len(calls) == 1
+
+
+def test_grid_is_built_around_the_requested_point_and_cached_exactly(tmp_path):
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return ok_response(25)
+
+    client = ElevationClient(httpx.Client(transport=httpx.MockTransport(handler)),
+                             cache_dir=tmp_path)
+    grid = client.fetch_grid(50.45012, 30.52041, radius_m=520, n=5)
+    assert (grid.origin.lat, grid.origin.lon, grid.radius_m) == (50.45012, 30.52041, 520)
+    assert client.fetch_grid(50.45012, 30.52041, radius_m=520, n=5) == grid
+    assert len(calls) == 1
+    client.fetch_grid(50.45013, 30.52041, radius_m=520, n=5)  # the grade depends on the point
+    assert len(calls) == 2
+
+
+def test_daily_budget_refuses_further_calls():
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return ok_response(25)
+
+    budget = OutboundBudget("Elevation API", max_concurrent=1, per_day=1)
+    client = make_client(handler, budget=budget)
+    client.fetch_grid(KYIV.lat, KYIV.lon, n=5)
+    with pytest.raises(GisUnavailableError) as info:
+        client.fetch_grid(KYIV.lat + 1, KYIV.lon, n=5)
+    assert info.value.public_message == QUOTA_MESSAGE
     assert len(calls) == 1

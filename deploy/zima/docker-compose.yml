@@ -8,16 +8,26 @@
 # (or ZimaOS: App Store → Custom Install → Import, and paste this file).
 #
 # It watches github.com/vetos5/TDSS. Every commit on main whose CI passes is built on the box and
-# replaces the running site at http://<zima-ip>:8580, with an automatic rollback if the new
-# version does not start. App settings (TDSS_PORT, TZ, TDSS_SEED_DEMO, ANTHROPIC_API_KEY, ...)
-# go in /DATA/AppData/tdss/app.env. The deploy logic is deploy/zima/deployer.sh in the repo; it
-# is fetched at start and updates itself with each deploy.
+# replaces the running site (port 8580 on 127.0.0.1, for a Cloudflare tunnel), with an automatic
+# rollback if the new version does not start. App settings (TDSS_ADMIN_TOKEN, TDSS_PORT,
+# TDSS_BIND, TZ, ANTHROPIC_API_KEY, ...) go in /DATA/AppData/tdss/app.env (chmod 600). The deploy
+# logic is deploy/zima/deployer.sh in the repo. It is fetched on the first start only and then
+# updates itself with each deploy, so only code that passed CI runs here.
+#
+# The deployer is root on this machine (Docker socket): protect main on GitHub (README, Security).
 name: tdss-deployer
 
 services:
   deployer:
     image: docker:cli
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
     environment:
       TZ: ${TZ:-Europe/Kyiv}
       TDSS_REPO: ${TDSS_REPO:-vetos5/TDSS}
@@ -34,20 +44,23 @@ services:
       # Same path inside and out, shared with scripts/deploy_zima.sh: source, data, deploy state.
       - ${TDSS_HOME:-/DATA/AppData/tdss}:${TDSS_HOME:-/DATA/AppData/tdss}
     entrypoint: ["/bin/sh", "-c"]
-    # $$ is a literal $ for docker compose. The script is fetched from the branch at start; the
-    # last good copy is used when GitHub is unreachable.
+    # $$ is a literal $ for docker compose. The script is fetched from the branch only when there
+    # is no copy yet. After that only a deploy replaces it, with the version from a commit that
+    # passed CI: a restart must not run whatever is at the branch head. To fetch it again, delete
+    # $TDSS_HOME/deployer/deployer.sh and restart.
     command:
       - |
         set -u
         until apk add --no-cache curl jq tar >/dev/null; do echo "waiting for network"; sleep 30; done
         state="$$TDSS_HOME/deployer"; mkdir -p "$$state"
-        url="$$TDSS_GITHUB_API/repos/$$TDSS_REPO/contents/deploy/zima/deployer.sh?ref=$$TDSS_BRANCH"
-        set -- -H "Accept: application/vnd.github.raw"
-        [ -n "$$GITHUB_TOKEN" ] && set -- "$$@" -H "Authorization: Bearer $$GITHUB_TOKEN"
-        if curl -fsSL "$$@" "$$url" -o "$$state/deployer.sh.new" && [ -s "$$state/deployer.sh.new" ]; then
+        if [ ! -s "$$state/deployer.sh" ]; then
+          url="$$TDSS_GITHUB_API/repos/$$TDSS_REPO/contents/deploy/zima/deployer.sh?ref=$$TDSS_BRANCH"
+          set -- -H "Accept: application/vnd.github.raw"
+          [ -n "$$GITHUB_TOKEN" ] && set -- "$$@" -H "Authorization: Bearer $$GITHUB_TOKEN"
+          if ! curl -fsSL "$$@" "$$url" -o "$$state/deployer.sh.new" || [ ! -s "$$state/deployer.sh.new" ]; then
+            echo "cannot fetch $$url; retrying in 60s"; sleep 60; exit 1
+          fi
           mv "$$state/deployer.sh.new" "$$state/deployer.sh"
-        elif [ ! -s "$$state/deployer.sh" ]; then
-          echo "cannot fetch $$url and no cached copy; retrying in 60s"; sleep 60; exit 1
         fi
         exec sh "$$state/deployer.sh"
 

@@ -1,5 +1,5 @@
 import { ref, reactive } from 'vue'
-import { robustness } from '../api.js'
+import { robustness, errorText } from '../api.js'
 import { CRITERION_KEYS } from './useDSS.js'
 
 // Defaults mirror app/data/uncertainty_defaults.py (the backend fills any criterion left out).
@@ -53,9 +53,7 @@ async function run(dss, lang = 'en') {
     if (id === requestId) data.value = result
   } catch (e) {
     if (id === requestId) {
-      error.value = e?.response?.data?.detail
-        ? (typeof e.response.data.detail === 'string' ? e.response.data.detail : JSON.stringify(e.response.data.detail))
-        : String(e)
+      error.value = errorText(e)
       data.value = null
     }
   } finally {

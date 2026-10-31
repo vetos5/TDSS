@@ -28,7 +28,8 @@ Assumptions
 * **Cross-validation.** Leave-one-out is exact and cheap for small corpora; above 200 observations
   of a criterion a deterministic 10-fold split keeps retraining in milliseconds.
 * **Uploads.** Plain-text, Markdown, CSV, JSON / JSONL and (optionally) PDF documents up to 5 MB —
-  ample for a project report; larger files are almost certainly scans or archives.
+  ample for a project report; larger files are almost certainly scans or archives. The corpus as a
+  whole is capped too (documents, bytes, records per document), so a retrain stays fast.
 
 * **Robust likelihood.** The noise is Student-t with ν = 8 rather than Gaussian, so one gross error
   (a unit mistake) is downweighted instead of pulling the whole fit. On clean data the weights stay
@@ -245,3 +246,25 @@ ALLOWED_EXTENSIONS: Dict[str, str] = {
 }
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 SYNTHETIC_PREFIX = "synthetic_"
+
+# Corpus caps. Every change re-reads the corpus and every /status lists it, so both must stay
+# bounded; the caps are far above a diploma-scale corpus (a few dozen documents and records).
+MAX_DOCUMENTS = 200                       # documents read; more are listed but not read
+MAX_CORPUS_BYTES = 50 * 1024 * 1024       # total size of the documents read
+MAX_RECORDS_PER_DOCUMENT = 2000           # rows / objects / LLM records read from one document
+MAX_WARNINGS_PER_DOCUMENT = 20            # warnings listed per document, then "+N more"
+MAX_WARNING_CHARS = 300                   # longer warnings (huge cell values) are shortened
+# PDF text is extracted in a child process, because a small PDF can inflate into minutes of parsing
+# and gigabytes of memory. The child is killed after PDF_TIMEOUT_S and capped at PDF_MEMORY_BYTES
+# of address space (Linux only).
+PDF_TIMEOUT_S = 20.0
+PDF_MEMORY_BYTES = 512 * 1024 * 1024
+PDF_MAX_PAGES = 200                       # a project report, not a book
+PDF_MAX_TEXT_CHARS = 1_000_000            # about 300 dense pages of text
+# A "Field: value" line or a field header longer than this is prose, never a field; skipping it
+# keeps the text parsers linear in the document size.
+MAX_FIELD_LINE_CHARS = 500
+# Absurdity bounds of a target in its canonical unit (M USD, ha, veh/h; the safety index has
+# SAFETY_BOUNDS). Far outside any real interchange, and they keep ln(observed / baseline) finite:
+# a cost of 1e-322 would underflow to ln 0 and break the fit.
+TARGET_RANGE: Tuple[float, float] = (1e-6, 1e9)

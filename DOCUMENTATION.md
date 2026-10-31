@@ -733,7 +733,8 @@ Returns the state of the document-trained prediction model (§3.12). The corpus 
   },
   "interval_level": 0.9,
   "llm_available": false,
-  "pdf_available": true
+  "pdf_available": true,
+  "editing_enabled": true
 }
 ```
 
@@ -746,25 +747,39 @@ Returns the state of the document-trained prediction model (§3.12). The corpus 
 | `criteria.<c>` | `n_obs`, `noise_sd` (log scale) and the cross-validated metrics (`null` below 3 observations) |
 | `coefficients.<c>` | 16 rows in `FEATURE_NAMES` order: posterior mean and sd on the log scale |
 | `llm_available`, `pdf_available` | Whether the optional extras are installed and enabled |
+| `editing_enabled` | Whether this server accepts corpus edits, i.e. `TDSS_ADMIN_TOKEN` is set (§6.8). The UI hides upload, delete and retrain when it is `false` |
 
-#### `POST /api/model/retrain` (v5, Phase 4)
+Every warning is at most 300 characters, a document keeps at most 20 (then a *+N more warnings* line), and warnings never contain server paths.
 
-Re-reads every document in the corpus directory, refits the model and returns the new `ModelStatus`. Use it after copying files into `corpus/documents/` by hand.
+#### Admin token for corpus edits (§6.8)
 
-#### `POST /api/model/documents` (v5, Phase 4)
+`POST /api/model/retrain`, `POST /api/model/documents` and `DELETE /api/model/documents/{name}` change the server's data and need `Authorization: Bearer <TDSS_ADMIN_TOKEN>`. Without a valid token they answer `401` (with `WWW-Authenticate: Bearer`); on a server without a token configured (unset or shorter than 16 characters) they answer `403`, so editing is off rather than open. `GET /api/model/auth` with the same header answers `204` for a valid token; the UI calls it when a token is entered. Every other endpoint is public.
+
+#### `GET /api/model/auth` (admin)
+
+`204` if the bearer token is valid, otherwise `401` / `403` as above.
+
+#### `POST /api/model/retrain` (v5, Phase 4, admin)
+
+Re-reads every document in the corpus directory, refits the model and returns the new `ModelStatus`. Use it after copying files into `corpus/documents/` by hand. If the fit fails, it answers `422` and the previous model stays in place.
+
+#### `POST /api/model/documents` (v5, Phase 4, admin)
 
 Uploads a document as `multipart/form-data` (field `file`), with the query parameter `overwrite` (default `false`). The file is stored, the model is retrained, and the new `ModelStatus` is returned.
 
 | Status | When |
 |---|---|
-| `400` | Unsafe name (path separators, `..`, a leading dot, control characters), an extension other than `.csv .json .jsonl .txt .md .pdf`, or an empty file |
+| `400` | Unsafe name (path separators, `..`, a leading dot, control or Unicode format characters such as U+202E, more than 200 UTF-8 bytes), an extension other than `.csv .json .jsonl .txt .md .pdf`, or an empty file |
+| `401` / `403` | No valid admin token, or editing is off on this server |
 | `409` | A document with that name already exists and `overwrite` is false |
-| `413` | The file is larger than 5 MB (the handler reads at most 5 MB + 1 byte) |
-| `422` | No `file` field |
+| `413` | The file is larger than 5 MB (the handler reads at most 5 MB + 1 byte), the corpus is full (200 documents or 50 MB), or the document has more than 2000 records |
+| `422` | No `file` field, or the model cannot be fitted with the document |
+
+A `413` or `422` after the file was written rolls the upload back: a new file is deleted, an overwritten one is restored.
 
 The name is checked before the body is read. The file is written atomically (a temporary `.partial` file, then `os.replace`), so a concurrent retrain never reads half a document. A browser-style `C:\fakepath\x.csv` name is reduced to `x.csv` by the multipart parser.
 
-#### `DELETE /api/model/documents/{name}` (v5, Phase 4)
+#### `DELETE /api/model/documents/{name}` (v5, Phase 4, admin)
 
 Deletes a document, retrains and returns the new `ModelStatus`. Returns `404` if the document does not exist (also for a name with a disallowed extension) and `400` for unsafe names. The route is declared as `{name:path}` so that encoded separators (`..%2Fx.csv`, `a%5Cb.csv`) reach the name check. A bare `..` path segment is resolved by the HTTP stack before routing and therefore ends in `404`.
 
@@ -903,9 +918,10 @@ agreement = rank_agreement(results)
 | `overpass.py` | `OverpassClient.fetch_features()` — one Overpass QL query, classified into `OsmFeatures` |
 | `elevation.py` | `ElevationClient.fetch_grid()` — batched n×n Open Topo Data request |
 | `cache.py` | `cached_get()` — 30-day disk cache both clients use under `.cache/gis/` |
-| `errors.py` | `GisUnavailableError` — the one failure mode the API layer maps to HTTP 503 |
+| `errors.py` | `GisUnavailableError` — the one failure mode the API layer maps to HTTP 503, with a fixed public message (the upstream detail is only logged) |
+| `outbound.py` | Timeouts, the per-request deadline (40 s), response-size caps and `OutboundBudget`: Overpass at most 2 concurrent and 300 calls a day, elevation 1 call/s and 800 a day, and per client (IPv6 by /64) 40 new calls a day per service. A spent budget answers 503 with `Retry-After` |
 
-`app/application/site_analysis.py` (classification) and `app/application/footprint.py` (placement + right-of-way) consume these — see §3.11. Both GIS clients are FastAPI `Depends()` in `backend/site_routes.py`; tests override them with fakes via `app.dependency_overrides`, so the test suite never touches the network. One production note found and fixed during development: Overpass (or a filter in front of it) returns 406 for httpx's default `python-httpx/x.y` User-Agent — both clients send a descriptive one instead.
+`app/application/site_analysis.py` (classification) and `app/application/footprint.py` (placement + right-of-way) consume these — see §3.11. Both GIS clients are FastAPI `Depends()` in `backend/site_routes.py`; tests override them with fakes via `app.dependency_overrides`, so the test suite never touches the network. **Limits.** Overpass is queried around the point snapped to a 0.001° grid with the radius rounded up to 50 m plus 100 m, and the result is cut back to the exact requested circle, so nearby clicks share one cached query without changing the analysis. A cache cell is fetched once even under concurrent requests (single-flight). The cache stores only the classified ways, writes atomically and is pruned to 500 MB. An Overpass `remark` reporting an error is a 503 and is never cached. A read timeout is not retried. The map receives at most 5000 features with only `category` and `id`, and only tertiary-and-above roads. `footprint.py` skips buildings outside the footprint's bounding box and ways over 500 nodes before any geometry repair. One production note found and fixed during development: Overpass (or a filter in front of it) returns 406 for httpx's default `python-httpx/x.y` User-Agent — both clients send a descriptive one instead.
 
 ---
 
@@ -924,8 +940,9 @@ agreement = rank_agreement(results)
 
 | Module | Contents |
 |---|---|
-| `readers.py` | `read_document(path)` / `read_document_bytes(name, data) -> DocumentResult`, dispatched by kind. CSV is `,`, `;` or tab delimited (the delimiter is chosen from the header); JSON is a list or `{"records": [...]}`; JSONL has one object per line; text and PDF go through the rule-based extractor. PDF needs `pypdf`; without it the document gets the warning *PDF support not installed: pip install -e .[documents]*. Files are decoded as UTF-8 (with or without BOM), falling back to Windows-1251 with a warning. A malformed file or row produces a warning; it never breaks the retrain |
-| `llm_extraction.py` | Optional Claude fallback (below) |
+| `readers.py` | `read_document(path)` / `read_document_bytes(name, data) -> DocumentResult`, dispatched by kind. CSV is `,`, `;` or tab delimited (the delimiter is chosen from the header); JSON is a list or `{"records": [...]}`; JSONL has one object per line; text and PDF go through the rule-based extractor. PDF needs `pypdf`; without it the document gets the warning *PDF support not installed: pip install -e .[documents]*. PDF text is extracted in a child process (`pdf_worker.py`, `python -I`, a minimal environment) with a 20 s timeout, a 512 MB memory limit on Linux, at most 200 pages and 1 M characters, so a decompression bomb costs one warning, not the server. Lines and headers longer than 500 characters are skipped before any regex runs, and a document stops at 2000 records. Files are decoded as UTF-8 (with or without BOM), falling back to Windows-1251 with a warning. A malformed file or row produces a warning; it never breaks the retrain |
+| `llm_extraction.py` | Optional Claude fallback (below); the text sent is capped at 100 000 characters, and permanent failures are cached so a retrain does not resend them |
+| `pdf_worker.py` | The PDF text extractor run as a child process (above) |
 | `store.py` | `CorpusStore`, the `get_store()` singleton, `reset_store(path)` for tests, `sanitize_document_name`, and `CorpusError` subclasses that carry their HTTP status (400 / 404 / 409 / 413) |
 
 The constants live in `app/data/prediction_defaults.py`: reference conditions, priors, interval level, cross-validation thresholds, EN/UK synonyms, allowed extensions and the 5 MB limit. As in `uncertainty_defaults.py`, its docstring explains each assumption. `backend/model_routes.py` only maps the store to HTTP (§6.2); `routes.py` imports `current_model()` and `require_model_params()` from it. The model can also be used without the store:
@@ -949,7 +966,7 @@ model.predict("Turbine", {"aadt": 60000, "num_lanes": 3})["construction_cost_mln
 
 A block with fields but no recognised interchange type produces a warning, not a record. Validation then requires a known type and at least one target (> 0; safety in [1, 10]). Conditions outside their ranges (lanes 1–6, speed 40–140 km/h, AADT > 0) are imputed in the same way as missing ones. A record is synthetic when its document name starts with `synthetic_` or its `synthetic` field is truthy (`yes` / `true` / `так`). `corpus/README.md` has the full field and synonym list, with templates in English and Ukrainian.
 
-**Corpus store.** `CorpusStore` serves the directory `$TDSS_CORPUS_DIR` (default `<repo>/corpus/documents`). Every change (upload, delete, retrain) re-reads the whole directory and refits from scratch. At tens to hundreds of records this takes milliseconds, and there is no incremental state that could drift out of sync with the files. Training is lazy (on first access) and runs under a re-entrant lock. Each run produces an immutable snapshot that replaces the previous one atomically: the model, the document reports, the records, the cross-validation metrics, `trained_at` (UTC, ISO 8601) and `train_ms` (wall-clock time of ingest and fit, `time.perf_counter`). Hidden files and files with other extensions are ignored. Observed values more than 10× off the expert baseline get a "check the units" warning.
+**Corpus store.** `CorpusStore` serves the directory `$TDSS_CORPUS_DIR` (default `<repo>/corpus/documents`). Every change (upload, delete, retrain) re-reads the whole directory and refits from scratch. At tens to hundreds of records this takes milliseconds, and there is no incremental state that could drift out of sync with the files. Parse results are cached in memory per file (size, mtime, inode), so a retrain does not re-parse unchanged PDFs or send them to the LLM again. Training is lazy (on first access); writers and the first fit take a re-entrant lock, while readers (`/status`, `/predict`, `value_source: model`) read the published snapshot without it, so a slow retrain never blocks them. A document that cannot be read becomes that document's warning, and a fit that fails keeps the previous snapshot (with no snapshot yet, an expert-only model). Each run produces an immutable snapshot that replaces the previous one atomically: the model, the document reports, the records, the cross-validation metrics, `trained_at` (UTC, ISO 8601) and `train_ms` (wall-clock time of ingest and fit, `time.perf_counter`). Hidden files and files with other extensions are ignored. Observed values more than 10× off the expert baseline get a "check the units" warning.
 
 In Docker, the image ships `corpus/`: `backend/Dockerfile` copies it, and `.dockerignore` re-includes `corpus/**/*.md`. Uploaded documents, however, live in the container's file system unless a volume is mounted at `/opt/tdss/corpus/documents`, and `docker-compose.yml` does not define one yet.
 
@@ -969,6 +986,26 @@ The request uses structured outputs: a JSON schema in which `interchange_type` i
 - about 15 % of the target cells are left empty.
 
 Three `synthetic_report_*.md` files show the text format: Turbine (English), Diamond (English, two records) and Trumpet (Ukrainian). Each starts with a *SYNTHETIC EXAMPLE — not a real project* banner.
+
+---
+
+### 6.8 Security and Limits (public deployment)
+
+The app is built to be reachable from the internet (README, *Security*). Reading is open to anyone; changing the server's data needs a token; every request has a bounded cost, so that no single client can take the server down.
+
+**Admin token** (`backend/auth.py`). Corpus edits (retrain, upload, delete) need `Authorization: Bearer $TDSS_ADMIN_TOKEN`, compared in constant time. The variable is read on every request. When it is unset or shorter than 16 characters, editing is off (`403`), never open. The SPA asks for the token in the *Prediction model* tab, checks it with `GET /api/model/auth`, keeps it in `sessionStorage` (never in the URL, so share links cannot carry it) and sends it only on the three admin calls. There is no CORS middleware: the SPA and the API share one origin (nginx in production, Vite's proxy in development), so browsers refuse cross-site calls.
+
+**Request bounds** (`backend/schemas.py`). `ProjectParams`: design speed 20–200, AADT 0–1 000 000, peak factor 0–100, lanes 1–10, budget and land limit 0–1e9, terrain and sensitivity at most 32 characters. `context` at most 64 characters; `methods` at most 5; `ahp_matrix` at most 4 × 4; SMAA `iterations` 100–5000 (the UI's maximum), `seed` 0–2³²−1, at most 4 per-criterion ranges. Site requests: latitude ±85 (the map's limit), radius 100–1500 m, `alternative_name` at most 64 characters, demolition cost at most 100 000 USD/m². The 422 handler in `backend/main.py` returns at most 20 errors as `{type, loc, msg}`, without the offending input: FastAPI's default echoed every bad item (a 6 MB body produced a 300 MB response) and failed on NaN input.
+
+**Concurrency caps** (`backend/limits.py`). The single uvicorn worker runs every route in one 40-thread pool. `/api/robustness` may run 2 requests at once and `/api/site/*` 4; one more gets an immediate `503` with `Retry-After` instead of waiting for a thread, so the rest of the API (and the health check) stays responsive. Uvicorn itself stops at 64 concurrent connections.
+
+**Corpus** (§6.7). At most 200 documents, 50 MB in total, 2000 records per document; PDFs are parsed in a child process with time, memory and page limits; the text extractor's regexes are linear and skip lines over 500 characters; a document that fails to read or to fit never breaks the model.
+
+**GIS** (§6.6). Outbound calls to the public Overpass and Open Topo Data services have a per-request deadline, a size cap on responses, single-flight per cache cell and a daily budget, so that this server cannot get its address banned or fill its disk.
+
+**nginx** (`frontend/nginx.conf`). Request bodies are limited to 32 KB (6 MB for the upload, which is refused before the body is read when it carries no token). Rate limits per client (the real address from `CF-Connecting-IP`, trusted only from the Docker network's gateway; IPv6 keyed on its /64): 10 requests/s for the API, 12/min for robustness, site analysis and the token check, 60/min for corpus edits; 20 connections per client. Short client timeouts against slow-loris connections. Security headers on every response: `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options: DENY`, `Permissions-Policy` and an enforcing CSP for framing, plugins, `<base>` and forms. The full CSP is sent as `Content-Security-Policy-Report-Only` until it has been checked in a browser.
+
+**Containers and deployment** (`docker-compose.zima.yml`, `deploy/zima/`). nginx is published on `127.0.0.1` only (`TDSS_BIND` to change it), so the plain-HTTP origin cannot be reached around Cloudflare. Both containers drop every capability except the few their entrypoints need, cannot gain privileges, and have memory, CPU and process limits and rotated logs; the backend refuses to start as root. The deployer fetches its own script only on first start and afterwards updates it only with a CI-passed deploy, and it counts only `ci.yml` runs started by a push to the deploy branch.
 
 ---
 
@@ -1469,7 +1506,7 @@ TDSS/
 │
 ├── backend/                    FastAPI REST API (v5)
 │   ├── __init__.py
-│   ├── main.py                 App factory: CORS, static files, router mounts
+│   ├── main.py                 App factory: 422 handler, static files, router mounts
 │   ├── routes.py               Evaluate/robustness route handlers + JSON mapping
 │   ├── site_routes.py          /api/site/analyse, /api/site/footprint (§6.6)
 │   ├── model_routes.py         /api/model/* — status, retrain, documents, predict (§6.2)

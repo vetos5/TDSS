@@ -7,7 +7,8 @@
 #   ZIMA_HOST=root@zimaos.local scripts/deploy_zima.sh   # or in the environment
 #
 # Optional: ZIMA_DIR (default /DATA/AppData/tdss/src). A .env file in the repository root is
-# copied along and read by docker compose (TDSS_PORT, TZ, TDSS_SEED_DEMO, ...).
+# copied along (readable by its owner only) and read by docker compose (TDSS_ADMIN_TOKEN,
+# TDSS_PORT, TDSS_BIND, TZ, TDSS_SEED_DEMO, ...).
 set -eu
 
 HOST="${1:-${ZIMA_HOST:-}}"
@@ -27,14 +28,22 @@ COPYFILE_DISABLE=1 tar -czf - \
     --exclude=__pycache__ --exclude=.pytest_cache --exclude=.ruff_cache --exclude=.cache \
     --exclude=.sf --exclude=legacy --exclude=.DS_Store \
     . | ssh "$HOST" "rm -rf '$DIR.new' && mkdir -p '$DIR.new' && tar -xzf - -C '$DIR.new' \
+        && { [ ! -f '$DIR.new/.env' ] || chmod 600 '$DIR.new/.env'; } \
         && rm -rf '$DIR' && mv '$DIR.new' '$DIR'"
 
 echo "==> Building and starting on $HOST (the first build takes a few minutes)"
 # Build first, then recreate: `up --build` alone can keep the old containers running on the
 # previous images when the tag moves, so a redeploy would silently serve the old version.
+# Only TDSS images (the label set in docker-compose.zima.yml) are pruned: the host is shared.
 ssh "$HOST" "cd '$DIR' && docker compose -f docker-compose.zima.yml build \
     && docker compose -f docker-compose.zima.yml up -d --force-recreate --remove-orphans \
-    && docker image prune -f >/dev/null && docker compose -f docker-compose.zima.yml ps"
+    && docker image prune -f --filter label=io.github.vetos5.tdss >/dev/null \
+    && docker compose -f docker-compose.zima.yml ps"
 
 PORT="$(sed -n 's/^TDSS_PORT=//p' .env 2>/dev/null | tail -n 1)"
-echo "==> Done: http://${HOST#*@}:${PORT:-8580}"
+BIND="$(sed -n 's/^TDSS_BIND=//p' .env 2>/dev/null | tail -n 1)"
+if [ "${BIND:-127.0.0.1}" = 127.0.0.1 ]; then
+    echo "==> Done: http://127.0.0.1:${PORT:-8580} on $HOST (loopback only; TDSS_BIND=0.0.0.0 in .env opens it to the LAN)"
+else
+    echo "==> Done: http://${HOST#*@}:${PORT:-8580}"
+fi

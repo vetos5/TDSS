@@ -1,4 +1,6 @@
 import { createApp } from 'vue'
+// Leaflet's stylesheet is bundled (no CDN) and comes first, so the app's rules still win.
+import 'leaflet/dist/leaflet.css'
 import './style.css'
 import App from './App.vue'
 import { i18n } from './i18n.js'

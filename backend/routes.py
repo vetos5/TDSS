@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import threading
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -34,6 +35,7 @@ from app.data.interchange_data import (
 )
 from app.data.mcda_methods import resolve_method_info
 from app.data.uncertainty_defaults import DEFAULT_VALUE_UNCERTAINTY
+from backend.limits import slot
 from backend.model_routes import current_model, require_model_params
 from backend.schemas import (
     AdjustmentNote,
@@ -58,6 +60,9 @@ from backend.schemas import (
 )
 
 router = APIRouter()
+
+# SMAA is the costliest request (seconds of CPU at the iteration limit); see backend.limits.
+_ROBUSTNESS_SLOTS = threading.BoundedSemaphore(2)
 
 
 @router.get("/contexts", response_model=ContextListResponse)
@@ -230,6 +235,11 @@ def evaluate(req: EvaluateRequest, lang: str = Query(default="en")):
 @router.post("/robustness", response_model=RobustnessResponse)
 def robustness(req: RobustnessRequest, lang: str = Query(default="en")):
     """SMAA-2 rank acceptability and weight sensitivity for the selected methods."""
+    with slot(_ROBUSTNESS_SLOTS):
+        return _robustness(req, lang)
+
+
+def _robustness(req: RobustnessRequest, lang: str) -> RobustnessResponse:
     prep = _prepare(req, lang)
     unknown = set(req.uncertainty.values) - {c.name for c in CRITERIA}
     if unknown:

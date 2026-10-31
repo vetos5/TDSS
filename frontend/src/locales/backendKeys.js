@@ -12,3 +12,13 @@ export const backendKeyMap = {
   maximize: 'backend.direction_maximize',
   minimize: 'backend.direction_minimize',
 }
+
+// The fixed 503 texts of the GIS clients (app/infrastructure/gis/errors.py), keyed by their
+// exact English wording; api.js errorText() shows the localised apiErrors entry instead.
+export const backendErrorKeyMap = {
+  'The map data service is unavailable right now. Try again in a minute.': 'mapUnavailable',
+  "Today's quota of map data requests is used up. Points analysed before still work; try new points tomorrow.": 'mapQuota',
+  "You have used today's share of new map data requests. Points analysed before still work; try new points tomorrow.": 'mapClientQuota',
+  'There is too much map data around this point. Choose a smaller radius.': 'mapTooMuchData',
+  'The map data service could not finish this query. Try a smaller radius or try again later.': 'mapQueryFailed',
+}

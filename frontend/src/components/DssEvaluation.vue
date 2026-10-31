@@ -174,6 +174,15 @@ const stackedChart = computed(() => {
 })
 
 const selResult = computed(() => props.data?.results?.find(r => r.alternative_name === selectedDetail.value))
+
+// engineering_desc uses light markdown (**bold**, *italic*, blank-line breaks). It is escaped
+// first, so the only HTML in the result is the markup added here.
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
+const descHtml = computed(() => (detailInfo.value?.engineering_desc ?? '')
+  .replace(/[&<>"']/g, c => HTML_ESCAPES[c])
+  .replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-accent-ink">$1</strong>')
+  .replace(/\*(.*?)\*/g, '<em>$1</em>')
+  .replace(/\n\n/g, '<br/><br/>'))
 </script>
 
 <template>
@@ -356,7 +365,7 @@ const selResult = computed(() => props.data?.results?.find(r => r.alternative_na
         <div class="md:col-span-3">
           <p class="eyebrow mb-1.5">{{ t.engineeringDesc }}</p>
           <div class="mb-4 text-[13px] leading-relaxed break-words text-fg"
-               v-html="detailInfo.engineering_desc?.replace(/\*\*(.*?)\*\*/g, '<strong class=\'font-semibold text-accent-ink\'>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/\n\n/g, '<br/><br/>')">
+               v-html="descHtml">
           </div>
 
           <div v-if="detailInfo.pros?.length || detailInfo.cons?.length" class="grid grid-cols-1 gap-3 sm:grid-cols-2">

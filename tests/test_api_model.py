@@ -22,7 +22,9 @@ from backend.main import app
 from backend.schemas import ProjectParams
 from tests._evaluate_cases import CONTEXTS, PARAM_SETS
 
-client = TestClient(app)
+ADMIN_TOKEN = "test-admin-token-0123456789"
+client = TestClient(app, headers={"Authorization": f"Bearer {ADMIN_TOKEN}"})
+anonymous = TestClient(app)
 DEMO_CORPUS = Path(__file__).resolve().parents[1] / "corpus" / "documents"
 SYSTEM = "System (Highway + Highway)"
 CSV = (b"interchange_type,aadt,num_lanes,construction_cost_mln,throughput_vph\n"
@@ -34,6 +36,12 @@ REPORT = "Interchange type: Turbine\nAADT: 60 000\nConstruction cost: $52M\n".en
 def no_llm(monkeypatch):
     """Never reach the Claude API from tests, whatever the developer's environment says."""
     monkeypatch.delenv("TDSS_LLM_EXTRACTION", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def admin_token(monkeypatch):
+    """Corpus editing on, with the token ``client`` sends."""
+    monkeypatch.setenv("TDSS_ADMIN_TOKEN", ADMIN_TOKEN)
 
 
 @pytest.fixture
@@ -73,7 +81,7 @@ def test_status_of_empty_corpus(corpus):
     data = r.json()
     assert set(data) == {"trained_at", "train_ms", "revision", "n_records", "n_synthetic",
                          "documents", "criteria", "coefficients", "interval_level",
-                         "llm_available", "pdf_available"}
+                         "llm_available", "pdf_available", "editing_enabled"}
     assert data["n_records"] == data["n_synthetic"] == 0 and data["documents"] == []
     assert datetime.fromisoformat(data["trained_at"]).tzinfo is not None
     assert data["train_ms"] >= 0 and data["interval_level"] == 0.9
@@ -460,3 +468,48 @@ def test_robustness_takes_model_ranges_only_for_observed_criteria(corpus):
     note = data["adjustments"][-1]
     assert note["kind"] == "model" and "Construction Cost" in note["message"]
     assert "Land Area" not in note["message"]
+
+
+# ---------------------------------------------------------------------------
+# Admin token
+# ---------------------------------------------------------------------------
+
+
+WRITES = [
+    ("post", "/api/model/retrain", {}),
+    ("post", "/api/model/documents", {"files": {"file": ("x.csv", CSV, "text/csv")}}),
+    ("delete", "/api/model/documents/projects.csv", {}),
+    ("get", "/api/model/auth", {}),
+]
+
+
+@pytest.mark.parametrize("method,url,kwargs", WRITES)
+@pytest.mark.parametrize("headers", [{}, {"Authorization": "Bearer wrong-token-0123456789"},
+                                     {"Authorization": ADMIN_TOKEN}])
+def test_writes_need_the_admin_token(corpus, method, url, kwargs, headers):
+    (corpus / "projects.csv").write_bytes(CSV)
+    r = getattr(anonymous, method)(url, headers=headers, **kwargs)
+    assert r.status_code == 401 and r.headers["www-authenticate"] == "Bearer"
+    assert (corpus / "projects.csv").exists() and not (corpus / "x.csv").exists()
+
+
+@pytest.mark.parametrize("token", [None, "", "short"])
+@pytest.mark.parametrize("method,url,kwargs", WRITES)
+def test_writes_are_disabled_without_a_server_token(corpus, monkeypatch, method, url, kwargs,
+                                                    token):
+    if token is None:
+        monkeypatch.delenv("TDSS_ADMIN_TOKEN")
+    else:
+        monkeypatch.setenv("TDSS_ADMIN_TOKEN", token)
+    r = getattr(client, method)(url, **kwargs)
+    assert r.status_code == 403
+    assert client.get("/api/model/status").json()["editing_enabled"] is False
+
+
+def test_reads_stay_public_and_report_editing(corpus):
+    assert anonymous.get("/api/model/auth").status_code == 401
+    assert client.get("/api/model/auth").status_code == 204
+    status = anonymous.get("/api/model/status")
+    assert status.status_code == 200 and status.json()["editing_enabled"] is True
+    r = anonymous.post("/api/model/predict", json={"context": SYSTEM})
+    assert r.status_code == 200

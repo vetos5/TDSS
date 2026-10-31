@@ -1,7 +1,15 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import L from 'leaflet'
+import markerIcon from 'leaflet/dist/images/marker-icon.png'
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
+import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 import { useViewport } from '../composables/useViewport.js'
+
+// Leaflet finds its default marker images through leaflet.css; bundled, they are renamed (or
+// inlined), so that lookup fails. Point the default icon at the bundled files instead.
+L.Icon.Default.imagePath = ''
+L.Icon.Default.mergeOptions({ iconUrl: markerIcon, iconRetinaUrl: markerIcon2x, shadowUrl: markerShadow })
 
 const props = defineProps({
   lat: Number,
@@ -17,6 +25,15 @@ let map = null
 let marker = null
 let circle = null
 let ro = null
+
+// Built from DOM nodes: an HTML string would let the names inject markup.
+function popupContent() {
+  const el = document.createElement('div')
+  const name = document.createElement('b')
+  name.textContent = props.name ?? ''
+  el.append(name, document.createElement('br'), props.example ?? '')
+  return el
+}
 
 function initMap() {
   if (!mapContainer.value) return
@@ -35,7 +52,7 @@ function initMap() {
   ).addTo(map)
 
   marker = L.marker([props.lat, props.lon]).addTo(map)
-    .bindPopup(`<b>${props.name}</b><br>${props.example}`)
+    .bindPopup(popupContent())
 
   circle = L.circle([props.lat, props.lon], {
     radius: 300,

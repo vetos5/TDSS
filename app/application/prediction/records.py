@@ -9,8 +9,9 @@ Rules (see ``app.data.prediction_defaults`` for the constants):
 
 * ``interchange_type`` is required and must resolve to one of the eight alternatives of
   ``INTERCHANGE_DATA`` (EN/UK synonyms, case-insensitive). The context is derived from the type.
-* At least one target (cost, land, throughput, safety) is required; every target must be > 0 and
-  the safety index must lie in [1, 10]. An invalid target is dropped with a warning.
+* At least one target (cost, land, throughput, safety) is required; every target must be > 0,
+  within ``TARGET_RANGE`` (absurdity bounds that keep the log residual finite), and the safety
+  index must lie in [1, 10]. An invalid target is dropped with a warning.
 * A missing or invalid site condition is replaced by its reference value, with a warning naming
   the field — the record still informs the per-type correction.
 """
@@ -31,10 +32,12 @@ from app.data.prediction_defaults import (
     FALSE_WORDS,
     FIELD_SYNONYMS,
     INTERCHANGE_TYPE_SYNONYMS,
+    MAX_FIELD_LINE_CHARS,
     NUM_LANES_RANGE,
     REFERENCE_CONDITIONS,
     SAFETY_BOUNDS,
     SYNTHETIC_PREFIX,
+    TARGET_RANGE,
     TARGETS,
     TERRAIN_LEVELS,
     TERRAIN_SYNONYMS,
@@ -97,19 +100,35 @@ def resolve_field_name(key: Any) -> Optional[str]:
     return _FIELD_LOOKUP.get(normalise_key(key))
 
 
-_HEADER_QUALIFIER = re.compile(r"^(?P<key>.*?)\s*\((?P<unit>[^)]*)\)\s*$")
+def _split_qualifier(text: str) -> Optional[Tuple[str, str]]:
+    """``(key, unit)`` for ``"Key (unit)"``: the shortest key followed by a parenthesised unit
+    that ends the text, as ``^(?P<key>.*?)\s*\((?P<unit>[^)]*)\)\s*$`` would match. Scanning
+    from the end keeps it linear; that regex backtracked quadratically on a run of ``(``."""
+    text = text.rstrip()
+    if not text.endswith(")"):
+        return None
+    # The unit holds no ")", so it opens at the first "(" after the second-to-last ")".
+    opening = text.find("(", text.rfind(")", 0, len(text) - 1) + 1)
+    key = text[:opening].rstrip()
+    if opening < 0 or "\n" in key:  # the regex's ".*?" key stops at a line break
+        return None
+    return key, text[opening + 1 : -1]
 
 
 def resolve_header(key: Any) -> Tuple[Optional[str], str]:
     """``(canonical field, unit hint)`` for a CSV header / JSON key; a trailing parenthesised
-    unit is accepted, e.g. ``Land area (m²)`` → ``("land_area_hectares", "m²")``."""
-    name = resolve_field_name(key)
+    unit is accepted, e.g. ``Land area (m²)`` → ``("land_area_hectares", "m²")``. Keys longer
+    than ``MAX_FIELD_LINE_CHARS`` are never fields."""
+    text = str(key)
+    if len(text) > MAX_FIELD_LINE_CHARS:
+        return None, ""
+    name = resolve_field_name(text)
     if name is not None:
         return name, ""
-    match = _HEADER_QUALIFIER.match(str(key))
-    if match is None:
+    split = _split_qualifier(text)
+    if split is None:
         return None, ""
-    return resolve_field_name(match.group("key")), match.group("unit")
+    return resolve_field_name(split[0]), split[1]
 
 
 def _clean_value(value: Any) -> str:
@@ -151,12 +170,16 @@ _NUMBER_RE = re.compile(
 def parse_number(value: Any) -> Optional[float]:
     """First number in *value* (``"52,000"`` → 52000, ``"48,5"`` → 48.5), or None.
 
-    Numeric inputs are returned as float; booleans and NaN are rejected.
+    Numeric inputs are returned as float; booleans, NaN and numbers too large for a float (a
+    400-digit JSON integer, a 400-digit string) are rejected.
     """
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        number = float(value)
+        try:
+            number = float(value)
+        except OverflowError:
+            return None
         return number if math.isfinite(number) else None
     match = _NUMBER_RE.search(str(value))
     if match is None:
@@ -164,6 +187,8 @@ def parse_number(value: Any) -> Optional[float]:
     sign, integer, decimals = match.groups()
     integer = re.sub(r"\D", "", integer)
     number = float(f"{integer}.{decimals}" if decimals else integer)
+    if not math.isfinite(number):
+        return None
     return -number if sign in ("-", "−") else number
 
 
@@ -357,11 +382,10 @@ def _target(name: str, value: Any, warnings: List[str]) -> Optional[float]:
     if number <= 0:
         warnings.append(f"{name} {_fmt(number)} must be > 0 — ignored")
         return None
-    if name == "safety_index":
-        lo, hi = SAFETY_BOUNDS
-        if not lo <= number <= hi:
-            warnings.append(f"{name} {_fmt(number)} outside {lo:g}–{hi:g} — ignored")
-            return None
+    lo, hi = SAFETY_BOUNDS if name == "safety_index" else TARGET_RANGE
+    if not lo <= number <= hi:
+        warnings.append(f"{name} {_fmt(number)} outside {lo:g}–{hi:g} — ignored")
+        return None
     return number
 
 

@@ -26,6 +26,7 @@ const expandedWarnings = reactive(new Set())
 const dragActive = ref(false)
 const fileInput = ref(null)
 const localError = ref('')
+const tokenInput = ref('')
 
 // ── Loading & prediction ─────────────────────────────────────────────────────
 // Like the robustness tab: work only while visible, remember that inputs changed meanwhile.
@@ -120,6 +121,14 @@ const trainMs = computed(() => {
 })
 
 // ── Document manager ─────────────────────────────────────────────────────────
+// Editing needs a server with an admin token configured and that token entered in this tab.
+// Without it the corpus is shown read-only.
+const canEdit = computed(() => model.editingEnabled.value && model.unlocked.value)
+
+async function unlock() {
+  if (await model.unlock(tokenInput.value)) tokenInput.value = ''
+}
+
 const formatsText = ALLOWED_EXTENSIONS.join(' ')
 const maxMb = MAX_UPLOAD_BYTES / (1024 * 1024)
 
@@ -137,6 +146,7 @@ async function uploadFiles(files) {
   model.clearError()
   const problems = []
   for (const file of files) {
+    if (!canEdit.value) break // the token was rejected (or editing switched off) mid-batch
     const problem = checkFile(file)
     if (problem) {
       problems.push(problem)
@@ -144,14 +154,14 @@ async function uploadFiles(files) {
       continue
     }
     const result = await model.upload(file)
-    if (result === 'conflict' && window.confirm(fmt(t.value.modelOverwriteConfirm, { name: file.name }))) {
+    if (result === 'conflict' && canEdit.value && window.confirm(fmt(t.value.modelOverwriteConfirm, { name: file.name }))) {
       await model.upload(file, true)
     }
   }
 }
 
 function pickFiles() {
-  if (!model.uploading.value) fileInput.value?.click()
+  if (canEdit.value && !model.uploading.value) fileInput.value?.click()
 }
 
 function onFileInput(e) {
@@ -167,7 +177,7 @@ function onDrop(e) {
 }
 
 function removeDocument(name) {
-  if (window.confirm(fmt(t.value.modelDeleteConfirm, { name }))) {
+  if (canEdit.value && window.confirm(fmt(t.value.modelDeleteConfirm, { name }))) {
     expandedWarnings.delete(name)
     model.remove(name)
   }
@@ -359,26 +369,60 @@ const coefRows = computed(() => (status.value?.coefficients?.[coefCriterion.valu
             <h3 class="card-title">{{ t.modelDocsTitle }}</h3>
             <p class="card-desc">{{ t.modelDocsDesc }}</p>
           </div>
-          <button type="button" class="btn" :disabled="busy" @click="retrain">
-            <Icon name="refresh" :class="retraining ? 'animate-spin' : ''" />
-            {{ retraining ? t.modelRetraining : t.modelRetrain }}
-          </button>
+          <div v-if="canEdit" class="flex flex-wrap items-center gap-2">
+            <button type="button" class="btn" :disabled="busy" @click="retrain">
+              <Icon name="refresh" :class="retraining ? 'animate-spin' : ''" />
+              {{ retraining ? t.modelRetraining : t.modelRetrain }}
+            </button>
+            <button type="button" class="btn-ghost" :title="t.modelLockHint" @click="model.lock()">
+              <Icon name="lock" />{{ t.modelLock }}
+            </button>
+          </div>
         </div>
 
-        <div role="button" tabindex="0"
-             class="flex cursor-pointer flex-col items-center rounded-lg border border-dashed px-4 py-5 text-center transition-colors"
-             :class="dragActive ? 'border-accent bg-accent-soft' : 'border-line-strong hover:bg-surface-2 active:bg-surface-2'"
-             @click="pickFiles" @keydown.enter.prevent="pickFiles" @keydown.space.prevent="pickFiles"
-             @dragenter.prevent="dragActive = true" @dragover.prevent="dragActive = true"
-             @dragleave.prevent="dragActive = false" @drop.prevent="onDrop">
-          <input ref="fileInput" type="file" multiple class="hidden" :accept="ALLOWED_EXTENSIONS.join(',')" @change="onFileInput" />
-          <span v-if="model.uploading.value" class="spinner pointer-events-none mb-2 !h-4 !w-4"></span>
-          <Icon v-else name="upload" class="pointer-events-none mb-2 text-lg text-subtle" />
-          <p class="pointer-events-none text-[13px] font-medium">
-            {{ model.uploading.value ? t.modelUploading : coarse ? t.modelTapHint : t.modelDropHint }}
+        <!-- Editing off on the server (read-only) · locked (token form) · unlocked (drop zone) -->
+        <Transition name="fade" mode="out-in">
+          <p v-if="!model.editingEnabled.value" key="off" class="flex items-start gap-1.5 text-xs text-subtle">
+            <Icon name="lock" class="mt-px" />
+            <span>{{ t.modelEditingOff }}</span>
           </p>
-          <p class="pointer-events-none mt-0.5 text-xs text-muted">{{ fmt(t.modelDropFormats, { formats: formatsText, size: maxMb }) }}</p>
-        </div>
+
+          <form v-else-if="!model.unlocked.value" key="locked" class="rounded-lg border border-line bg-surface-2/60 p-3"
+                @submit.prevent="unlock">
+            <label for="admin-token" class="field-label flex items-center gap-1.5">
+              <Icon name="lock" />{{ t.modelUnlockLabel }}
+            </label>
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <input id="admin-token" v-model="tokenInput" type="password" class="field min-w-0 sm:flex-1"
+                     autocomplete="current-password" autocapitalize="off" spellcheck="false"
+                     :placeholder="t.modelTokenPlaceholder" :aria-invalid="!!model.authError.value"
+                     :aria-describedby="model.authError.value ? 'admin-token-error' : 'admin-token-hint'" />
+              <button type="submit" class="btn-primary shrink-0" :disabled="!tokenInput.trim() || model.unlocking.value">
+                <span v-if="model.unlocking.value" class="spinner"></span>
+                {{ model.unlocking.value ? t.modelUnlocking : t.modelUnlock }}
+              </button>
+            </div>
+            <p v-if="model.authError.value" id="admin-token-error" class="mt-2 text-xs text-bad" role="alert">
+              {{ model.authError.value }}
+            </p>
+            <p id="admin-token-hint" class="mt-1.5 text-xs leading-relaxed text-subtle">{{ t.modelUnlockHint }}</p>
+          </form>
+
+          <div v-else key="edit" role="button" tabindex="0"
+               class="flex cursor-pointer flex-col items-center rounded-lg border border-dashed px-4 py-5 text-center transition-colors"
+               :class="dragActive ? 'border-accent bg-accent-soft' : 'border-line-strong hover:bg-surface-2 active:bg-surface-2'"
+               @click="pickFiles" @keydown.enter.prevent="pickFiles" @keydown.space.prevent="pickFiles"
+               @dragenter.prevent="dragActive = true" @dragover.prevent="dragActive = true"
+               @dragleave.prevent="dragActive = false" @drop.prevent="onDrop">
+            <input ref="fileInput" type="file" multiple class="hidden" :accept="ALLOWED_EXTENSIONS.join(',')" @change="onFileInput" />
+            <span v-if="model.uploading.value" class="spinner pointer-events-none mb-2 !h-4 !w-4"></span>
+            <Icon v-else name="upload" class="pointer-events-none mb-2 text-lg text-subtle" />
+            <p class="pointer-events-none text-[13px] font-medium">
+              {{ model.uploading.value ? t.modelUploading : coarse ? t.modelTapHint : t.modelDropHint }}
+            </p>
+            <p class="pointer-events-none mt-0.5 text-xs text-muted">{{ fmt(t.modelDropFormats, { formats: formatsText, size: maxMb }) }}</p>
+          </div>
+        </Transition>
 
         <div class="mt-2 flex flex-wrap gap-1.5">
           <span class="badge">
@@ -417,7 +461,8 @@ const coefRows = computed(() => (status.value?.coefficients?.[coefCriterion.valu
                 </li>
               </ul>
             </div>
-            <button type="button" class="icon-btn shrink-0 active:!bg-bad-soft active:!text-bad disabled:pointer-events-none disabled:opacity-40"
+            <button v-if="canEdit" type="button"
+                    class="icon-btn shrink-0 active:!bg-bad-soft active:!text-bad disabled:pointer-events-none disabled:opacity-40"
                     :aria-label="`${t.modelDelete}: ${doc.name}`"
                     :disabled="busy" @click="removeDocument(doc.name)">
               <Icon name="trash" />
@@ -434,7 +479,7 @@ const coefRows = computed(() => (status.value?.coefficients?.[coefCriterion.valu
                 <th class="text-right">{{ t.modelColRecords }}</th>
                 <th class="text-right">{{ t.modelColSize }}</th>
                 <th>{{ t.modelColWarnings }}</th>
-                <th class="w-10"></th>
+                <th v-if="canEdit" class="w-10"></th>
               </tr>
             </thead>
             <tbody>
@@ -461,7 +506,7 @@ const coefRows = computed(() => (status.value?.coefficients?.[coefCriterion.valu
                     </button>
                     <span v-else class="text-subtle">—</span>
                   </td>
-                  <td class="!py-1.5 text-right">
+                  <td v-if="canEdit" class="!py-1.5 text-right">
                     <button type="button" class="icon-btn hover:!bg-bad-soft hover:!text-bad disabled:pointer-events-none disabled:opacity-40"
                             :title="t.modelDelete" :aria-label="`${t.modelDelete}: ${doc.name}`"
                             :disabled="busy" @click="removeDocument(doc.name)">
@@ -470,7 +515,7 @@ const coefRows = computed(() => (status.value?.coefficients?.[coefCriterion.valu
                   </td>
                 </tr>
                 <tr v-if="expandedWarnings.has(doc.name)">
-                  <td colspan="7" class="!bg-transparent !pt-0">
+                  <td :colspan="canEdit ? 7 : 6" class="!bg-transparent !pt-0">
                     <ul class="notice notice-warn space-y-1 text-xs">
                       <li v-for="(w, i) in doc.warnings" :key="i" class="flex gap-1.5">
                         <Icon name="alert-triangle" class="mt-px" />

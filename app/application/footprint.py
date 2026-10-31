@@ -25,7 +25,9 @@ from dataclasses import dataclass
 
 from shapely.geometry import LineString, Polygon
 from shapely.ops import unary_union
+from shapely.prepared import prep
 
+from app.data.site_analysis_defaults import MAX_BUILDING_NODES
 from app.domain.geometry import METRES_PER_COORD
 from app.infrastructure.generators import (
     CloverleafGenerator,
@@ -127,12 +129,34 @@ def _building_polygon(way: OsmWay, origin: LocalOrigin) -> Polygon | None:
 def estimate_right_of_way(
     footprint: Footprint, buildings: list[OsmWay], demolition_cost_per_sqm: float
 ) -> RightOfWay:
-    """How many OSM buildings the footprint would demolish, and a rough cost for that."""
+    """How many OSM buildings the footprint would demolish, and a rough cost for that.
+
+    Every building in the search radius is passed in, but only those whose bounding box meets the
+    footprint's can overlap it, so the rest are skipped before any geometry is built or repaired.
+    Buildings over MAX_BUILDING_NODES vertices are skipped too (see site_analysis_defaults.py).
+    """
     affected = 0
     demolished_area = 0.0
+    if footprint.polygon.is_empty:
+        return RightOfWay(0, 0.0, 0.0)
+    # The projection is axis-aligned and linear, so the local bounding box maps to a lat/lon box
+    # and each building can be tested on its raw coordinates. The margin (about 1 cm) absorbs
+    # rounding in the round trip, so a building touching the box edge is still checked.
+    minx, miny, maxx, maxy = footprint.polygon.bounds
+    south, west = to_latlon(minx, miny, footprint.origin)
+    north, east = to_latlon(maxx, maxy, footprint.origin)
+    south, west, north, east = south - 1e-7, west - 1e-7, north + 1e-7, east + 1e-7
+    fp_prepared = prep(footprint.polygon)
     for way in buildings:
+        if not way.coords or len(way.coords) > MAX_BUILDING_NODES:
+            continue
+        lats = [lat for lat, _ in way.coords]
+        lons = [lon for _, lon in way.coords]
+        if (max(lats) < south or min(lats) > north
+                or max(lons) < west or min(lons) > east):
+            continue
         poly = _building_polygon(way, footprint.origin)
-        if poly is None or poly.is_empty:
+        if poly is None or poly.is_empty or not fp_prepared.intersects(poly):
             continue
         overlap = poly.intersection(footprint.polygon)
         if not overlap.is_empty:

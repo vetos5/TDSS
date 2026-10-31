@@ -97,6 +97,10 @@ The layers are strict. Keep maths out of the routes and the frontend.
   `corpus/README.md` defines the fields, units and EN/UK synonyms the extractor accepts. The
   `synthetic_*` files are invented demo data from `python -m scripts.make_synthetic_corpus`. Costs
   are USD only.
+- **The app is public; keep it safe to be.** Corpus edits need `TDSS_ADMIN_TOKEN` as a bearer
+  token (`backend/auth.py`; off when unset). Give every new request field a bound in `schemas.py`,
+  cap costly endpoints with `backend/limits.slot()`, and never return paths or upstream errors in
+  `detail`. DOCUMENTATION.md §6.8 lists the limits; `frontend/nginx.conf` holds the rate limits.
 - **LLM extraction is opt-in.** It runs only with `TDSS_LLM_EXTRACTION=1` and `ANTHROPIC_API_KEY`
   set, and `TDSS_LLM_MODEL` overrides the model. It is a fallback for documents the rule-based
   extractor cannot read and must stay outside the model itself.

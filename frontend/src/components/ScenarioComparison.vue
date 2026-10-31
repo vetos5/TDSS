@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useLocale } from '../composables/useLocale.js'
 import { useScenarios } from '../composables/useScenarios.js'
 import { CRITERION_KEYS } from '../composables/useDSS.js'
+import { errorText } from '../api.js'
 
 // The current inputs side by side with the saved scenarios ticked in the inputs panel. Each
 // column is evaluated live by the backend, so a comparison never shows stale scores; rows whose
@@ -20,7 +21,8 @@ const columns = computed(() => [
   ...compared.value
     .map(id => scenarios.value.find(s => s.id === id))
     .filter(Boolean)
-    .map(s => ({ id: s.id, name: s.name, state: s.state, data: results.value[s.id] })),
+    // Shown as evaluated: normalised the way loading the scenario would read it.
+    .map(s => ({ id: s.id, name: s.name, state: props.dss.normalizeState(s.state), data: results.value[s.id] })),
 ])
 
 async function refresh() {
@@ -29,7 +31,7 @@ async function refresh() {
   const settled = await Promise.allSettled(saved.map(c => props.dss.evaluateState(c.state, locale.value)))
   if (id !== requestId) return
   results.value = Object.fromEntries(saved.map((c, i) => [c.id,
-    settled[i].status === 'fulfilled' ? settled[i].value : { error: settled[i].reason?.response?.data?.detail ?? String(settled[i].reason) }]))
+    settled[i].status === 'fulfilled' ? settled[i].value : { error: errorText(settled[i].reason) }]))
 }
 
 // Saved scenarios only change when one is saved, ticked or deleted; the current column follows

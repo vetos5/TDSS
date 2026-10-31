@@ -4,9 +4,18 @@
 #   docker compose -f docker-compose.zima.yml build
 #   docker compose -f docker-compose.zima.yml up -d --force-recreate
 #
-# Then open http://<zima-ip>:8580. Port 80 is left to the ZimaOS dashboard. Data stays in
-# /DATA/AppData/tdss across rebuilds; settings can go in a .env file next to this one.
+# The site listens on 127.0.0.1:8580, for a Cloudflare tunnel (or a reverse proxy) on the same
+# machine. Set TDSS_BIND=0.0.0.0 to open http://<zima-ip>:8580 to the LAN instead. Port 80 is left
+# to the ZimaOS dashboard. Data stays in /DATA/AppData/tdss across rebuilds; settings can go in a
+# .env file next to this one (README, "Security / public deployment").
 name: tdss
+
+# The default json-file log driver keeps every line forever.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   backend:
@@ -15,6 +24,9 @@ services:
       dockerfile: backend/Dockerfile
       args:
         WITH_LLM: ${TDSS_WITH_LLM:-0}
+      # The deployer prunes only images with this label.
+      labels:
+        io.github.vetos5.tdss: "1"
     image: tdss-backend:5
     restart: unless-stopped
     environment:
@@ -22,28 +34,73 @@ services:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
       TDSS_SEED_DEMO: ${TDSS_SEED_DEMO:-1}
+      # Bearer token for corpus uploads, deletes and retrains (openssl rand -hex 32). Without it
+      # the site is read-only.
+      TDSS_ADMIN_TOKEN: ${TDSS_ADMIN_TOKEN:-}
       # Optional LLM fallback for unreadable documents (needs TDSS_WITH_LLM=1 at build time).
       TDSS_LLM_EXTRACTION: ${TDSS_LLM_EXTRACTION:-0}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Uvicorn takes the client address from X-Forwarded-For only from this network, where nginx
+      # is the only client (the subnet is pinned below).
+      FORWARDED_ALLOW_IPS: 172.16.58.0/24
     volumes:
       - ${TDSS_DATA:-/DATA/AppData/tdss}/corpus:/opt/tdss/corpus/documents
       - ${TDSS_DATA:-/DATA/AppData/tdss}/cache:/opt/tdss/.cache
     expose:
       - "8000"
+    logging: *logging
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    # Only docker-entrypoint.sh uses these, as root, to seed and chown the data folders; it then
+    # drops to PUID / PGID, and the server runs without any capability.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, SETUID, SETGID]
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      labels:
+        io.github.vetos5.tdss: "1"
     image: tdss-frontend:5
     restart: unless-stopped
     environment:
       TZ: ${TZ:-Europe/Kyiv}
+      # nginx starts one worker per CPU of the host; this sizes it to the cpus limit below.
+      NGINX_ENTRYPOINT_WORKER_PROCESSES_AUTOTUNE: "1"
     ports:
-      - "${TDSS_PORT:-8580}:80"
+      # Loopback only: ports Docker publishes bypass the host firewall (ufw), and this plain-HTTP
+      # origin must not be reachable around Cloudflare. TDSS_BIND=0.0.0.0 opens it to the LAN.
+      - "${TDSS_BIND:-127.0.0.1}:${TDSS_PORT:-8580}:80"
     depends_on:
       backend:
         condition: service_healthy
+    logging: *logging
+    mem_limit: 128m
+    cpus: 0.5
+    pids_limit: 64
+    security_opt:
+      - no-new-privileges:true
+    # The nginx master needs these to bind port 80, set up its cache folders and start its
+    # workers as the nginx user.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, SETUID, SETGID, NET_BIND_SERVICE]
+
+networks:
+  default:
+    # A fixed subnet, so that nginx can trust exactly its gateway (172.16.58.1, the address the
+    # host's connections come from) for CF-Connecting-IP. Keep in sync with frontend/nginx.conf
+    # and FORWARDED_ALLOW_IPS above. 172.16.0.0/16 is outside Docker's default address pools.
+    # The explicit name makes hosts that already have a tdss_default network (with an automatic
+    # subnet) create a new one: compose may reuse an existing network without checking its subnet.
+    name: tdss_net
+    ipam:
+      config:
+        - subnet: 172.16.58.0/24
+          gateway: 172.16.58.1
 
 # ZimaOS / CasaOS dashboard metadata (ignored by plain Docker).
 x-casaos:

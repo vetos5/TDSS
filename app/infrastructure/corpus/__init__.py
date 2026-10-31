@@ -29,7 +29,9 @@ API for the web layer
 
 Errors — ``CorpusError`` subclasses with a ``status_code`` attribute:
     ``InvalidDocumentName`` / ``UnsupportedDocumentType`` / ``EmptyDocument`` → 400,
-    ``DocumentTooLarge`` → 413, ``DocumentExists`` → 409, ``DocumentNotFound`` → 404.
+    ``DocumentTooLarge`` / ``CorpusFull`` / ``TooManyRecords`` → 413, ``DocumentExists`` → 409,
+    ``DocumentNotFound`` → 404, ``TrainingFailed`` → 422 (raised by ``retrain`` and the document
+    calls; the previous model stays in place).
 
 ``read_document(path)`` / ``read_document_bytes(name, data)`` read a single document;
 ``llm_available()`` / ``pdf_available()`` report the optional extras.
@@ -50,12 +52,15 @@ from app.infrastructure.corpus.store import (
     CORPUS_DIR_ENV,
     DEFAULT_CORPUS_DIR,
     CorpusError,
+    CorpusFull,
     CorpusStore,
     DocumentExists,
     DocumentNotFound,
     DocumentTooLarge,
     EmptyDocument,
     InvalidDocumentName,
+    TooManyRecords,
+    TrainingFailed,
     UnsupportedDocumentType,
     get_store,
     reset_store,
@@ -67,6 +72,7 @@ __all__ = [
     "DEFAULT_CORPUS_DIR",
     "PDF_MISSING_WARNING",
     "CorpusError",
+    "CorpusFull",
     "CorpusStore",
     "DocumentExists",
     "DocumentNotFound",
@@ -74,6 +80,8 @@ __all__ = [
     "DocumentTooLarge",
     "EmptyDocument",
     "InvalidDocumentName",
+    "TooManyRecords",
+    "TrainingFailed",
     "UnsupportedDocumentType",
     "document_kind",
     "extract_records_with_llm",

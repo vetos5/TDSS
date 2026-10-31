@@ -28,7 +28,7 @@ from app.application.prediction.records import (
     resolve_field_name,
     resolve_header,
 )
-from app.data.prediction_defaults import FIELD_SYNONYMS, YEAR_RANGE
+from app.data.prediction_defaults import FIELD_SYNONYMS, MAX_FIELD_LINE_CHARS, YEAR_RANGE
 
 # ---------------------------------------------------------------------------
 # Units
@@ -156,9 +156,11 @@ _SYNONYMS_BY_LENGTH = sorted(
     key=lambda item: -len(item[0]),
 )
 # key, optional "(unit)" qualifier, separator (: = — – or a dash followed by a space), value.
+# The whitespace after the qualifier sits inside its optional group: two adjacent "\s*" around an
+# optional group backtrack quadratically on a long run of spaces.
 _LINE_RE = re.compile(
     r"^(?P<key>" + "|".join(_synonym_pattern(s) for s, _ in _SYNONYMS_BY_LENGTH) + r")"
-    r"\s*(?P<qualifier>\([^)]*\))?\s*(?:[:=—–]|-(?=\s))\s*(?P<value>.*)$",
+    r"\s*(?:(?P<qualifier>\([^)]*\))\s*)?(?:[:=—–]|-(?=\s))\s*(?P<value>.*)$",
     re.IGNORECASE,
 )
 _BULLET = re.compile(r"^\s*(?:[-*•·+>#]+|\d+[.)])\s+")
@@ -179,8 +181,11 @@ def match_field_line(line: str) -> Optional[Tuple[str, str, str]]:
     """``(canonical field, value text, qualifier)`` if *line* is a "Field: value" line.
 
     The qualifier is the optional parenthesised text after the key — usually a unit, as in
-    ``Construction cost (M USD): 48.5`` — or ``""``.
+    ``Construction cost (M USD): 48.5`` — or ``""``. Lines longer than ``MAX_FIELD_LINE_CHARS``
+    are prose and never match.
     """
+    if len(line) > MAX_FIELD_LINE_CHARS:
+        return None
     match = _LINE_RE.match(_clean_line(line))
     if match is None:
         return None
@@ -201,15 +206,24 @@ def split_blocks(text: str) -> List[List[str]]:
     return [b for b in blocks if any(line.strip() for line in b)]
 
 
-def extract_records_from_text(text: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+def too_many_records_warning(limit: int) -> str:
+    """The warning of a document cut at *limit* records (rows, objects or record blocks)."""
+    return f"more than {limit:,} records — only the first {limit:,} were read"
+
+
+def extract_records_from_text(
+    text: str, max_records: Optional[int] = None
+) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Extract record dicts (canonical keys, canonical units) from a text document.
 
     Returns ``(records, warnings)``. Blocks without any recognised field (prose, front matter) are
     skipped silently; a block with fields but no interchange type yields a warning, not a record.
+    With *max_records*, reading stops after that many blocks with fields, with a warning.
     """
     blocks = split_blocks(text)
     records: List[Dict[str, Any]] = []
     warnings: List[str] = []
+    with_fields = 0
     for index, lines in enumerate(blocks, start=1):
         prefix = f"block {index}: " if len(blocks) > 1 else ""
         fields: Dict[str, Any] = {}
@@ -227,6 +241,10 @@ def extract_records_from_text(text: str) -> Tuple[List[Dict[str, Any]], List[str
                 fields[name] = value
         if not fields:
             continue
+        if max_records is not None and with_fields >= max_records:
+            warnings.append(too_many_records_warning(max_records))
+            break
+        with_fields += 1
         if "interchange_type" not in fields:
             warnings.append(prefix + "no interchange type found — block skipped")
             continue

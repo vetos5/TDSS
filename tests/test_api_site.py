@@ -1,14 +1,24 @@
 """API tests for /api/site/analyse and /api/site/footprint -- fakes only, never the real network."""
 
+import threading
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
+from app.data.site_analysis_defaults import MAX_MAP_FEATURES, SITE_REQUEST_DEADLINE_S
 from app.infrastructure.gis.elevation import ElevationGrid, ElevationPoint
-from app.infrastructure.gis.errors import GisUnavailableError
+from app.infrastructure.gis.errors import (
+    CLIENT_QUOTA_MESSAGE,
+    QUOTA_MESSAGE,
+    UNAVAILABLE_MESSAGE,
+    GisUnavailableError,
+)
 from app.infrastructure.gis.overpass import OsmFeatures, OsmWay
 from app.infrastructure.gis.projection import LocalOrigin, to_latlon
+from backend import site_routes
 from backend.main import app
-from backend.site_routes import get_elevation_client, get_overpass_client
+from backend.site_routes import client_key, get_elevation_client, get_overpass_client
 
 KYIV = {"lat": 50.4501, "lon": 30.5234}
 ORIGIN = LocalOrigin(**KYIV)
@@ -34,8 +44,12 @@ class FakeOverpass:
     def __init__(self, features=None, error=None):
         self._features = features if features is not None else crossing_features()
         self._error = error
+        self.deadlines = []
+        self.clients = []
 
-    def fetch_features(self, lat, lon, radius_m=500.0):
+    def fetch_features(self, lat, lon, radius_m=500.0, *, deadline=None, client=None):
+        self.deadlines.append(deadline)
+        self.clients.append(client)
         if self._error:
             raise self._error
         return self._features
@@ -45,8 +59,12 @@ class FakeElevation:
     def __init__(self, grid=None, error=None):
         self._grid = grid or flat_grid()
         self._error = error
+        self.deadlines = []
+        self.clients = []
 
-    def fetch_grid(self, lat, lon, radius_m=500.0, n=5):
+    def fetch_grid(self, lat, lon, radius_m=500.0, n=5, *, deadline=None, client=None):
+        self.deadlines.append(deadline)
+        self.clients.append(client)
         if self._error:
             raise self._error
         return self._grid
@@ -116,10 +134,70 @@ def test_analyse_building_polygon_is_closed_geometry(client):
 
 
 def test_analyse_overpass_unavailable_is_503(client):
-    override(FakeOverpass(error=GisUnavailableError("Overpass API timed out")), FakeElevation())
+    error = GisUnavailableError("Overpass API request to https://overpass-api.de failed: boom")
+    override(FakeOverpass(error=error), FakeElevation())
     r = client.post("/api/site/analyse", json={**KYIV, "radius_m": 500})
     assert r.status_code == 503
-    assert "timed out" in r.json()["detail"]
+    # The fixed public message, never the upstream URL or the httpx error text.
+    assert r.json()["detail"] == UNAVAILABLE_MESSAGE
+    assert "overpass-api.de" not in r.text and "boom" not in r.text
+
+
+def test_gis_503_carries_the_errors_public_message_and_retry_after(client):
+    error = GisUnavailableError(
+        "Overpass: daily budget used up", public_message=QUOTA_MESSAGE, retry_after_s=3600
+    )
+    override(FakeOverpass(error=error), FakeElevation())
+    r = client.post("/api/site/analyse", json={**KYIV, "radius_m": 500})
+    assert r.status_code == 503
+    assert r.json()["detail"] == QUOTA_MESSAGE
+    assert r.headers["retry-after"] == "3600"
+
+
+def test_analyse_passes_one_deadline_to_both_clients(client):
+    overpass, elevation = FakeOverpass(), FakeElevation()
+    override(overpass, elevation)
+    before = time.monotonic()
+    client.post("/api/site/analyse", json={**KYIV, "radius_m": 500})
+    (deadline,) = overpass.deadlines
+    assert elevation.deadlines == [deadline]
+    assert before < deadline <= time.monotonic() + SITE_REQUEST_DEADLINE_S
+
+
+def test_site_routes_answer_503_when_every_slot_is_taken(client, monkeypatch):
+    full = threading.BoundedSemaphore(1)
+    full.acquire()
+    monkeypatch.setattr(site_routes, "_SITE_SLOTS", full)
+    overpass = FakeOverpass()
+    override(overpass, FakeElevation())
+    r = client.post("/api/site/analyse", json={**KYIV, "radius_m": 500})
+    assert r.status_code == 503 and "retry-after" in r.headers
+    r = client.post("/api/site/footprint", json={"alternative_name": "Cloverleaf", **KYIV})
+    assert r.status_code == 503
+    assert overpass.deadlines == []  # refused before any GIS call
+
+
+def test_analyse_geojson_has_only_the_properties_the_map_uses(client):
+    features = crossing_features()
+    features.roads[0].tags["name"] = "E40"
+    override(FakeOverpass(features), FakeElevation())
+    r = client.post("/api/site/analyse", json={**KYIV, "radius_m": 500})
+    for feature in r.json()["osm_features"]["features"]:
+        assert set(feature["properties"]) == {"category", "id"}
+
+
+def test_analyse_caps_map_features_dropping_buildings_first(client):
+    ring = [(-5, -5), (5, -5), (5, 5), (-5, 5), (-5, -5)]
+    coords = [to_latlon(x, y, ORIGIN) for x, y in ring]
+    buildings = [OsmWay(100 + i, {}, coords) for i in range(MAX_MAP_FEATURES + 10)]
+    features = crossing_features()
+    features.buildings.extend(buildings)
+    override(FakeOverpass(features), FakeElevation())
+    data = client.post("/api/site/analyse", json={**KYIV, "radius_m": 500}).json()
+    shown = data["osm_features"]["features"]
+    assert len(shown) == MAX_MAP_FEATURES
+    assert sum(f["properties"]["category"] == "road" for f in shown) == 2
+    assert data["building_count"] == MAX_MAP_FEATURES + 10  # the analysis still counts them all
 
 
 def test_analyse_elevation_unavailable_is_503(client):
@@ -239,3 +317,41 @@ def test_footprint_unavailable_alternative_skips_network_entirely(client):
     app.dependency_overrides[get_overpass_client] = lambda: ExplodingOverpass()
     r = client.post("/api/site/footprint", json={"alternative_name": "Diamond", **KYIV})
     assert r.status_code == 200 and r.json()["available"] is False
+
+
+# ── Per-client share ──────────────────────────────────────────────────────────
+
+class _Req:
+    def __init__(self, host):
+        self.client = type("Addr", (), {"host": host})() if host else None
+
+
+@pytest.mark.parametrize("host, key", [
+    ("203.0.113.7", "203.0.113.7"),
+    ("2001:db8:1:2:aaaa::1", "2001:db8:1:2::/64"),
+    ("2001:db8:1:2:ffff:ffff:ffff:ffff", "2001:db8:1:2::/64"),
+    ("::ffff:203.0.113.7", "203.0.113.7"),
+    ("testclient", "testclient"),
+    (None, "unknown"),
+])
+def test_client_key_groups_an_ipv6_64(host, key):
+    assert client_key(_Req(host)) == key
+
+
+def test_routes_pass_the_client_key_to_the_gis_clients(client):
+    overpass, elevation = FakeOverpass(), FakeElevation()
+    override(overpass, elevation)
+    client.post("/api/site/analyse", json={**KYIV, "radius_m": 500})
+    client.post("/api/site/footprint", json={"alternative_name": "Cloverleaf", **KYIV})
+    assert overpass.clients == ["testclient", "testclient"]
+    assert elevation.clients == ["testclient"]
+
+
+def test_client_share_used_up_is_503_with_its_own_message(client):
+    error = GisUnavailableError(
+        "Overpass: client used its calls", public_message=CLIENT_QUOTA_MESSAGE, retry_after_s=60
+    )
+    override(FakeOverpass(error=error), FakeElevation())
+    r = client.post("/api/site/analyse", json={**KYIV, "radius_m": 500})
+    assert r.status_code == 503
+    assert r.json()["detail"] == CLIENT_QUOTA_MESSAGE and r.headers["retry-after"] == "60"

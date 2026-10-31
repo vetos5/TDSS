@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useLocale } from '../composables/useLocale.js'
-import { AHP_PAIRS, CRITERION_KEYS } from '../composables/useDSS.js'
+import { AHP_PAIRS, CRITERION_KEYS, SAATY, WEIGHTING_MODES as MODES } from '../composables/useDSS.js'
 
 const props = defineProps({
   dark: Boolean,
@@ -9,9 +9,6 @@ const props = defineProps({
 })
 
 const { t } = useLocale()
-
-const MODES = ['manual', 'entropy', 'critic', 'ahp', 'combined']
-const SAATY = [9, 7, 5, 3, 1, 1 / 3, 1 / 5, 1 / 7, 1 / 9]
 
 const shortLabel = computed(() => ({
   construction_cost_mln: t.value.constructionCost,

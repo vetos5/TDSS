@@ -9,6 +9,8 @@ frontend/node_modules
 frontend/dist
 legacy
 .git
+.cache
+.sf
 *.md
 # ...except the prediction-model corpus documents (synthetic_report_*.md, README).
 !corpus/**/*.md

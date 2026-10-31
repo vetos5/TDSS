@@ -51,7 +51,7 @@ function redrawMarkers() {
       icon: iconFor('#2a78d6'), draggable: true, zIndexOffset: 1000,
     }).addTo(map)
     markerA.on('dragend', () => {
-      const { lat, lng } = markerA.getLatLng()
+      const { lat, lng } = markerA.getLatLng().wrap()
       site.setPointA(lat, lng)
     })
   }
@@ -60,7 +60,7 @@ function redrawMarkers() {
       icon: iconFor('#eb6834'), draggable: true, zIndexOffset: 999,
     }).addTo(map)
     markerB.on('dragend', () => {
-      const { lat, lng } = markerB.getLatLng()
+      const { lat, lng } = markerB.getLatLng().wrap()
       site.setPointB(lat, lng)
     })
     bearingLine = L.polyline(
@@ -84,10 +84,11 @@ function redrawFootprint() {
   if (footprintLayer) { footprintLayer.remove(); footprintLayer = null }
   const fp = site.footprint.value
   if (!fp || !fp.available) return
+  // Tooltips get a text node: Leaflet would parse a string as HTML.
   footprintLayer = L.layerGroup(
     fp.segments.map(seg => L.polyline(seg.coords, {
       color: '#7c3aed', weight: Math.max(3, Math.min(seg.width_m, 14)), opacity: 0.85,
-    }).bindTooltip(`${seg.id} (${seg.width_m.toFixed(1)} m)`))
+    }).bindTooltip(document.createTextNode(`${seg.id} (${seg.width_m.toFixed(1)} m)`)))
   ).addTo(map)
 }
 
@@ -98,7 +99,11 @@ function initMap() {
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     { attribution: 'Esri World Imagery', maxZoom: 19 }
   ).addTo(map)
-  map.on('click', (e) => site.handleMapClick(e.latlng.lat, e.latlng.lng))
+  // wrap(): the world repeats sideways, so a click past the antimeridian can be outside ±180°.
+  map.on('click', (e) => {
+    const { lat, lng } = e.latlng.wrap()
+    site.handleMapClick(lat, lng)
+  })
   redrawMarkers()
 }
 
@@ -261,6 +266,7 @@ watch(locale, () => {
       <p v-if="site.footprintLoading.value" class="mt-3 flex items-center gap-2 text-xs text-muted">
         <span class="spinner"></span>{{ t.analysingLabel }}
       </p>
+      <div v-else-if="site.footprintError.value" class="notice notice-bad mt-3">{{ site.footprintError.value }}</div>
 
       <template v-if="site.footprint.value && !site.footprintLoading.value">
         <p v-if="!site.footprint.value.available" class="mt-3 text-xs text-muted">{{ site.footprint.value.message }}</p>

@@ -12,7 +12,10 @@ Supported kinds (by extension, see ``ALLOWED_EXTENSIONS``):
 
 For text and PDF documents an optional LLM extractor is tried only when the rules find nothing.
 Every record, whatever its origin, passes through ``validate_record``; a bad row costs a warning,
-never the whole document.
+never the whole document. A document is read up to ``MAX_RECORDS_PER_DOCUMENT`` records (the rest
+is ignored, with a warning), and its report lists at most ``MAX_WARNINGS_PER_DOCUMENT`` warnings.
+PDF text is extracted in a child process (``pdf_worker.py``) with a timeout and memory, page and
+text caps, because a small PDF can inflate into minutes of parsing.
 """
 
 from __future__ import annotations
@@ -21,9 +24,12 @@ import csv
 import importlib.util
 import io
 import json
+import os
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path, PurePath
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
 from app.application.prediction import (
     ProjectRecord,
@@ -33,12 +39,30 @@ from app.application.prediction import (
     resolve_header,
     validate_record,
 )
-from app.data.prediction_defaults import ALLOWED_EXTENSIONS
+from app.application.prediction.text_extraction import too_many_records_warning
+from app.data.prediction_defaults import (
+    ALLOWED_EXTENSIONS,
+    MAX_RECORDS_PER_DOCUMENT,
+    MAX_WARNING_CHARS,
+    MAX_WARNINGS_PER_DOCUMENT,
+    PDF_MAX_PAGES,
+    PDF_MAX_TEXT_CHARS,
+    PDF_MEMORY_BYTES,
+    PDF_TIMEOUT_S,
+)
 
 # (document text, document name) → (raw record dicts, warnings)
 LlmExtractor = Callable[[str, str], Tuple[List[Dict[str, Any]], List[str]]]
 
 PDF_MISSING_WARNING = "PDF support not installed: pip install -e .[documents]"
+_PDF_WORKER = Path(__file__).with_name("pdf_worker.py")
+_SKIPPED = object()  # an item already reported (an invalid JSONL line) that still counts
+
+
+def _shorten(warning: str) -> str:
+    if len(warning) <= MAX_WARNING_CHARS:
+        return warning
+    return warning[: MAX_WARNING_CHARS - 1] + "…"
 
 
 @dataclass
@@ -51,20 +75,32 @@ class DocumentResult:
     records: List[ProjectRecord] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     size_bytes: int = 0
+    truncated: bool = False        # more than MAX_RECORDS_PER_DOCUMENT records; the rest ignored
+    hidden_warnings: int = 0       # dropped by cap_warnings
+    cacheable: bool = True         # False after an LLM failure, so the next retrain asks again
 
     @property
     def synthetic(self) -> bool:
         return is_synthetic_source(self.name) or any(r.synthetic for r in self.records)
 
+    def cap_warnings(self) -> None:
+        """Keep the first ``MAX_WARNINGS_PER_DOCUMENT`` warnings (shortened); count the rest."""
+        self.hidden_warnings += max(0, len(self.warnings) - MAX_WARNINGS_PER_DOCUMENT)
+        self.warnings[:] = [_shorten(w) for w in self.warnings[:MAX_WARNINGS_PER_DOCUMENT]]
+
     def report(self) -> Dict[str, Any]:
         """The ``documents[]`` entry of the model status."""
+        warnings = [_shorten(w) for w in self.warnings[:MAX_WARNINGS_PER_DOCUMENT]]
+        hidden = self.hidden_warnings + max(0, len(self.warnings) - MAX_WARNINGS_PER_DOCUMENT)
+        if hidden:
+            warnings.append(f"+{hidden:,} more warnings")
         return {
             "name": self.name,
             "kind": self.kind,
             "synthetic": self.synthetic,
             "records": len(self.records),
             "extractor": self.extractor,
-            "warnings": list(self.warnings),
+            "warnings": warnings,
             "size_bytes": self.size_bytes,
         }
 
@@ -94,10 +130,17 @@ def _decode(data: bytes, warnings: List[str]) -> str:
 def _validate_all(
     raws: Iterable[Tuple[str, Dict[str, Any]]], name: str, warnings: List[str]
 ) -> List[ProjectRecord]:
-    """Normalise + validate each ``(label, raw dict)``; warnings are prefixed with the label."""
+    """Normalise + validate each ``(label, raw dict)``; warnings are prefixed with the label.
+
+    Reads at most ``MAX_RECORDS_PER_DOCUMENT`` items; *raws* may be lazy, so the rest is never
+    even parsed.
+    """
     stem = PurePath(name).stem
     records: List[ProjectRecord] = []
-    for label, raw in raws:
+    for count, (label, raw) in enumerate(raws, start=1):
+        if count > MAX_RECORDS_PER_DOCUMENT:
+            warnings.append(too_many_records_warning(MAX_RECORDS_PER_DOCUMENT))
+            break
         prefix = f"{label}: " if label else ""
         fields, field_warnings = normalise_fields(raw)
         record, record_warnings = validate_record(
@@ -120,8 +163,8 @@ def _read_csv(text: str, name: str, warnings: List[str]) -> List[ProjectRecord]:
         return []
     header_line = lines[0]
     delimiter = max((",", ";", "\t"), key=header_line.count)
-    rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
-    header = [h.strip() for h in rows[0]]
+    rows = csv.reader(io.StringIO(text), delimiter=delimiter)  # lazy: rows past the cap unread
+    header = [h.strip() for h in next(rows, [])]
     unknown = [h for h in header if h and resolve_header(h)[0] is None]
     if unknown:
         warnings.append("unknown columns ignored: " + ", ".join(unknown))
@@ -130,7 +173,7 @@ def _read_csv(text: str, name: str, warnings: List[str]) -> List[ProjectRecord]:
         return []
 
     def raws() -> Iterable[Tuple[str, Dict[str, Any]]]:
-        for line_no, row in enumerate(rows[1:], start=2):  # spreadsheet row numbers
+        for line_no, row in enumerate(rows, start=2):  # spreadsheet row numbers
             if not any(cell.strip() for cell in row):
                 continue
             yield f"row {line_no}", dict(zip(header, row, strict=False))
@@ -141,43 +184,59 @@ def _read_csv(text: str, name: str, warnings: List[str]) -> List[ProjectRecord]:
 def _objects(
     items: Iterable[Tuple[str, Any]], warnings: List[str]
 ) -> List[Tuple[str, Dict[str, Any]]]:
+    """The object items, read up to ``MAX_RECORDS_PER_DOCUMENT`` items (objects or not)."""
     objects = []
-    for label, item in items:
+    for count, (label, item) in enumerate(items, start=1):
+        if count > MAX_RECORDS_PER_DOCUMENT:
+            warnings.append(too_many_records_warning(MAX_RECORDS_PER_DOCUMENT))
+            break
         if isinstance(item, dict):
             objects.append((label, item))
-        else:
+        elif item is not _SKIPPED:
             warnings.append(f"{label}: not an object — skipped")
     return objects
 
 
+def _json_error(exc: ValueError) -> str:
+    """``JSONDecodeError`` details, or the message of a number too long to convert."""
+    if isinstance(exc, json.JSONDecodeError):
+        return f"{exc.msg} (line {exc.lineno})"
+    return str(exc)
+
+
 def _read_json(text: str, name: str, warnings: List[str]) -> List[ProjectRecord]:
     if PurePath(name).suffix.lower() == ".jsonl":
-        items: List[Tuple[str, Any]] = []
-        for line_no, line in enumerate(text.splitlines(), start=1):
-            if not line.strip():
-                continue
-            try:
-                items.append((f"line {line_no}", json.loads(line)))
-            except json.JSONDecodeError as exc:
-                warnings.append(f"line {line_no}: invalid JSON ({exc.msg}) — skipped")
-        return _validate_all(_objects(items, warnings), name, warnings)
+
+        def items() -> Iterator[Tuple[str, Any]]:
+            for line_no, line in enumerate(text.splitlines(), start=1):
+                if not line.strip():
+                    continue
+                try:
+                    yield f"line {line_no}", json.loads(line)
+                except ValueError as exc:  # also a 5000-digit integer
+                    warnings.append(f"line {line_no}: invalid JSON ({_json_error(exc)}) — skipped")
+                    yield f"line {line_no}", _SKIPPED
+
+        return _validate_all(_objects(items(), warnings), name, warnings)
 
     try:
         payload = json.loads(text)
-    except json.JSONDecodeError as exc:
-        warnings.append(f"invalid JSON: {exc.msg} (line {exc.lineno})")
+    except ValueError as exc:  # JSONDecodeError, or an integer too long to convert
+        warnings.append(f"invalid JSON: {_json_error(exc)}")
         return []
     if isinstance(payload, dict) and isinstance(payload.get("records"), list):
         payload = payload["records"]
     if not isinstance(payload, list):
         warnings.append('expected a list of records or {"records": [...]}')
         return []
-    labelled = [(f"record {i}", item) for i, item in enumerate(payload, start=1)]
+    labelled = ((f"record {i}", item) for i, item in enumerate(payload, start=1))
     return _validate_all(_objects(labelled, warnings), name, warnings)
 
 
 def _read_text(text: str, name: str, warnings: List[str]) -> List[ProjectRecord]:
-    raw_records, text_warnings = extract_records_from_text(text)
+    raw_records, text_warnings = extract_records_from_text(
+        text, max_records=MAX_RECORDS_PER_DOCUMENT
+    )
     warnings.extend(text_warnings)
     labelled = [
         (f"record {i}" if len(raw_records) > 1 else "", raw)
@@ -186,19 +245,35 @@ def _read_text(text: str, name: str, warnings: List[str]) -> List[ProjectRecord]
     return _validate_all(labelled, name, warnings)
 
 
+def _pdf_child_env() -> Dict[str, str]:
+    """The child needs no secrets (API keys, the admin token): only what starts Python."""
+    return {k: v for k, v in os.environ.items() if k in ("PATH", "SYSTEMROOT", "TMPDIR")}
+
+
 def _pdf_text(data: bytes, warnings: List[str]) -> Optional[str]:
+    """Text layer of a PDF, extracted by ``pdf_worker.py`` in a child process (see there)."""
     if not pdf_available():
         warnings.append(PDF_MISSING_WARNING)
         return None
-    from pypdf import PdfReader  # optional dependency
-    from pypdf.errors import PyPdfError
-
+    command = [sys.executable, "-I", str(_PDF_WORKER),
+               str(PDF_MAX_PAGES), str(PDF_MAX_TEXT_CHARS), str(PDF_MEMORY_BYTES)]
     try:
-        reader = PdfReader(io.BytesIO(data))
-        text = "\n".join(page.extract_text() or "" for page in reader.pages)
-    except (PyPdfError, ValueError, KeyError, OSError) as exc:
-        warnings.append(f"could not read PDF: {exc}")
+        child = subprocess.run(
+            command, input=data, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            timeout=PDF_TIMEOUT_S, env=_pdf_child_env(), check=False,
+        )
+        result = json.loads(child.stdout) if child.returncode == 0 else {}
+    except subprocess.TimeoutExpired:
+        warnings.append(f"could not read PDF: gave up after {PDF_TIMEOUT_S:g} s")
         return None
+    except (OSError, ValueError):  # no interpreter to start, or garbled output
+        result = {}
+    if not isinstance(result, dict) or "error" in result or "text" not in result:
+        reason = result.get("error") if isinstance(result, dict) else None
+        warnings.append(f"could not read PDF: {reason or 'the PDF reader failed (out of memory?)'}")
+        return None
+    warnings.extend(str(w) for w in result.get("warnings", []))
+    text = str(result["text"])
     if not text.strip():
         warnings.append("PDF has no text layer (scanned image?)")
         return None
@@ -239,12 +314,19 @@ def read_document_bytes(
                 warnings.extend(f"LLM: {w}" for w in llm_warnings)
                 labelled = [(f"LLM record {i}", raw) for i, raw in enumerate(llm_raws, start=1)]
                 result.records = _validate_all(labelled, name, warnings)
+                result.cacheable = bool(llm_raws) or not llm_warnings
                 extractor = "llm"
 
     if result.records:
         result.extractor = extractor
     else:
         warnings.append("no project records found")
+    cut = too_many_records_warning(MAX_RECORDS_PER_DOCUMENT)
+    if cut in warnings:  # listed first, so the warning cap never hides it
+        result.truncated = True
+        warnings.remove(cut)
+        warnings.insert(0, cut)
+    result.cap_warnings()
     return result
 
 
@@ -252,9 +334,10 @@ def read_document(path: Path, *, llm_extract: Optional[LlmExtractor] = None) -> 
     """Read one corpus file from disk."""
     try:
         data = path.read_bytes()
-    except OSError as exc:
+    except OSError as exc:  # the message names the absolute path; strerror does not
         kind = document_kind(path.name) or "text"
+        reason = exc.strerror or type(exc).__name__
         return DocumentResult(
-            name=path.name, kind=kind, extractor="none", warnings=[f"could not read file: {exc}"]
+            name=path.name, kind=kind, extractor="none", warnings=[f"could not read file: {reason}"]
         )
     return read_document_bytes(path.name, data, llm_extract=llm_extract)

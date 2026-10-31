@@ -3,7 +3,7 @@
 # deploy/zima/docker-compose.yml.
 #
 # Every TDSS_POLL_SECONDS it asks GitHub for the head of TDSS_BRANCH. A new commit is deployed
-# once its GitHub Actions checks have passed:
+# once the CI workflow that its push to the branch started has passed (ci_state):
 #   1. download the commit's tarball into $SRC.new;
 #   2. build the images (the running site is untouched if this fails);
 #   3. recreate the containers and wait until the backend is healthy and nginx serves the API;
@@ -12,6 +12,8 @@
 # download or build is retried, since the running site is untouched by those.
 # Nothing listens for connections. The box only makes outbound requests to GitHub, so pull
 # requests from forks cannot run anything here: only commits on the branch are deployed.
+# This script runs as root with the Docker socket, so whoever can push to the branch controls
+# the box: protect the branch on GitHub (README, "Security").
 set -u
 
 REPO="${TDSS_REPO:-vetos5/TDSS}"
@@ -23,7 +25,11 @@ HOME_DIR="${TDSS_HOME:-/DATA/AppData/tdss}"
 STATE="$HOME_DIR/deployer"
 SRC="$HOME_DIR/src"
 COMPOSE_FILE=docker-compose.zima.yml
-MAX_ATTEMPTS=3          # failed deploys of one commit before waiting for the next commit
+CI_WORKFLOW=.github/workflows/ci.yml
+# docker-compose.zima.yml puts this label on the images it builds. Only those are pruned: the
+# Docker host may run other people's containers.
+IMAGE_LABEL=io.github.vetos5.tdss
+MAX_ATTEMPTS=3         # failed deploys of one commit before waiting for the next commit
 HEALTH_TIMEOUT="${TDSS_HEALTH_TIMEOUT:-180}"   # seconds for a new version to become healthy
 
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >&2; }
@@ -61,22 +67,29 @@ rate_limited() {
     sleep "$wait"
 }
 
-# success | pending | failure for the GitHub Actions checks of a commit. A re-run job counts by
-# its latest attempt; a commit without any checks yet is pending.
+# success | pending | failure for the CI workflow of a commit. Only runs of $CI_WORKFLOW started by
+# a push to $BRANCH of $REPO count. Any check run on the commit would not do: a pull request,
+# from a fork too, can carry the same commit, and its runs prove nothing about this branch. The
+# API filters are repeated in jq in case the API ignores one. A re-run counts by its latest
+# attempt; a commit without a run yet is pending.
 ci_state() {
     local code
-    code=$(api_get "/repos/$REPO/commits/$1/check-runs?per_page=100" "$STATE/checks.json")
+    code=$(api_get "/repos/$REPO/actions/runs?head_sha=$1&event=push&branch=$BRANCH&per_page=100" \
+        "$STATE/runs.json")
     case $code in
         200) ;;
         403|429) rate_limited; echo pending; return ;;
         *) echo pending; return ;;
     esac
-    jq -r '[.check_runs[] | select(.app.slug == "github-actions")]
-        | group_by(.name) | map(max_by(.started_at // ""))
+    jq -r --arg sha "$1" --arg branch "$BRANCH" --arg repo "$REPO" --arg workflow "$CI_WORKFLOW" '
+        [.workflow_runs[]
+         | select(.head_sha == $sha and .event == "push" and .head_branch == $branch
+             and (.path | split("@")[0]) == $workflow
+             and ((.head_repository.full_name // "") | ascii_downcase) == ($repo | ascii_downcase))]
         | if length == 0 then "pending"
           elif any(.[]; .status != "completed") then "pending"
-          elif any(.[]; (.conclusion | IN("success", "skipped", "neutral")) | not) then "failure"
-          else "success" end' "$STATE/checks.json" 2>/dev/null || echo pending
+          elif all(.[]; .conclusion == "success") then "success"
+          else "failure" end' "$STATE/runs.json" 2>/dev/null || echo pending
 }
 
 compose() { (cd "$1" && shift && docker compose -f "$COMPOSE_FILE" "$@"); }
@@ -117,8 +130,13 @@ deploy() {
         log "$short has no $COMPOSE_FILE; nothing to deploy"
         return 2
     fi
-    # Settings for the app (TDSS_PORT, TZ, ANTHROPIC_API_KEY, ...) live outside the source tree.
-    [ -f "$HOME_DIR/app.env" ] && cp "$HOME_DIR/app.env" "$SRC.new/.env"
+    # Settings for the app (TDSS_ADMIN_TOKEN, TDSS_PORT, ANTHROPIC_API_KEY, ...) live outside the
+    # source tree. They include secrets, so the copy is readable by root only.
+    if [ -f "$HOME_DIR/app.env" ] \
+        && ! (umask 077 && cp "$HOME_DIR/app.env" "$SRC.new/.env" && chmod 600 "$SRC.new/.env"); then
+        log "could not copy $HOME_DIR/app.env"
+        return 1
+    fi
 
     # Keep the current images under a :rollback tag. A tag rather than an image id: with the
     # containerd image store, an image whose tag moves to a new build is deleted at once.
@@ -139,7 +157,7 @@ deploy() {
         rm -rf "$SRC.previous"
         [ -d "$SRC" ] && mv "$SRC" "$SRC.previous"
         mv "$SRC.new" "$SRC"
-        docker image prune -f > /dev/null
+        docker image prune -f --filter "label=$IMAGE_LABEL" > /dev/null
         log "deployed $short"
         return 0
     fi

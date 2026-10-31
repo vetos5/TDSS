@@ -1,5 +1,5 @@
 import { ref, reactive } from 'vue'
-import { fetchContexts, evaluate } from '../api.js'
+import { fetchContexts, evaluate, errorText } from '../api.js'
 
 const contexts = ref([])
 const selectedContext = ref('')
@@ -11,6 +11,15 @@ export const ALL_METHODS = ['wsm', 'topsis', 'ahp', 'promethee', 'vikor']
 export const CRITERION_KEYS = ['construction_cost_mln', 'land_area_hectares', 'throughput_vph', 'safety_index']
 // Upper-triangle cells of the 4×4 AHP matrix, in criteria order.
 export const AHP_PAIRS = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]]
+// Saaty scale values offered for each AHP judgement.
+export const SAATY = [9, 7, 5, 3, 1, 1 / 3, 1 / 5, 1 / 7, 1 / 9]
+
+// The choices the input panel offers (Sidebar.vue, WeightingControls.vue).
+export const DESIGN_SPEEDS = [60, 80, 100, 120, 140]
+export const LANE_COUNTS = [1, 2, 3, 4, 5]
+export const TERRAINS = ['Flat', 'Rolling', 'Mountainous']
+export const ENV_LEVELS = ['Low', 'Medium', 'High', 'Critical']
+export const WEIGHTING_MODES = ['manual', 'entropy', 'critic', 'ahp', 'combined']
 
 const methods = ref([...ALL_METHODS])
 
@@ -83,25 +92,75 @@ function snapshotState() {
   }
 }
 
-// Load a snapshot into the inputs. Unknown or missing fields keep their current value, so a
-// link from an older version still opens.
+// What a snapshot may put into each input. Pop-up menus and sliders accept only what they offer;
+// the typed number fields accept any finite number within the API's bounds (backend/schemas.py),
+// so a value someone typed and saved or shared comes back unchanged. Integers are rounded.
+const PARAM_RULES = {
+  design_speed: { oneOf: DESIGN_SPEEDS },
+  aadt: { min: 0, max: 1_000_000, int: true },
+  peak_factor: { min: 0, max: 100, int: true },
+  num_lanes: { oneOf: LANE_COUNTS },
+  budget: { min: 0, max: 1e9 },
+  land_limit: { min: 0, max: 1e9 },
+  terrain: { oneOf: TERRAINS },
+  env_sensitivity: { oneOf: ENV_LEVELS },
+}
+const WEIGHT_RULES = Object.fromEntries(CRITERION_KEYS.map(k => [k, { min: 0, max: 100 }]))
+const WEIGHTING_RULES = {
+  mode: { oneOf: WEIGHTING_MODES },
+  subjective: { oneOf: ['manual', 'ahp'] },
+  objective: { oneOf: ['entropy', 'critic'] },
+  alpha: { min: 0, max: 1 },
+}
+
+// *value* as the input would hold it under *rule*, or undefined if it is not acceptable.
+function sanitize(value, rule) {
+  if (rule.oneOf) return rule.oneOf.includes(value) ? value : undefined
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  const v = Math.min(rule.max, Math.max(rule.min, value))
+  return rule.int ? Math.round(v) : v
+}
+
+function pick(source, rules, base) {
+  const ok = source && typeof source === 'object'
+  return Object.fromEntries(Object.keys(base).map(k => {
+    const value = ok ? sanitize(source[k], rules[k]) : undefined
+    return [k, value === undefined ? base[k] : value]
+  }))
+}
+
+// A snapshot (a saved scenario or a shared link, so untrusted) as a complete, valid one: unknown,
+// missing or invalid fields take their value from *base* (the current inputs), so a link from an
+// older version still opens. Loading a scenario and evaluating it both go through here.
+function normalizeState(state, base = snapshotState()) {
+  const s = state && typeof state === 'object' ? state : {}
+  const known = Array.isArray(s.methods) ? [...new Set(s.methods.filter(m => ALL_METHODS.includes(m)))] : []
+  // Each judgement must be a value of the Saaty scale (as JSON may round it, compare loosely).
+  const judgements = Array.isArray(s.ahpJudgements) && s.ahpJudgements.length === AHP_PAIRS.length
+    ? s.ahpJudgements.map(v => SAATY.find(x => Math.abs(x - v) < 1e-9))
+    : []
+  return {
+    context: contexts.value.includes(s.context) ? s.context : base.context,
+    params: pick(s.params, PARAM_RULES, base.params),
+    weights: pick(s.weights, WEIGHT_RULES, base.weights),
+    methods: known.length ? known : [...base.methods],
+    weighting: pick(s.weighting, WEIGHTING_RULES, base.weighting),
+    ahpJudgements: judgements.length && judgements.every(v => v !== undefined) ? judgements : [...base.ahpJudgements],
+    valueSource: VALUE_SOURCES.includes(s.valueSource) ? s.valueSource : base.valueSource,
+  }
+}
+
+// Load a snapshot into the inputs.
 function applyState(state) {
   if (!state || typeof state !== 'object') return
-  if (contexts.value.includes(state.context)) selectedContext.value = state.context
-  for (const [target, source] of [[params, state.params], [weights, state.weights], [weighting, state.weighting]]) {
-    for (const key of Object.keys(target)) {
-      if (source && typeof source[key] === typeof target[key]) target[key] = source[key]
-    }
-  }
-  if (Array.isArray(state.methods)) {
-    const known = state.methods.filter(m => ALL_METHODS.includes(m))
-    if (known.length) methods.value = known
-  }
-  if (Array.isArray(state.ahpJudgements) && state.ahpJudgements.length === AHP_PAIRS.length &&
-      state.ahpJudgements.every(v => typeof v === 'number' && v > 0)) {
-    ahpJudgements.splice(0, AHP_PAIRS.length, ...state.ahpJudgements)
-  }
-  if (VALUE_SOURCES.includes(state.valueSource)) valueSource.value = state.valueSource
+  const next = normalizeState(state)
+  selectedContext.value = next.context
+  Object.assign(params, next.params)
+  Object.assign(weights, next.weights)
+  Object.assign(weighting, next.weighting)
+  methods.value = next.methods
+  ahpJudgements.splice(0, AHP_PAIRS.length, ...next.ahpJudgements)
+  valueSource.value = next.valueSource
 }
 
 function weightsOf(w) {
@@ -119,8 +178,8 @@ function ahpMatrixOf(judgements) {
   return a
 }
 
-// POST /api/evaluate for a snapshot, without touching the shared state.
-function evaluateState(state, lang = 'en') {
+// POST /api/evaluate for a snapshot as given.
+function requestEvaluation(state, lang) {
   const w = state.weighting
   const ahp = w.mode === 'ahp' || (w.mode === 'combined' && w.subjective === 'ahp')
   return evaluate(state.context, weightsOf(state.weights), { ...state.params }, lang, {
@@ -130,16 +189,22 @@ function evaluateState(state, lang = 'en') {
   })
 }
 
+// POST /api/evaluate for a saved or shared snapshot, read exactly as applyState would load it,
+// without touching the shared state.
+function evaluateState(state, lang = 'en') {
+  return requestEvaluation(normalizeState(state), lang)
+}
+
 async function runEvaluation(lang = 'en') {
   if (!selectedContext.value) return
   loading.value = true
   try {
-    evalData.value = await evaluateState(snapshotState(), lang)
+    // The live inputs go as they are: the backend validates them and the error is shown.
+    evalData.value = await requestEvaluation(snapshotState(), lang)
     evalError.value = ''
   } catch (e) {
     // The shown ranking no longer matches the inputs; say so instead of failing silently.
-    const detail = e?.response?.data?.detail
-    evalError.value = detail ? (typeof detail === 'string' ? detail : JSON.stringify(detail)) : String(e)
+    evalError.value = errorText(e)
   } finally {
     loading.value = false
   }
@@ -165,6 +230,7 @@ export function useDSS() {
     runEvaluation,
     snapshotState,
     applyState,
+    normalizeState,
     evaluateState,
   }
 }

@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# The jobs only read the repository.
+permissions:
+  contents: read
+
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -31,8 +35,8 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-  # The ZimaOS deployer (deploy/zima) waits for every job here, so a commit whose images do not
-  # build or start is never deployed.
+  # The ZimaOS deployer (deploy/zima) deploys a commit on main only once this workflow's run for
+  # the push has passed, so a commit whose images do not build or start is never deployed.
   docker:
     runs-on: ubuntu-latest
     env:
@@ -50,9 +54,25 @@ jobs:
       - name: Start the stack and smoke-test it through nginx
         run: |
           docker compose -f docker-compose.zima.yml up -d --wait --wait-timeout 120
-          curl -fsS http://localhost:8580/ > /dev/null
-          curl -fsS http://localhost:8580/api/contexts
-          curl -fsS http://localhost:8580/api/model/status | python3 -c "import sys, json; print('model records:', json.load(sys.stdin)['n_records'])"
+          site=http://127.0.0.1:8580
+          curl -fsS $site/ > /dev/null
+          curl -fsS $site/api/contexts
+          curl -fsS $site/api/model/status | python3 -c "import sys, json; print('model records:', json.load(sys.stdin)['n_records'])"
+          # No TDSS_ADMIN_TOKEN here: the admin endpoints must refuse an anonymous write.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST $site/api/model/retrain)
+          echo "retrain without a token: HTTP $code"
+          case $code in 401|403) ;; *) exit 1 ;; esac
+          # Security headers on the SPA, a hashed asset and the API.
+          asset=$(curl -fsS $site/ | grep -o '/assets/[^"]*\.js' | head -n 1)
+          [ -n "$asset" ] || { echo "index.html links no /assets/ script"; exit 1; }
+          for path in / "$asset" /api/contexts; do
+            curl -fsS -o /dev/null -D - "$site$path" | grep -qi '^x-content-type-options: nosniff' \
+              || { echo "no security headers on $path"; exit 1; }
+          done
+          # Published on loopback only, not on the runner's network address.
+          if curl -s -o /dev/null --max-time 5 "http://$(hostname -I | cut -d' ' -f1):8580/"; then
+            echo "the site is reachable beyond 127.0.0.1"; exit 1
+          fi
       - name: Logs on failure
         if: failure()
         run: docker compose -f docker-compose.zima.yml logs --tail 100

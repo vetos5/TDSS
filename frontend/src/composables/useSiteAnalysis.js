@@ -1,5 +1,5 @@
 import { ref, reactive, computed } from 'vue'
-import { analyseSite, getFootprint } from '../api.js'
+import { analyseSite, getFootprint, errorText } from '../api.js'
 
 // Point A = the interchange centre (required). Point B = an optional second click that sets the
 // footprint's bearing (the direction from A to B becomes the interchange's primary-road axis).
@@ -30,15 +30,19 @@ function requestBody() {
   return body
 }
 
+// The API takes |lat| ≤ 85 (about where the web map ends) and lon within ±180 (the map wraps
+// clicks before they get here).
+const clampLat = lat => Math.max(-85, Math.min(85, lat))
+
 function setPointA(lat, lon) {
-  pointA.value = { lat, lon }
+  pointA.value = { lat: clampLat(lat), lon }
   pointB.value = null
   analysis.value = null
   footprint.value = null
 }
 
 function setPointB(lat, lon) {
-  pointB.value = { lat, lon }
+  pointB.value = { lat: clampLat(lat), lon }
   footprint.value = null
 }
 
@@ -71,9 +75,7 @@ async function analyse(lang = 'en') {
     analysis.value = await analyseSite(requestBody(), lang)
     if (footprintAlternative.value) await loadFootprint(footprintAlternative.value, lang)
   } catch (e) {
-    error.value = e?.response?.data?.detail
-      ? (typeof e.response.data.detail === 'string' ? e.response.data.detail : JSON.stringify(e.response.data.detail))
-      : String(e)
+    error.value = errorText(e)
     analysis.value = null
   } finally {
     loading.value = false
@@ -88,7 +90,7 @@ async function loadFootprint(alternativeName, lang = 'en') {
   try {
     footprint.value = await getFootprint({ alternative_name: alternativeName, ...requestBody() }, lang)
   } catch (e) {
-    footprintError.value = e?.response?.data?.detail ? String(e.response.data.detail) : String(e)
+    footprintError.value = errorText(e)
     footprint.value = null
   } finally {
     footprintLoading.value = false

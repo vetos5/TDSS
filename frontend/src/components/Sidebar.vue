@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useLocale } from '../composables/useLocale.js'
-import { CRITERION_KEYS, VALUE_SOURCES } from '../composables/useDSS.js'
+import { CRITERION_KEYS, VALUE_SOURCES, DESIGN_SPEEDS, LANE_COUNTS } from '../composables/useDSS.js'
 import MethodSelector from './MethodSelector.vue'
 import WeightingControls from './WeightingControls.vue'
 import Icon from './Icon.vue'
@@ -112,13 +112,13 @@ const envOptions = computed(() => [
           <div>
             <label class="field-label">{{ t.designSpeed }}</label>
             <select v-model.number="dss.params.design_speed" class="field">
-              <option v-for="s in [60,80,100,120,140]" :key="s" :value="s">{{ s }}</option>
+              <option v-for="s in DESIGN_SPEEDS" :key="s" :value="s">{{ s }}</option>
             </select>
           </div>
           <div>
             <label class="field-label">{{ t.numLanes }}</label>
             <select v-model.number="dss.params.num_lanes" class="field">
-              <option v-for="n in [1,2,3,4,5]" :key="n" :value="n">{{ n }}</option>
+              <option v-for="n in LANE_COUNTS" :key="n" :value="n">{{ n }}</option>
             </select>
           </div>
           <div class="col-span-2">

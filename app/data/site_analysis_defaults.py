@@ -68,6 +68,36 @@ DEFAULT_DEMOLITION_COST_PER_SQM_USD = 150.0
 DEFAULT_RADIUS_M = 500.0
 DEFAULT_ELEVATION_GRID_N = 5  # 5x5 = 25 points, one Open Topo Data request
 
+# ---------------------------------------------------------------------------
+# Load limits for a public deployment.
+# ---------------------------------------------------------------------------
+# Site requests in progress at once (both /api/site routes together). The API has one worker whose
+# sync routes share 40 threads; 4 leaves the rest for every other route and the health check.
+SITE_REQUEST_SLOTS = 4
+# Time one site request may spend on outbound calls, retries included. Well under nginx's 120 s
+# proxy timeout and Cloudflare's 100 s, so the planner gets a clear 503 rather than a gateway error.
+SITE_REQUEST_DEADLINE_S = 40.0
+# overpass-api.de gives each client IP 2 query slots and answers 429 beyond them. Its usage policy
+# asks for well under 10,000 queries a day; 300 calls (retries included) keeps this app a small
+# user, and a cached 100 m cell costs nothing.
+OVERPASS_MAX_CONCURRENT = 2
+OVERPASS_MAX_PER_DAY = 300
+# The public Open Topo Data API allows 1 call per second and 1000 calls a day per client;
+# 800 leaves a margin so its own limit is never what stops us.
+ELEVATION_MIN_INTERVAL_S = 1.0
+ELEVATION_MAX_PER_DAY = 800
+# Each visitor's daily share of the outbound calls above, per service (so up to 40 Overpass and
+# 40 elevation calls). Far more than a planner exploring sites needs once cache hits (free) are
+# counted out, and small enough that one visitor cannot spend the whole Overpass budget.
+CLIENT_MAX_OUTBOUND_PER_DAY = 40
+# Map features returned for display. Buildings make up most of a dense cell and give way first;
+# the analysis itself always uses every feature.
+MAX_MAP_FEATURES = 5000
+# Buildings with more vertices than this are left out of the right-of-way estimate. Real building
+# outlines rarely come near it (OSM's own cap is 2000 per way), while repairing a self-intersecting
+# outline costs seconds of CPU at that size.
+MAX_BUILDING_NODES = 500
+
 
 def terrain_class(max_grade_pct: float) -> str:
     if max_grade_pct <= TERRAIN_FLAT_MAX_GRADE_PCT:

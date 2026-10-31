@@ -1,15 +1,18 @@
 """Footprint placement (rotation + projection of the existing generators) and right-of-way."""
 
 import math
+import random
 
 import pytest
 
 from app.application.footprint import (
     FOOTPRINT_GENERATORS,
+    _building_polygon,
     estimate_right_of_way,
     is_footprint_available,
     place_footprint,
 )
+from app.data.site_analysis_defaults import MAX_BUILDING_NODES
 from app.domain.geometry import METRES_PER_COORD, ControlPoint, RoadNetwork, RoadSegment
 from app.infrastructure.gis.overpass import OsmWay
 from app.infrastructure.gis.projection import LocalOrigin, bearing, haversine_m, to_latlon
@@ -196,3 +199,49 @@ def test_multiple_overlapping_buildings_sum(fake_registered):
     row_one = estimate_right_of_way(fp, [b1], demolition_cost_per_sqm=100.0)
     assert row_both.buildings_affected == 2
     assert row_both.demolished_area_m2 > row_one.demolished_area_m2
+
+
+def test_building_over_the_node_cap_is_skipped(fake_registered):
+    fp = place_footprint("Fake", *KYIV, length=200.0, lanes=2, lane_width=4.0)
+    origin = LocalOrigin(*KYIV)
+    # A 10x10 m square straddling the road, traced with more vertices than the cap allows.
+    side = MAX_BUILDING_NODES // 4 + 1
+    ring = [(-5 + 10 * i / side, -5) for i in range(side)]
+    ring += [(5, -5 + 10 * i / side) for i in range(side)]
+    ring += [(5 - 10 * i / side, 5) for i in range(side)]
+    ring += [(-5, 5 - 10 * i / side) for i in range(side)]
+    ring.append(ring[0])
+    building = OsmWay(1, {"building": "yes"}, [to_latlon(x, y, origin) for x, y in ring])
+    assert len(building.coords) > MAX_BUILDING_NODES
+    assert estimate_right_of_way(fp, [building], 150.0).buildings_affected == 0
+
+
+def _brute_force_row(fp, buildings, cost):
+    """The estimate as it was before the bounding-box prefilter: every building, no shortcuts."""
+    affected, area = 0, 0.0
+    for way in buildings:
+        poly = _building_polygon(way, fp.origin)
+        if poly is None or poly.is_empty:
+            continue
+        overlap = poly.intersection(fp.polygon)
+        if not overlap.is_empty:
+            affected += 1
+            area += overlap.area
+    return affected, round(area, 1), round(area * cost, 0)
+
+
+@pytest.mark.parametrize("name", SUPPORTED)
+def test_prefilter_does_not_change_the_estimate(name):
+    rnd = random.Random(7)
+    origin = LocalOrigin(*KYIV)
+    fp = place_footprint(name, *KYIV, bearing_rad=0.6)
+    buildings = [
+        square_building(i, rnd.uniform(-400, 400), rnd.uniform(-400, 400), rnd.uniform(3, 15),
+                        origin)
+        for i in range(400)
+    ]
+    row = estimate_right_of_way(fp, buildings, 150.0)
+    assert row.buildings_affected > 0
+    assert (row.buildings_affected, row.demolished_area_m2, row.estimated_cost_usd) == (
+        _brute_force_row(fp, buildings, 150.0)
+    )

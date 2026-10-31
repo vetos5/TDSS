@@ -14,8 +14,10 @@ Enabled only when **all** hold:
 
 The request uses structured outputs (``output_config.format`` with a JSON schema) so the reply is
 always parseable, and ``effort: "low"`` because transcription needs little reasoning. The model
-defaults to Claude Haiku 5.5 (small and fast); ``TDSS_LLM_MODEL`` overrides it. Successful results
-are cached in memory by document hash, so retraining does not pay for the same document twice.
+defaults to Claude Haiku 5.5 (small and fast); ``TDSS_LLM_MODEL`` overrides it. At most
+``MAX_TEXT_CHARS`` characters of a document are sent. Results are cached in memory by document
+hash, failures included, so retraining does not pay for the same document twice; only rate limits,
+network and server errors are left uncached, so that the next retrain tries again.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ MODEL_ENV = "TDSS_LLM_MODEL"
 DEFAULT_MODEL = "claude-haiku-5-5"
 MAX_TOKENS = 16_000
 REQUEST_TIMEOUT_S = 120.0
+MAX_TEXT_CHARS = 100_000   # about 25k tokens: a long report; the rest of a document is not sent
 _CACHE_LIMIT = 256
 
 SYSTEM_PROMPT = """\
@@ -145,11 +148,25 @@ def extract_records_with_llm(
     ``messages.create(**kwargs)``); without it the real SDK client is used and results cached.
     """
     model = model or model_id()
+    notes: List[str] = []
+    if len(text) > MAX_TEXT_CHARS:
+        text = text[:MAX_TEXT_CHARS]
+        notes.append(f"only the first {MAX_TEXT_CHARS:,} characters of the text were sent")
     cache_key = hashlib.sha256(f"{model}\0{text}".encode("utf-8")).hexdigest()
     use_cache = client is None
     if use_cache and cache_key in _cache:
         records, warnings = _cache[cache_key]
         return [dict(r) for r in records], list(warnings)
+
+    def done(
+        records: List[Dict[str, Any]], warnings: List[str], *, retry: bool = False
+    ) -> Tuple[List[Dict[str, Any]], List[str]]:
+        warnings = notes + warnings
+        if use_cache and not retry:
+            if len(_cache) >= _CACHE_LIMIT:
+                _cache.clear()
+            _cache[cache_key] = ([dict(r) for r in records], list(warnings))
+        return records, warnings
 
     errors = _sdk_errors()
     try:
@@ -168,16 +185,18 @@ def extract_records_with_llm(
             }],
         )
     except errors.rate_limit:
-        return [], ["rate limited by the Claude API — retrain later to retry"]
+        return done([], ["rate limited by the Claude API — retrain later to retry"], retry=True)
     except errors.status as exc:
-        return [], [f"Claude API error {getattr(exc, 'status_code', '?')}: {exc}"]
+        status = getattr(exc, "status_code", None)
+        retry = not isinstance(status, int) or status >= 500
+        return done([], [f"Claude API error {status or '?'}: {exc}"], retry=retry)
     except errors.connection:
-        return [], ["could not reach the Claude API (network error)"]
+        return done([], ["could not reach the Claude API (network error)"], retry=True)
 
     if response.stop_reason == "refusal":
-        return [], ["the model declined to process this document"]
+        return done([], ["the model declined to process this document"])
     if response.stop_reason == "max_tokens":
-        return [], ["model output was cut off (document too long) — no records taken"]
+        return done([], ["model output was cut off (document too long) — no records taken"])
     reply = next((b.text for b in response.content if getattr(b, "type", "") == "text"), "")
     try:
         payload = json.loads(reply)
@@ -185,11 +204,6 @@ def extract_records_with_llm(
         if not isinstance(records, list):
             raise TypeError("records is not a list")
     except (ValueError, KeyError, TypeError) as exc:
-        return [], [f"unreadable model output ({exc})"]
+        return done([], [f"unreadable model output ({exc})"])
 
-    raws = [r for r in records if isinstance(r, dict)]
-    if use_cache:
-        if len(_cache) >= _CACHE_LIMIT:
-            _cache.clear()
-        _cache[cache_key] = ([dict(r) for r in raws], [])
-    return raws, []
+    return done([r for r in records if isinstance(r, dict)], [])

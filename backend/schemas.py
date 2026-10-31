@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -21,15 +21,18 @@ class WeightsInput(BaseModel):
     safety_index: float = Field(0.25, ge=0, le=1)
 
 
+# The bounds keep public requests to values the engine and the model are built for (the UI's
+# ranges are narrower still); an unbounded int such as 10**400 would otherwise overflow in floats.
+# Budget and land limit only need to stay finite: 1e9 is the code's own "no limit".
 class ProjectParams(BaseModel):
-    design_speed: int = 100
-    aadt: int = 45000
-    peak_factor: int = 10
-    num_lanes: int = 2
-    budget: float = 100.0
-    land_limit: float = 30.0
-    terrain: str = "Flat"
-    env_sensitivity: str = "Medium"
+    design_speed: int = Field(100, ge=20, le=200)
+    aadt: int = Field(45000, ge=0, le=1_000_000)
+    peak_factor: int = Field(10, ge=0, le=100)
+    num_lanes: int = Field(2, ge=1, le=10)
+    budget: float = Field(100.0, ge=0, le=1e9)
+    land_limit: float = Field(30.0, ge=0, le=1e9)
+    terrain: str = Field("Flat", max_length=32)
+    env_sensitivity: str = Field("Medium", max_length=32)
 
 
 MethodId = Literal["wsm", "topsis", "ahp", "promethee", "vikor"]
@@ -50,19 +53,20 @@ class WeightingInput(BaseModel):
     """
 
     mode: WeightingMode = "manual"
-    ahp_matrix: Optional[List[List[float]]] = Field(
-        None, description="4×4 pairwise comparison matrix in criteria order (Saaty 1/9…9)"
-    )
+    # The shape is bounded in the schema so an oversized matrix fails before per-item validation.
+    ahp_matrix: Optional[
+        Annotated[List[Annotated[List[float], Field(max_length=4)]], Field(max_length=4)]
+    ] = Field(None, description="4×4 pairwise comparison matrix in criteria order (Saaty 1/9…9)")
     subjective: Literal["manual", "ahp"] = "manual"
     objective: Literal["entropy", "critic"] = "entropy"
     alpha: float = Field(0.5, ge=0, le=1)
 
 
 class EvaluateRequest(BaseModel):
-    context: str
+    context: str = Field(max_length=64)
     weights: WeightsInput
     params: ProjectParams
-    methods: List[MethodId] = Field(default_factory=lambda: ["wsm"], min_length=1)
+    methods: List[MethodId] = Field(default_factory=lambda: ["wsm"], min_length=1, max_length=5)
     weighting: WeightingInput = Field(default_factory=WeightingInput)
     value_source: ValueSource = "expert"
 
@@ -150,18 +154,21 @@ class ValueRangeInput(BaseModel):
 
 
 class UncertaintyInput(BaseModel):
-    iterations: int = Field(1000, ge=100, le=10000)
-    seed: int = 42
+    # 5000 is the UI's maximum; one SMAA iteration costs every method 1 + 3 runs.
+    iterations: int = Field(1000, ge=100, le=5000)
+    seed: int = Field(42, ge=0, le=2**32 - 1)
     weight_model: Literal["fixed", "perturbed", "uniform"] = "perturbed"
     concentration: float = Field(100.0, gt=0, le=10000)
     values: Dict[str, ValueRangeInput] = Field(
-        default_factory=dict, description="Per-criterion overrides of the default ranges"
+        default_factory=dict, max_length=4,
+        description="Per-criterion overrides of the default ranges",
     )
 
 
 class RobustnessRequest(EvaluateRequest):
     methods: List[MethodId] = Field(
-        default_factory=lambda: ["wsm", "topsis", "ahp", "promethee", "vikor"], min_length=1
+        default_factory=lambda: ["wsm", "topsis", "ahp", "promethee", "vikor"],
+        min_length=1, max_length=5,
     )
     uncertainty: UncertaintyInput = Field(default_factory=UncertaintyInput)
 
@@ -262,10 +269,11 @@ class ModelStatus(BaseModel):
     interval_level: float
     llm_available: bool
     pdf_available: bool
+    editing_enabled: bool = False  # uploads, deletes and retrains are on (TDSS_ADMIN_TOKEN is set)
 
 
 class PredictRequest(BaseModel):
-    context: str
+    context: str = Field(max_length=64)
     params: ProjectParams = Field(default_factory=ProjectParams)
 
 
@@ -308,12 +316,14 @@ class ContextListResponse(BaseModel):
 # pairs instead, since they are Leaflet-only internal data, not meant for external GIS interop.
 
 
+# Leaflet's Web Mercator map ends at ±85.05°, and the UI's radius slider runs 200-1500 m. Each
+# request costs an Overpass query on a shared public server, so the radius stays within that range.
 class SiteAnalyseRequest(BaseModel):
-    lat: float = Field(ge=-90, le=90)
+    lat: float = Field(ge=-85, le=85)
     lon: float = Field(ge=-180, le=180)
-    bearing_lat: Optional[float] = Field(None, ge=-90, le=90)
+    bearing_lat: Optional[float] = Field(None, ge=-85, le=85)
     bearing_lon: Optional[float] = Field(None, ge=-180, le=180)
-    radius_m: float = Field(500.0, gt=0, le=2000)
+    radius_m: float = Field(500.0, ge=100, le=1500)
 
 
 class RoadCorridorSchema(BaseModel):
@@ -341,13 +351,13 @@ class SiteAnalyseResponse(BaseModel):
 
 
 class FootprintRequest(BaseModel):
-    alternative_name: str
-    lat: float = Field(ge=-90, le=90)
+    alternative_name: str = Field(max_length=64)
+    lat: float = Field(ge=-85, le=85)
     lon: float = Field(ge=-180, le=180)
-    bearing_lat: Optional[float] = Field(None, ge=-90, le=90)
+    bearing_lat: Optional[float] = Field(None, ge=-85, le=85)
     bearing_lon: Optional[float] = Field(None, ge=-180, le=180)
-    radius_m: float = Field(500.0, gt=0, le=2000)
-    demolition_cost_per_sqm: Optional[float] = Field(None, gt=0)
+    radius_m: float = Field(500.0, ge=100, le=1500)
+    demolition_cost_per_sqm: Optional[float] = Field(None, gt=0, le=100_000)
 
 
 class FootprintSegmentSchema(BaseModel):
