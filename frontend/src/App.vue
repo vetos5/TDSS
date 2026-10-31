@@ -102,9 +102,11 @@ watch(() => model.status.value?.revision, (now, before) => {
 
     <main ref="scroller" class="relative min-w-0 flex-1 overflow-y-auto pb-[calc(52px+env(safe-area-inset-bottom))] md:pb-0">
       <!-- Desktop toolbar: title on the left, view switcher centred, activity on the right.
-           Equal 1fr side columns keep the switcher centred whatever the language. -->
+           Equal 1fr side columns keep the switcher centred whatever the language. The title
+           only shows while the switcher is icons only: once its labels appear (TabNav, 1360px)
+           they name the view, and the title would be squeezed to a few letters. -->
       <header class="material-bar sticky top-0 z-20 hidden h-[52px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line px-4 md:grid">
-        <div class="min-w-0">
+        <div class="min-w-0 min-[1360px]:invisible">
           <h1 class="truncate text-[15px] leading-tight font-semibold">{{ title }}</h1>
           <p class="truncate text-[11px] text-muted">
             {{ dss.selectedContext.value }}<template v-if="dss.valueSource.value === 'model'"> · {{ t.valueSources.model }}</template>

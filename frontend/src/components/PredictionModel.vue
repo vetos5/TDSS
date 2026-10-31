@@ -382,10 +382,13 @@ const coefRows = computed(() => (status.value?.coefficients?.[coefCriterion.valu
 
         <!-- Editing off on the server (read-only) · locked (token form) · unlocked (drop zone) -->
         <Transition name="fade" mode="out-in">
-          <p v-if="!model.editingEnabled.value" key="off" class="flex items-start gap-1.5 text-xs text-subtle">
-            <Icon name="lock" class="mt-px" />
-            <span>{{ t.modelEditingOff }}</span>
-          </p>
+          <!-- Shown where the drop zone would be, so it is clear why uploading is missing. -->
+          <div v-if="!model.editingEnabled.value" key="off" role="status"
+               class="flex flex-col items-center rounded-lg border border-dashed border-line-strong bg-surface-2/60 px-4 py-5 text-center">
+            <Icon name="lock" class="mb-2 text-lg text-subtle" />
+            <p class="text-[13px] font-medium">{{ t.modelEditingOffTitle }}</p>
+            <p class="mt-1 max-w-prose text-xs leading-relaxed text-muted">{{ t.modelEditingOff }}</p>
+          </div>
 
           <form v-else-if="!model.unlocked.value" key="locked" class="rounded-lg border border-line bg-surface-2/60 p-3"
                 @submit.prevent="unlock">
