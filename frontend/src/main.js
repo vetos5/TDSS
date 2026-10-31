@@ -14,7 +14,8 @@ function paintRange(el) {
 
 const rangeFill = {
   mounted(el) {
-    paintRange(el)
+    // v-model writes a range's value in its own mounted hook, which may run after this one.
+    queueMicrotask(() => paintRange(el))
     el.addEventListener('input', () => paintRange(el))
   },
   updated: paintRange,
