@@ -74,10 +74,19 @@ function pick(id) {
       </button>
     </div>
 
-    <p class="eyebrow mt-5 mb-1.5 px-4">{{ t.appearance }}</p>
-    <div class="seg grid w-full grid-cols-2" role="radiogroup" :aria-label="t.appearance">
-      <button type="button" role="radio" class="seg-item" :aria-checked="!dark" @click="setDark(false)">{{ t.themeLight }}</button>
-      <button type="button" role="radio" class="seg-item" :aria-checked="dark" @click="setDark(true)">{{ t.themeDark }}</button>
+    <!-- Appearance as an iOS-style settings row: label left, sun / moon switch right. -->
+    <div class="card mt-5 flex min-h-11 items-center gap-3 py-1.5 pl-4 pr-1.5">
+      <span class="flex-1 text-[15px]">{{ t.appearance }}</span>
+      <div class="seg" role="radiogroup" :aria-label="t.appearance">
+        <button type="button" role="radio" class="seg-item inline-flex w-12 items-center justify-center !px-0"
+                :aria-checked="!dark" :aria-label="t.themeLight" :title="t.themeLight" @click="setDark(false)">
+          <Icon name="sun" class="text-[17px]" />
+        </button>
+        <button type="button" role="radio" class="seg-item inline-flex w-12 items-center justify-center !px-0"
+                :aria-checked="dark" :aria-label="t.themeDark" :title="t.themeDark" @click="setDark(true)">
+          <Icon name="moon" class="text-[17px]" />
+        </button>
+      </div>
     </div>
 
     <p class="eyebrow mt-5 mb-1.5 px-4">{{ t.language }}</p>
