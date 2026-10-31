@@ -16,7 +16,6 @@ import SiteMap from './components/SiteMap.vue'
 import PredictionModel from './components/PredictionModel.vue'
 import ScenarioComparison from './components/ScenarioComparison.vue'
 import DecisionReport from './components/DecisionReport.vue'
-import Icon from './components/Icon.vue'
 import { useScenarios } from './composables/useScenarios.js'
 
 const { dark, toggle } = useTheme()
@@ -98,28 +97,24 @@ watch(() => model.status.value?.revision, (now, before) => {
 
 <template>
   <div class="flex h-dvh overflow-hidden bg-app text-fg">
-    <Sidebar v-if="!narrow" :dark="dark" :dss="dss" @toggle-theme="toggle" @show-compare="selectTab('compare')" />
+    <Sidebar v-if="!narrow" :dark="dark" :dss="dss" @toggle-theme="toggle" @show-compare="selectTab('compare')"
+             @open-report="reportOpen = true" />
 
     <main ref="scroller" class="relative min-w-0 flex-1 overflow-y-auto pb-[calc(52px+env(safe-area-inset-bottom))] md:pb-0">
-      <!-- Desktop toolbar: title on the left, view switcher centred, activity on the right -->
-      <header class="material-bar sticky top-0 z-20 hidden h-[52px] items-center gap-3 border-b border-line px-4 md:flex">
-        <div class="min-w-0 flex-1">
+      <!-- Desktop toolbar: title on the left, view switcher centred, activity on the right.
+           Equal 1fr side columns keep the switcher centred whatever the language. -->
+      <header class="material-bar sticky top-0 z-20 hidden h-[52px] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line px-4 md:grid">
+        <div class="min-w-0">
           <h1 class="truncate text-[15px] leading-tight font-semibold">{{ title }}</h1>
           <p class="truncate text-[11px] text-muted">
             {{ dss.selectedContext.value }}<template v-if="dss.valueSource.value === 'model'"> · {{ t.valueSources.model }}</template>
           </p>
         </div>
         <TabNav :active="activeTab" @update="selectTab" />
-        <div class="flex flex-1 items-center justify-end gap-2">
-          <div class="flex items-center gap-1.5 text-xs text-subtle transition-opacity duration-200"
-               :class="dss.loading.value ? 'opacity-100' : 'opacity-0'" aria-live="polite">
-            <span class="spinner"></span>
-            <span class="hidden lg:inline">{{ t.updating }}</span>
-          </div>
-          <button type="button" class="btn" :disabled="!dss.evalData.value" :title="t.report.title"
-                  @click="reportOpen = true">
-            <Icon name="file" class="text-sm" /> {{ t.report.open }}
-          </button>
+        <div class="flex min-w-0 items-center justify-end gap-1.5 text-xs text-subtle transition-opacity duration-200"
+             :class="dss.loading.value ? 'opacity-100' : 'opacity-0'" aria-live="polite">
+          <span class="spinner shrink-0"></span>
+          <span class="hidden truncate lg:inline">{{ t.updating }}</span>
         </div>
       </header>
 

@@ -621,7 +621,7 @@
 
   "report": {
     "title": "Interchange decision report",
-    "open": "Report",
+    "button": "Decision report",
     "print": "Print / Save as PDF",
     "scenario": "Scenario",
     "generated": "Generated",

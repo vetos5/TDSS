@@ -1289,7 +1289,7 @@ The *Compare scenarios* tab (key 7; in the *More* sheet on phones) shows the cur
 
 #### `DecisionReport.vue` — Decision Report (v5)
 
-The *Report* button in the toolbar (on phones, the last entry of the *More* sheet) opens a printable report of the current inputs. *Print / Save as PDF* opens the system print dialog, which saves to PDF on macOS, iOS and every desktop browser. In print, `style.css` hides the app and the report's toolbar, and sets A4 pages. Sections are kept whole across page breaks where they fit. The report is always drawn as a light paper document, whatever the app theme, and in the active language.
+The *Report* button pinned to the bottom of the inputs panel (on phones, the last entry of the *More* sheet) opens a printable report of the current inputs. *Print / Save as PDF* opens the system print dialog, which saves to PDF on macOS, iOS and every desktop browser. In print, `style.css` hides the app and the report's toolbar, and sets A4 pages. Sections are kept whole across page breaks where they fit. The report is always drawn as a light paper document, whatever the app theme, and in the active language.
 
 When it opens, the report re-runs `/api/robustness` (with the settings of the *Robustness* tab) and `/api/model/predict`, so every section matches the inputs on screen. Printing is disabled until both have answered. The report has seven sections:
 

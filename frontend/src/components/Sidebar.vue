@@ -15,7 +15,7 @@ const props = defineProps({
   // Phone layout: the inputs are their own tab, drawn as a grouped card in the page.
   page: Boolean,
 })
-const emit = defineEmits(['toggle-theme', 'show-results', 'show-compare'])
+const emit = defineEmits(['toggle-theme', 'show-results', 'show-compare', 'open-report'])
 const { scenarios } = useScenarios()
 
 const { locale, setLocale, t } = useLocale()
@@ -217,6 +217,14 @@ const envOptions = computed(() => [
       </PanelSection>
 
       <p v-if="!page" class="p-4 text-[0.68rem] leading-snug text-subtle">{{ t.dataFooter }}</p>
+    </div>
+
+    <!-- The report summarises these inputs, so it is pinned under them (on phones it is in the More sheet). -->
+    <div v-if="!page" class="shrink-0 border-t border-line p-3">
+      <button type="button" class="btn w-full" :disabled="!dss.evalData.value" :title="t.report.title"
+              @click="emit('open-report')">
+        <Icon name="file" class="text-sm" /> {{ t.report.button }}
+      </button>
     </div>
 
     <template v-if="page">
