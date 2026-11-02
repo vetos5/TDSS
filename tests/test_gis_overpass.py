@@ -512,3 +512,43 @@ def test_off_grid_point_gets_exactly_the_ways_an_exact_around_query_would():
     features = make_client(handler).fetch_features(click.lat, click.lon, radius_m=500)
     assert [w.id for w in features.roads] == [1, 3]
     assert features.buildings == []
+
+
+# ── Circuit breaker ───────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("failure", ["429", "refused"])
+def test_a_mirror_that_refuses_is_left_alone_for_a_while(failure):
+    seen_hosts = []
+
+    def handler(request):
+        seen_hosts.append(request.url.host)
+        if request.url.host == "overpass-api.de":
+            if failure == "429":
+                return httpx.Response(429, text="rate limited", headers={"Retry-After": "60"})
+            raise httpx.ConnectError("[Errno 61] Connection refused", request=request)
+        return httpx.Response(200, json=SAMPLE_RAW)
+
+    client = make_client(handler)
+    client.fetch_features(lat=50.45, lon=30.52)
+    client.fetch_features(lat=49.0, lon=25.0)  # another cell: not a cache hit
+    mirror = httpx.URL(OVERPASS_MIRROR_ENDPOINTS[1]).host
+    # The primary is asked once; the second lookup goes straight to the mirror.
+    assert seen_hosts == ["overpass-api.de", mirror, mirror]
+
+
+def test_a_cooled_down_mirror_is_asked_again_later(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(overpass.time, "monotonic", lambda: now[0])
+    seen_hosts = []
+
+    def handler(request):
+        seen_hosts.append(request.url.host)
+        if request.url.host == "overpass-api.de" and now[0] < 2000:
+            return httpx.Response(429, text="rate limited")
+        return httpx.Response(200, json=SAMPLE_RAW)
+
+    client = make_client(handler)
+    client.fetch_features(lat=50.45, lon=30.52)
+    now[0] = 2000.0 + overpass.COOLDOWN_AFTER_429_S
+    client.fetch_features(lat=49.0, lon=25.0)
+    assert seen_hosts[-1] == "overpass-api.de"

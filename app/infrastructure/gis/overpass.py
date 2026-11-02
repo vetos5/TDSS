@@ -17,6 +17,7 @@ point and radius would have returned, so the analysis sees the same features as 
 from __future__ import annotations
 
 import threading
+import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import nullcontext
 from dataclasses import dataclass, fields
@@ -43,28 +44,36 @@ from app.infrastructure.gis.projection import LocalOrigin, to_local
 OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
 # The public Overpass servers are shared infrastructure and are often at capacity: overpass-api.de
 # answers "502 ... all query workers are busy and the request queue is full" within 0.1 s, or
-# 429/504, much of the day, and any one mirror can hang for minutes. Independently run mirrors are
-# therefore raced rather than tried one after another (see OverpassClient._race); the order is the
-# order they are started in.
+# 429/504, much of the day, and any one mirror can hang for minutes. The two independently run
+# public instances that serve the whole planet and allow third-party servers are therefore
+# overlapped rather than tried one after another (see OverpassClient._race). Left out on purpose:
+# overpass.kumi.systems (now an alias of private.coffee), lz4./z.overpass-api.de (the nodes behind
+# overpass-api.de, same limits), maps.mail.ru (blocked in Ukraine), and the regional instances
+# (overpass.osm.ch has Switzerland only; overpass.openstreetmap.fr is for white-listed users).
 OVERPASS_MIRROR_ENDPOINTS = (
     OVERPASS_ENDPOINT,
     "https://overpass.private.coffee/api/interpreter",
-    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-    "https://overpass.kumi.systems/api/interpreter",
 )
 # A mirror that has not answered after this long gets company: the next mirror is started too,
-# and the first good answer wins. A mirror that fails is replaced at once, without waiting.
-HEDGE_AFTER_S = 4.0
+# and the first good answer wins. A mirror that fails is replaced at once, without waiting. A
+# healthy mirror answers a typical query well within this, so a hedge is rare and never doubles
+# the load on one operator.
+HEDGE_AFTER_S = 8.0
 # No new mirror is started with less than this left before the deadline; it could not finish.
 MIN_ATTEMPT_S = 2.0
-# Passes over the mirrors. The second pass only retries mirrors that failed transiently (busy,
-# 429, 5xx, connect errors), after a backoff that honours a short Retry-After.
+# Passes over the mirrors. The second pass only retries mirrors that failed transiently (a 5xx,
+# or this process holding both their slots), after a short backoff.
 ROUNDS = 2
 RETRY_BACKOFF_S = 1.5
-MAX_RETRY_AFTER_S = 5.0
 # overpass-api.de gives each client IP 2 query slots and answers 429 beyond them; the mirrors run
 # the same software. A mirror with both slots taken by this process is skipped, not waited for.
 SLOTS_PER_ENDPOINT = 2
+# Circuit breaker. After a 429 the mirror is left alone for its Retry-After (at least the first
+# value below); after a refused or timed-out connection (overpass-api.de's firewall blocks
+# addresses that keep sending it failing queries) for the second. Asking again sooner only extends
+# such a block; meanwhile the other mirror, an expired cache entry or the browser's own fetch serve.
+COOLDOWN_AFTER_429_S = 30.0
+COOLDOWN_AFTER_REFUSED_S = 120.0
 DEFAULT_TIMEOUT_S = 20.0  # read timeout per socket read; see outbound.py for the others
 # Overpass's own [timeout:] for the query, kept under the read timeout so a heavy query ends with
 # Overpass's error remark rather than our read timing out. A busy server is also more likely to
@@ -112,13 +121,11 @@ class _AttemptFailed(Exception):
         *,
         retry: bool,
         final: bool = False,
-        retry_after_s: float = 0.0,
     ):
         super().__init__(str(error))
         self.error = error
         self.retry = retry
         self.final = final or error.public_message in _FINAL_MESSAGES
-        self.retry_after_s = retry_after_s
 
 
 @dataclass(frozen=True)
@@ -292,6 +299,7 @@ class OverpassClient:
             endpoint: threading.BoundedSemaphore(SLOTS_PER_ENDPOINT)
             for endpoint in OVERPASS_MIRROR_ENDPOINTS
         }
+        self._cooldown_until: dict[str, float] = {}  # endpoint -> time.monotonic() value
 
     def close(self) -> None:
         if self._owns_client:
@@ -335,7 +343,8 @@ class OverpassClient:
         mirror still silent after HEDGE_AFTER_S gets the next one started alongside it. When one
         answers, the others are told to stop reading. A failure every mirror would share (too much
         data, a spent budget, a malformed query) ends the race at once. After a full pass, the
-        mirrors that failed transiently are tried once more, after a backoff.
+        mirrors that failed transiently are tried once more, after a backoff. A mirror cooling
+        down after a 429 or a refused connection is skipped.
 
         Only the first attempt is charged to *client*: a visitor's daily share counts lookups,
         not how many mirrors this server needed to answer one.
@@ -354,7 +363,7 @@ class OverpassClient:
 
         try:
             for round_no in range(ROUNDS):
-                retryable, wait_s = [], 0.0
+                retryable = []
                 queue = list(endpoints)
                 pending: dict[Future, str] = {}
                 start(queue, pending)
@@ -377,17 +386,15 @@ class OverpassClient:
                                 raise failed.error from failed
                             if failed.retry:
                                 retryable.append(endpoint)
-                                wait_s = max(wait_s, failed.retry_after_s)
                         left = outbound.time_left(deadline, "Overpass")
                         if left is None or left > MIN_ATTEMPT_S:
                             start(queue, pending)
                 endpoints = retryable
                 if not endpoints or round_no + 1 == ROUNDS:
                     break
-                backoff = max(RETRY_BACKOFF_S, min(wait_s, MAX_RETRY_AFTER_S))
-                if not outbound.can_back_off(backoff + MIN_ATTEMPT_S, deadline):
+                if not outbound.can_back_off(RETRY_BACKOFF_S + MIN_ATTEMPT_S, deadline):
                     break
-                retry.sleep(backoff)
+                retry.sleep(RETRY_BACKOFF_S)
         finally:
             stop.set()
 
@@ -413,6 +420,8 @@ class OverpassClient:
         """One request to one mirror, as the compact cache form. Raises :class:`_AttemptFailed`."""
         if stop.is_set():
             raise _AttemptFailed(GisUnavailableError(f"{endpoint}: race already won"), retry=False)
+        if time.monotonic() < self._cooldown_until.get(endpoint, 0.0):
+            raise _AttemptFailed(GisUnavailableError(f"{endpoint}: cooling down"), retry=False)
         slots = self._endpoint_slots[endpoint]
         if not slots.acquire(blocking=False):
             raise _AttemptFailed(
@@ -432,13 +441,18 @@ class OverpassClient:
             error = GisUnavailableError(f"Overpass API request to {endpoint} failed: {exc!r}")
             # 400: our query is malformed, and every mirror runs the same software. Other 4xx
             # (403, 406, 429) are one mirror's policy, so the race goes on without it.
-            raise _AttemptFailed(
-                error,
-                retry=status == 429 or status >= 500,
-                final=status == 400,
-                retry_after_s=_retry_after_s(exc.response),
-            ) from exc
+            if status == 429:
+                self._cool_down(
+                    endpoint, max(COOLDOWN_AFTER_429_S, _retry_after_s(exc.response))
+                )
+            raise _AttemptFailed(error, retry=status >= 500, final=status == 400) from exc
         except (httpx.HTTPError, ValueError) as exc:
+            if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+                self._cool_down(endpoint, COOLDOWN_AFTER_REFUSED_S)
+                raise _AttemptFailed(
+                    GisUnavailableError(f"Overpass API request to {endpoint} failed: {exc!r}"),
+                    retry=False,
+                ) from exc
             # A read timeout is not retried on the same mirror: a query heavy enough to time out
             # once times out again there. Another mirror may still be fast enough.
             raise _AttemptFailed(
@@ -448,6 +462,9 @@ class OverpassClient:
             ) from exc
         finally:
             slots.release()
+
+    def _cool_down(self, endpoint: str, seconds: float) -> None:
+        self._cooldown_until[endpoint] = time.monotonic() + seconds
 
     def _post(
         self,

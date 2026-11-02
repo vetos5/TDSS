@@ -79,12 +79,12 @@ SITE_REQUEST_SLOTS = 4
 SITE_REQUEST_DEADLINE_S = 40.0
 # Overpass calls in flight at once, over all mirrors. Each public Overpass server gives a client IP
 # 2 query slots and answers 429 beyond them, so the client also holds at most 2 per mirror (see
-# SLOTS_PER_ENDPOINT in overpass.py); this cap is that times the four mirrors.
-OVERPASS_MAX_CONCURRENT = 8
+# SLOTS_PER_ENDPOINT in overpass.py); this cap is that times the two mirrors.
+OVERPASS_MAX_CONCURRENT = 4
 # Every attempt counts, hedges and retries included, and a busy day can need two or three
 # attempts per lookup. overpass-api.de's usage policy asks for well under 10,000 queries a day,
-# and the load is spread over four mirrors; a cached 100 m cell costs nothing.
-OVERPASS_MAX_PER_DAY = 1200
+# and the load is spread over two mirrors; a cached 100 m cell costs nothing.
+OVERPASS_MAX_PER_DAY = 1000
 # The public Open Topo Data API allows 1 call per second and 1000 calls a day per client;
 # 800 leaves a margin so its own limit is never what stops us.
 ELEVATION_MIN_INTERVAL_S = 1.0
