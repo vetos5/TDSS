@@ -24,6 +24,18 @@ const FEATURE_STYLE = {
   residential: { color: '#eda100', weight: 1, fillColor: '#eda100', fillOpacity: 0.12 },
 }
 
+// The footprint is drawn like a road plan: every segment at its real paved width for the current
+// zoom, with a white casing so it reads on aerial imagery (the basemap is the same in both themes).
+// Ramps are purple so the movements stand out from the through carriageways.
+const FOOTPRINT_STYLE = {
+  mainline: { color: '#334155' },
+  crossroad: { color: '#64748b' },
+  ramp: { color: '#7c3aed' },
+  road: { color: '#64748b' },
+}
+const FOOTPRINT_ORDER = ['mainline', 'crossroad', 'road', 'ramp']
+const FOOTPRINT_CASING_PX = 3
+
 const mapContainer = ref(null)
 let map = null
 let markerA = null
@@ -80,16 +92,37 @@ function redrawFeatures() {
   featuresLayer.bringToBack()
 }
 
+// Web Mercator ground resolution: metres per CSS pixel at this latitude and zoom.
+function metresPerPixel(lat) {
+  return 156543.03392 * Math.cos(lat * Math.PI / 180) / 2 ** map.getZoom()
+}
+
+function footprintWeight(seg, mpp) {
+  return Math.max(2, Math.min(seg.width_m / mpp, 60))
+}
+
 function redrawFootprint() {
   if (footprintLayer) { footprintLayer.remove(); footprintLayer = null }
   const fp = site.footprint.value
-  if (!fp || !fp.available) return
+  if (!fp || !fp.available || !map) return
+  const mpp = metresPerPixel(map.getCenter().lat)
+  const kindOf = seg => (FOOTPRINT_STYLE[seg.kind] ? seg.kind : 'road')
+  const segments = [...fp.segments].sort(
+    (a, b) => FOOTPRINT_ORDER.indexOf(kindOf(a)) - FOOTPRINT_ORDER.indexOf(kindOf(b))
+  )
+  const line = { lineCap: 'round', lineJoin: 'round', interactive: false }
+  // All casings first, then all fills: where a ramp merges into a carriageway the fills run into
+  // each other instead of being cut by a white edge.
+  const casings = segments.map(seg => L.polyline(seg.coords, {
+    ...line, color: '#ffffff', opacity: 0.9,
+    weight: footprintWeight(seg, mpp) + 2 * FOOTPRINT_CASING_PX,
+  }))
   // Tooltips get a text node: Leaflet would parse a string as HTML.
-  footprintLayer = L.layerGroup(
-    fp.segments.map(seg => L.polyline(seg.coords, {
-      color: '#7c3aed', weight: Math.max(3, Math.min(seg.width_m, 14)), opacity: 0.85,
-    }).bindTooltip(document.createTextNode(`${seg.id} (${seg.width_m.toFixed(1)} m)`)))
-  ).addTo(map)
+  const fills = segments.map(seg => L.polyline(seg.coords, {
+    ...line, interactive: true, color: FOOTPRINT_STYLE[kindOf(seg)].color, opacity: 0.95,
+    weight: footprintWeight(seg, mpp),
+  }).bindTooltip(document.createTextNode(`${seg.id} (${seg.width_m.toFixed(1)} m)`), { sticky: true }))
+  footprintLayer = L.layerGroup([...casings, ...fills]).addTo(map)
 }
 
 function initMap() {
@@ -100,6 +133,8 @@ function initMap() {
     { attribution: 'Esri World Imagery', maxZoom: 19 }
   ).addTo(map)
   // wrap(): the world repeats sideways, so a click past the antimeridian can be outside ±180°.
+  // Widths are real metres, so the footprint is redrawn whenever the zoom changes the scale.
+  map.on('zoomend', redrawFootprint)
   map.on('click', (e) => {
     const { lat, lng } = e.latlng.wrap()
     site.handleMapClick(lat, lng)
@@ -204,6 +239,12 @@ watch(locale, () => {
           <span class="inline-block h-2 w-2 shrink-0 rounded-full" :style="{ background: FEATURE_STYLE[key].color }"></span>
           {{ t.legend[key] }}
         </span>
+        <template v-if="site.footprint.value?.available">
+          <span v-for="key in ['mainline', 'crossroad', 'ramp']" :key="key" class="flex items-center gap-1.5">
+            <span class="inline-block h-1.5 w-3.5 shrink-0 rounded-full ring-1 ring-line" :style="{ background: FOOTPRINT_STYLE[key].color }"></span>
+            {{ t.legend[key] }}
+          </span>
+        </template>
       </div>
 
       <div v-if="site.error.value" class="px-4 pb-4">
