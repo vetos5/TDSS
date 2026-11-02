@@ -389,6 +389,7 @@ class OverpassQueryResponse(BaseModel):
 class FootprintSegmentSchema(BaseModel):
     id: str
     width_m: float
+    kind: str = "road"  # mainline | crossroad | ramp | road
     coords: List[List[float]]  # [[lat, lon], ...]
 
 

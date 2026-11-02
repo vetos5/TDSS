@@ -9,7 +9,7 @@ are in **metres**; angles in **radians** unless stated otherwise.
 from __future__ import annotations
 
 import math
-from typing import List, Tuple
+from typing import List, Literal, Tuple
 
 import numpy as np
 from pydantic import BaseModel, Field, model_validator
@@ -50,6 +50,11 @@ class RoadSegment(BaseModel):
     speed_limit_kmh: float = Field(default=60.0, ge=5)
     is_bridge: bool = Field(
         default=False, description="True if segment is elevated (higher construction cost)"
+    )
+    kind: Literal["mainline", "crossroad", "ramp", "road"] = Field(
+        default="road",
+        description="Role in an interchange: a freeway carriageway, the crossing or stem road, "
+        "a ramp, or unclassified",
     )
 
     _geometry_cache: LineString | None = None

@@ -266,8 +266,8 @@ def footprint(
             available=False,
             alternative_name=req.alternative_name,
             message=(
-                f"No geometry generator for '{req.alternative_name}' yet -- footprint drawing "
-                "is only available for Cloverleaf, DDI, SPUI and Turbine."
+                f"No geometry generator for '{req.alternative_name}' -- footprint drawing is "
+                "available for the catalogue's eight interchange types."
             ),
         )
 
@@ -295,6 +295,7 @@ def _footprint(req: FootprintRequest, client: str, overpass: OverpassClient) -> 
             FootprintSegmentSchema(
                 id=seg.id,
                 width_m=seg.width_m,
+                kind=seg.kind,
                 coords=[[lat, lon] for lat, lon in seg.coords_latlon],
             )
             for seg in fp.segments

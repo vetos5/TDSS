@@ -460,7 +460,10 @@
     "building": "Building",
     "water": "Water",
     "protected": "Protected area",
-    "residential": "Residential land"
+    "residential": "Residential land",
+    "mainline": "Footprint: mainline",
+    "crossroad": "Footprint: crossroad",
+    "ramp": "Footprint: ramp"
   },
   "resultsInferred": "Inferred site parameters",
   "confidentBadge": "Confident",
@@ -474,7 +477,7 @@
   "applyParamsButton": "Apply to project parameters",
   "confirmContextChange": "The inferred context differs from the one currently selected. Switching will change which alternatives are being compared. Continue?",
   "footprintSectionTitle": "Interchange Footprint",
-  "footprintSectionDesc": "Draw a chosen interchange type's real footprint at this site and estimate right-of-way / demolition cost from buildings it would displace. Available for Cloverleaf, DDI, SPUI and Turbine — the other types don't have a geometry generator yet.",
+  "footprintSectionDesc": "Draw a chosen interchange type's real footprint at this site and estimate right-of-way / demolition cost from buildings it would displace. The layout follows the primary-road direction you set (for a trumpet or directional T, the through road).",
   "selectAlternativeLabel": "Interchange type",
   "buildingsAffectedLabel": "Buildings affected",
   "demolishedAreaLabel": "Demolished area",

@@ -240,21 +240,23 @@ def test_footprint_available_alternative(client):
 
 
 @pytest.mark.parametrize("name", ["Stack (4-Level)", "Diamond", "Trumpet", "Directional T"])
-def test_footprint_unavailable_alternative(client, name):
+def test_footprint_newly_generated_alternatives(client, name):
     override(FakeOverpass(), FakeElevation())
     r = client.post("/api/site/footprint", json={"alternative_name": name, **KYIV})
     assert r.status_code == 200
     data = r.json()
-    assert data["available"] is False
-    assert data["segments"] == []
-    assert data["right_of_way"] is None
-    assert "generator" in data["message"]
+    assert data["available"] is True
+    assert {seg["kind"] for seg in data["segments"]} >= {"mainline", "ramp"}
 
 
 def test_footprint_unknown_alternative_name(client):
     override(FakeOverpass(), FakeElevation())
     r = client.post("/api/site/footprint", json={"alternative_name": "Nonsense", **KYIV})
-    assert r.json()["available"] is False
+    data = r.json()
+    assert data["available"] is False
+    assert data["segments"] == []
+    assert data["right_of_way"] is None
+    assert "generator" in data["message"]
 
 
 def test_footprint_counts_overlapping_buildings(client):
@@ -313,13 +315,13 @@ def test_footprint_overpass_unavailable_is_503(client):
 
 
 def test_footprint_unavailable_alternative_skips_network_entirely(client):
-    # An unsupported alternative should return immediately, without calling Overpass at all.
+    # An unknown alternative should return immediately, without calling Overpass at all.
     class ExplodingOverpass:
         def fetch_features(self, *a, **k):
-            raise AssertionError("should not fetch OSM data for an unsupported alternative")
+            raise AssertionError("should not fetch OSM data for an unknown alternative")
 
     app.dependency_overrides[get_overpass_client] = lambda: ExplodingOverpass()
-    r = client.post("/api/site/footprint", json={"alternative_name": "Diamond", **KYIV})
+    r = client.post("/api/site/footprint", json={"alternative_name": "Nonsense", **KYIV})
     assert r.status_code == 200 and r.json()["available"] is False
 
 

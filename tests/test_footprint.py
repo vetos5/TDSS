@@ -12,6 +12,7 @@ from app.application.footprint import (
     is_footprint_available,
     place_footprint,
 )
+from app.data.interchange_data import INTERCHANGE_DATA
 from app.data.site_analysis_defaults import MAX_BUILDING_NODES
 from app.domain.geometry import METRES_PER_COORD, ControlPoint, RoadNetwork, RoadSegment
 from app.infrastructure.gis.overpass import OsmWay
@@ -19,8 +20,7 @@ from app.infrastructure.gis.projection import LocalOrigin, bearing, haversine_m,
 
 KYIV = (50.4501, 30.5234)
 
-SUPPORTED = ["Cloverleaf", "DDI", "SPUI", "Turbine"]
-UNSUPPORTED = ["Stack (4-Level)", "Diamond", "Trumpet", "Directional T"]
+SUPPORTED = sorted({name for alts in INTERCHANGE_DATA.values() for name in alts})
 
 
 class FakeGenerator:
@@ -56,10 +56,9 @@ def test_supported_alternatives_are_available(name):
     assert place_footprint(name, *KYIV) is not None
 
 
-@pytest.mark.parametrize("name", UNSUPPORTED)
-def test_unsupported_alternatives_are_not_available(name):
-    assert not is_footprint_available(name)
-    assert place_footprint(name, *KYIV) is None
+def test_every_catalogue_alternative_has_a_generator():
+    assert len(SUPPORTED) == 8
+    assert set(FOOTPRINT_GENERATORS) == set(SUPPORTED)
 
 
 def test_unknown_name_is_not_available():
@@ -143,8 +142,27 @@ def test_real_generator_footprint_stays_near_the_site(name):
 
 
 @pytest.mark.parametrize("name", SUPPORTED)
-def test_real_generator_polygon_is_nonempty(name):
-    assert place_footprint(name, *KYIV).polygon.area > 0
+def test_real_generator_polygon_is_valid_and_plausible(name):
+    polygon = place_footprint(name, *KYIV).polygon
+    assert polygon.is_valid
+    # Paved area of a real interchange: a few hectares, not square metres or square kilometres.
+    assert 10_000 < polygon.area < 150_000
+
+
+@pytest.mark.parametrize("name", SUPPORTED)
+def test_segments_carry_their_kind(name):
+    kinds = {seg.kind for seg in place_footprint(name, *KYIV).segments}
+    assert "ramp" in kinds and "mainline" in kinds
+
+
+@pytest.mark.parametrize("name", SUPPORTED)
+def test_primary_road_follows_the_bearing(name):
+    # The planner's second click sets the primary road's direction. Due east (90°) must lay
+    # the northbound carriageway east-west.
+    seg = next(s for s in place_footprint(name, *KYIV, bearing_rad=math.pi / 2).segments
+               if s.id == "mainline-NB")
+    (lat0, lon0), (lat1, lon1) = seg.coords_latlon[0], seg.coords_latlon[-1]
+    assert math.degrees(bearing(lat0, lon0, lat1, lon1)) == pytest.approx(90.0, abs=0.5)
 
 
 # ── Right-of-way ──────────────────────────────────────────────────────────────
