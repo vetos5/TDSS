@@ -16,6 +16,8 @@ point and radius would have returned, so the analysis sees the same features as 
 
 from __future__ import annotations
 
+import threading
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import nullcontext
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -26,18 +28,43 @@ import httpx
 from app.data.site_analysis_defaults import MIN_MAJOR_ROAD_RANK, ROAD_CLASS_RANK
 from app.infrastructure.gis import outbound, retry
 from app.infrastructure.gis.cache import DEFAULT_CACHE_DIR, cached_get, snap_site
-from app.infrastructure.gis.errors import QUERY_FAILED_MESSAGE, GisUnavailableError
+from app.infrastructure.gis.errors import (
+    BUSY_MESSAGE,
+    CLIENT_QUOTA_MESSAGE,
+    QUERY_FAILED_MESSAGE,
+    QUOTA_MESSAGE,
+    TOO_MUCH_DATA_MESSAGE,
+    UNAVAILABLE_MESSAGE,
+    GisUnavailableError,
+)
 from app.infrastructure.gis.outbound import OutboundBudget
 from app.infrastructure.gis.projection import LocalOrigin, to_local
 
 OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
-# The public Overpass server is shared infrastructure and can return a transient 502/503/504
-# under load (observed directly: a real request during development hit a 504 that succeeded on
-# retry). A second, independently-run mirror plus a short retry-with-backoff on each smooths
-# this over instead of surfacing it to the planner as a hard failure.
-OVERPASS_MIRROR_ENDPOINTS = (OVERPASS_ENDPOINT, "https://overpass.kumi.systems/api/interpreter")
-RETRIES_PER_ENDPOINT = 2
-RETRY_BACKOFF_S = 1.5  # doubles each retry: 1.5s, 3s
+# The public Overpass servers are shared infrastructure and are often at capacity: overpass-api.de
+# answers "502 ... all query workers are busy and the request queue is full" within 0.1 s, or
+# 429/504, much of the day, and any one mirror can hang for minutes. Independently run mirrors are
+# therefore raced rather than tried one after another (see OverpassClient._race); the order is the
+# order they are started in.
+OVERPASS_MIRROR_ENDPOINTS = (
+    OVERPASS_ENDPOINT,
+    "https://overpass.private.coffee/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+)
+# A mirror that has not answered after this long gets company: the next mirror is started too,
+# and the first good answer wins. A mirror that fails is replaced at once, without waiting.
+HEDGE_AFTER_S = 4.0
+# No new mirror is started with less than this left before the deadline; it could not finish.
+MIN_ATTEMPT_S = 2.0
+# Passes over the mirrors. The second pass only retries mirrors that failed transiently (busy,
+# 429, 5xx, connect errors), after a backoff that honours a short Retry-After.
+ROUNDS = 2
+RETRY_BACKOFF_S = 1.5
+MAX_RETRY_AFTER_S = 5.0
+# overpass-api.de gives each client IP 2 query slots and answers 429 beyond them; the mirrors run
+# the same software. A mirror with both slots taken by this process is skipped, not waited for.
+SLOTS_PER_ENDPOINT = 2
 DEFAULT_TIMEOUT_S = 20.0  # read timeout per socket read; see outbound.py for the others
 # Overpass's own [timeout:] for the query, kept under the read timeout so a heavy query ends with
 # Overpass's error remark rather than our read timing out. A busy server is also more likely to
@@ -52,6 +79,9 @@ MAX_RESPONSE_BYTES = 15 * 1024 * 1024
 # just a workaround.
 USER_AGENT = "TDSS-diploma-thesis/1.0 (+https://github.com/vetos5/TDSS)"
 CACHE_TTL_DAYS = 30.0
+# When every mirror fails, an expired entry up to this old is served instead (roads and buildings
+# rarely change within a year, and a slightly old answer beats none during a thesis defence).
+STALE_TTL_DAYS = 365.0
 
 # Only the road classes the corridor analysis ranks (tertiary and above, see
 # site_analysis_defaults.py). Service roads, footways and the like were most of the roads in a
@@ -64,6 +94,31 @@ _KEPT_TAGS = ("highway",)
 # Added to the snapped radius of the query. Snapping moves the point at most half a grid cell on
 # each axis (under 80 m diagonally), so the query circle always contains the requested circle.
 QUERY_MARGIN_M = 100.0
+
+
+# Attempts run here, not on the request's thread, so several mirrors can be in flight at once.
+# Sized for every site request slot (4) racing every mirror; threads start only when needed.
+_ATTEMPTS = ThreadPoolExecutor(max_workers=16, thread_name_prefix="overpass")
+# Public messages that every mirror would answer the same way: the race stops at once.
+_FINAL_MESSAGES = (TOO_MUCH_DATA_MESSAGE, QUOTA_MESSAGE, CLIENT_QUOTA_MESSAGE)
+
+
+class _AttemptFailed(Exception):
+    """One mirror's failure, and whether it is worth asking that mirror again."""
+
+    def __init__(
+        self,
+        error: GisUnavailableError,
+        *,
+        retry: bool,
+        final: bool = False,
+        retry_after_s: float = 0.0,
+    ):
+        super().__init__(str(error))
+        self.error = error
+        self.retry = retry
+        self.final = final or error.public_message in _FINAL_MESSAGES
+        self.retry_after_s = retry_after_s
 
 
 @dataclass(frozen=True)
@@ -233,6 +288,10 @@ class OverpassClient:
         self._cache_dir = cache_dir
         self._cache_ttl_days = cache_ttl_days
         self._budget = budget
+        self._endpoint_slots = {
+            endpoint: threading.BoundedSemaphore(SLOTS_PER_ENDPOINT)
+            for endpoint in OVERPASS_MIRROR_ENDPOINTS
+        }
 
     def close(self) -> None:
         if self._owns_client:
@@ -261,37 +320,134 @@ class OverpassClient:
         key = f"overpass-v2:{q_lat}:{q_lon}:{int(q_radius)}"
 
         def _fetch() -> dict[str, list]:
-            query = build_query(q_lat, q_lon, q_radius)
-            last_exc: httpx.HTTPError | None = None
-            for endpoint in OVERPASS_MIRROR_ENDPOINTS:
-                for attempt in range(RETRIES_PER_ENDPOINT):
-                    timeout = outbound.attempt_timeout(DEFAULT_TIMEOUT_S, deadline, "Overpass")
-                    try:
-                        raw = self._post(endpoint, query, timeout, deadline, client)
-                    except (httpx.HTTPError, ValueError) as exc:
-                        # A read timeout is not retried: a query heavy enough to time out once
-                        # times out again, on the mirror too, and only holds the request longer.
-                        if (isinstance(exc, (ValueError, httpx.ReadTimeout))
-                                or not retry.is_transient(exc)):
-                            raise GisUnavailableError(
-                                f"Overpass API request to {endpoint} failed: {exc!r}"
-                            ) from exc
-                        last_exc = exc
-                        if attempt + 1 < RETRIES_PER_ENDPOINT:
-                            backoff = RETRY_BACKOFF_S * (2**attempt)
-                            if not outbound.can_back_off(backoff, deadline):
-                                break  # no time left to back off here; try the mirror once
-                            retry.sleep(backoff)
-                        continue
-                    _check_remark(raw)
-                    return _compact(parse_features(raw))
-            raise GisUnavailableError(
-                f"Overpass API is unavailable after retrying {len(OVERPASS_MIRROR_ENDPOINTS)} "
-                f"endpoints; it can be briefly busy -- try again shortly. Last error: {last_exc}"
-            ) from last_exc
+            return self._race(build_query(q_lat, q_lon, q_radius), deadline, client)
 
-        compact = cached_get(key, self._cache_ttl_days, _fetch, cache_dir=self._cache_dir)
+        compact = cached_get(
+            key, self._cache_ttl_days, _fetch,
+            cache_dir=self._cache_dir, stale_ttl_days=STALE_TTL_DAYS,
+        )
         return within_radius(_expand(compact), lat, lon, radius_m)
+
+    def _race(self, query: str, deadline: float | None, client: str | None) -> dict[str, list]:
+        """Ask the mirrors, overlapping them, and return the first good answer.
+
+        The first mirror starts at once. Each failure starts the next mirror immediately, and a
+        mirror still silent after HEDGE_AFTER_S gets the next one started alongside it. When one
+        answers, the others are told to stop reading. A failure every mirror would share (too much
+        data, a spent budget, a malformed query) ends the race at once. After a full pass, the
+        mirrors that failed transiently are tried once more, after a backoff.
+
+        Only the first attempt is charged to *client*: a visitor's daily share counts lookups,
+        not how many mirrors this server needed to answer one.
+        """
+        endpoints = list(OVERPASS_MIRROR_ENDPOINTS)
+        charge = [client]
+        stop = threading.Event()
+        failures: list[GisUnavailableError] = []
+
+        def start(queue: list[str], pending: dict[Future, str]) -> None:
+            if queue:
+                endpoint = queue.pop(0)
+                who = charge.pop() if charge else None
+                future = _ATTEMPTS.submit(self._attempt, endpoint, query, deadline, who, stop)
+                pending[future] = endpoint
+
+        try:
+            for round_no in range(ROUNDS):
+                retryable, wait_s = [], 0.0
+                queue = list(endpoints)
+                pending: dict[Future, str] = {}
+                start(queue, pending)
+                while pending:
+                    left = outbound.time_left(deadline, "Overpass")
+                    hedge = bool(queue) and (left is None or left > HEDGE_AFTER_S + MIN_ATTEMPT_S)
+                    timeout = HEDGE_AFTER_S if hedge else left
+                    done, _ = wait(pending, timeout=timeout, return_when=FIRST_COMPLETED)
+                    if not done:
+                        if hedge:
+                            start(queue, pending)
+                        continue
+                    for future in done:
+                        endpoint = pending.pop(future)
+                        try:
+                            return future.result()
+                        except _AttemptFailed as failed:
+                            failures.append(failed.error)
+                            if failed.final:
+                                raise failed.error from failed
+                            if failed.retry:
+                                retryable.append(endpoint)
+                                wait_s = max(wait_s, failed.retry_after_s)
+                        left = outbound.time_left(deadline, "Overpass")
+                        if left is None or left > MIN_ATTEMPT_S:
+                            start(queue, pending)
+                endpoints = retryable
+                if not endpoints or round_no + 1 == ROUNDS:
+                    break
+                backoff = max(RETRY_BACKOFF_S, min(wait_s, MAX_RETRY_AFTER_S))
+                if not outbound.can_back_off(backoff + MIN_ATTEMPT_S, deadline):
+                    break
+                retry.sleep(backoff)
+        finally:
+            stop.set()
+
+        # Every mirror failed. A query every mirror ran out of time or memory on is the planner's
+        # to shrink; anything else is the service being unavailable.
+        timed_out = failures and all(f.public_message == QUERY_FAILED_MESSAGE for f in failures)
+        raise GisUnavailableError(
+            f"Overpass API is unavailable after retrying {len(OVERPASS_MIRROR_ENDPOINTS)} "
+            f"endpoints; it can be briefly busy -- try again shortly. Errors: "
+            + "; ".join(str(f) for f in failures),
+            public_message=QUERY_FAILED_MESSAGE if timed_out else UNAVAILABLE_MESSAGE,
+            retry_after_s=10,
+        )
+
+    def _attempt(
+        self,
+        endpoint: str,
+        query: str,
+        deadline: float | None,
+        client: str | None,
+        stop: threading.Event,
+    ) -> dict[str, list]:
+        """One request to one mirror, as the compact cache form. Raises :class:`_AttemptFailed`."""
+        if stop.is_set():
+            raise _AttemptFailed(GisUnavailableError(f"{endpoint}: race already won"), retry=False)
+        slots = self._endpoint_slots[endpoint]
+        if not slots.acquire(blocking=False):
+            raise _AttemptFailed(
+                GisUnavailableError(f"{endpoint}: both of this server's query slots are in use"),
+                retry=True,
+            )
+        try:
+            timeout = outbound.attempt_timeout(DEFAULT_TIMEOUT_S, deadline, "Overpass")
+            raw = self._post(endpoint, query, timeout, deadline, client, stop)
+            _check_remark(raw)
+            return _compact(parse_features(raw))
+        except GisUnavailableError as exc:
+            # The budget's refusals and the size cap; a busy budget slot may free up.
+            raise _AttemptFailed(exc, retry=exc.public_message == BUSY_MESSAGE) from exc
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            error = GisUnavailableError(f"Overpass API request to {endpoint} failed: {exc!r}")
+            # 400: our query is malformed, and every mirror runs the same software. Other 4xx
+            # (403, 406, 429) are one mirror's policy, so the race goes on without it.
+            raise _AttemptFailed(
+                error,
+                retry=status == 429 or status >= 500,
+                final=status == 400,
+                retry_after_s=_retry_after_s(exc.response),
+            ) from exc
+        except (httpx.HTTPError, ValueError) as exc:
+            # A read timeout is not retried on the same mirror: a query heavy enough to time out
+            # once times out again there. Another mirror may still be fast enough.
+            raise _AttemptFailed(
+                GisUnavailableError(f"Overpass API request to {endpoint} failed: {exc!r}"),
+                retry=isinstance(exc, httpx.HTTPError) and not isinstance(exc, httpx.ReadTimeout)
+                and retry.is_transient(exc),
+            ) from exc
+        finally:
+            slots.release()
 
     def _post(
         self,
@@ -300,10 +456,19 @@ class OverpassClient:
         timeout: httpx.Timeout,
         deadline: float | None,
         client: str | None,
+        stop: threading.Event | None = None,
     ) -> Any:
         with self._budget.call(deadline, client) if self._budget else nullcontext():
             with self._client.stream(
                 "POST", endpoint, data={"data": query}, timeout=timeout
             ) as response:
                 response.raise_for_status()
-                return outbound.read_json(response, MAX_RESPONSE_BYTES, deadline, "Overpass")
+                return outbound.read_json(
+                    response, MAX_RESPONSE_BYTES, deadline, "Overpass", stop
+                )
+
+
+def _retry_after_s(response: httpx.Response) -> float:
+    """A Retry-After in seconds (Overpass sends one with 429), or 0 if absent or a date."""
+    value = response.headers.get("retry-after", "")
+    return float(value) if value.isdigit() else 0.0

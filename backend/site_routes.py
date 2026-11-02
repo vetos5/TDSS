@@ -6,6 +6,9 @@ different failure mode from the rest of the API (an external service being unrea
 HTTP 503 -- see GisUnavailableError) and their own dependency-injected GIS clients, which tests
 override with fakes so the suite never touches the network.
 
+When this server cannot reach any Overpass server, the browser can fetch the OSM data itself
+(``/overpass-query`` gives it the query) and send it along in ``osm``.
+
 Both routes share SITE_REQUEST_SLOTS (see backend.limits), and each request's outbound calls stop
 at SITE_REQUEST_DEADLINE_S. The 503 detail is a fixed message; the upstream error is only logged.
 """
@@ -18,7 +21,7 @@ import threading
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.application.footprint import estimate_right_of_way, is_footprint_available, place_footprint
 from app.application.site_analysis import analyse_site
@@ -28,7 +31,9 @@ from app.data.site_analysis_defaults import (
     DEFAULT_ELEVATION_GRID_N,
     ELEVATION_MAX_PER_DAY,
     ELEVATION_MIN_INTERVAL_S,
+    MAX_CLIENT_OSM_NODES,
     MAX_MAP_FEATURES,
+    OPEN_METEO_MAX_PER_DAY,
     OVERPASS_MAX_CONCURRENT,
     OVERPASS_MAX_PER_DAY,
     SITE_REQUEST_DEADLINE_S,
@@ -37,13 +42,23 @@ from app.data.site_analysis_defaults import (
 from app.infrastructure.gis.elevation import ElevationClient
 from app.infrastructure.gis.errors import GisUnavailableError
 from app.infrastructure.gis.outbound import OutboundBudget
-from app.infrastructure.gis.overpass import OsmFeatures, OsmWay, OverpassClient
+from app.infrastructure.gis.overpass import (
+    OVERPASS_MIRROR_ENDPOINTS,
+    OsmFeatures,
+    OsmWay,
+    OverpassClient,
+    build_query,
+    parse_features,
+    within_radius,
+)
 from app.infrastructure.gis.projection import bearing as compute_bearing
 from backend.limits import slot
 from backend.schemas import (
     FootprintRequest,
     FootprintResponse,
     FootprintSegmentSchema,
+    OsmWayInput,
+    OverpassQueryResponse,
     RightOfWaySchema,
     RoadCorridorSchema,
     SiteAnalyseRequest,
@@ -60,10 +75,16 @@ _overpass_client = OverpassClient(budget=OutboundBudget(
     "Overpass", max_concurrent=OVERPASS_MAX_CONCURRENT, per_day=OVERPASS_MAX_PER_DAY,
     per_client_per_day=CLIENT_MAX_OUTBOUND_PER_DAY,
 ))
-_elevation_client = ElevationClient(budget=OutboundBudget(
-    "Elevation API", max_concurrent=1, per_day=ELEVATION_MAX_PER_DAY,
-    per_client_per_day=CLIENT_MAX_OUTBOUND_PER_DAY, min_interval_s=ELEVATION_MIN_INTERVAL_S,
-))
+_elevation_client = ElevationClient(
+    budget=OutboundBudget(
+        "Elevation API", max_concurrent=1, per_day=ELEVATION_MAX_PER_DAY,
+        per_client_per_day=CLIENT_MAX_OUTBOUND_PER_DAY, min_interval_s=ELEVATION_MIN_INTERVAL_S,
+    ),
+    fallback_budget=OutboundBudget(
+        "Open-Meteo", max_concurrent=1, per_day=OPEN_METEO_MAX_PER_DAY,
+        min_interval_s=ELEVATION_MIN_INTERVAL_S,
+    ),
+)
 
 _SITE_SLOTS = threading.BoundedSemaphore(SITE_REQUEST_SLOTS)
 
@@ -137,6 +158,49 @@ def _osm_to_geojson(osm: OsmFeatures) -> dict[str, Any]:
     return {"type": "FeatureCollection", "features": features[:MAX_MAP_FEATURES]}
 
 
+def _features(
+    req, client: str, overpass: OverpassClient, deadline: float
+) -> OsmFeatures:
+    """The OSM features around the request's point: the browser's own, or this server's query.
+
+    Ways the browser fetched (``req.osm``) are classified and cut to the radius exactly as the
+    server's own answer would be, and serve this request only: they are never cached, so one
+    visitor's data cannot reach another.
+    """
+    if req.osm is None:
+        return overpass.fetch_features(
+            req.lat, req.lon, req.radius_m, deadline=deadline, client=client
+        )
+    if sum(len(way.coords) for way in req.osm) > MAX_CLIENT_OSM_NODES:
+        raise HTTPException(
+            status_code=422,
+            detail="There is too much map data around this point. Choose a smaller radius.",
+        )
+    return within_radius(parse_features(_overpass_shape(req.osm)), req.lat, req.lon, req.radius_m)
+
+
+def _overpass_shape(ways: list[OsmWayInput]) -> dict[str, Any]:
+    return {"elements": [
+        {"type": "way", "id": way.id, "tags": way.tags,
+         "geometry": [{"lat": lat, "lon": lon} for lat, lon in way.coords]}
+        for way in ways
+    ]}
+
+
+@router.get("/overpass-query", response_model=OverpassQueryResponse)
+def overpass_query(
+    lat: float = Query(ge=-85, le=85),
+    lon: float = Query(ge=-180, le=180),
+    radius_m: float = Query(500.0, ge=100, le=1500),
+):
+    """The Overpass QL this server would send, for the browser to send itself when this server
+    cannot reach Overpass (public Overpass servers are meant for browser-based tools, and each
+    visitor has their own address and query slots). Makes no outbound call."""
+    return OverpassQueryResponse(
+        query=build_query(lat, lon, radius_m), endpoints=list(OVERPASS_MIRROR_ENDPOINTS)
+    )
+
+
 @router.post("/analyse", response_model=SiteAnalyseResponse)
 def analyse(
     req: SiteAnalyseRequest,
@@ -153,15 +217,19 @@ def _analyse(
 ) -> SiteAnalyseResponse:
     deadline = time.monotonic() + SITE_REQUEST_DEADLINE_S
     try:
-        osm = overpass.fetch_features(
-            req.lat, req.lon, req.radius_m, deadline=deadline, client=client
-        )
+        osm = _features(req, client, overpass, deadline)
+    except GisUnavailableError as exc:
+        raise _unavailable(exc) from exc
+    # Terrain is one of five inferred parameters, and the planner can set it by hand: without
+    # elevation data the analysis still answers, with a note, rather than failing outright.
+    try:
         grid = elevation.fetch_grid(
             req.lat, req.lon, req.radius_m, n=DEFAULT_ELEVATION_GRID_N,
             deadline=deadline, client=client,
         )
     except GisUnavailableError as exc:
-        raise _unavailable(exc) from exc
+        logger.warning("Elevation unavailable, analysing without it: %s", exc)
+        grid = None
 
     result = analyse_site(req.lat, req.lon, osm, grid, req.radius_m)
 
@@ -213,9 +281,7 @@ def _footprint(req: FootprintRequest, client: str, overpass: OverpassClient) -> 
 
     deadline = time.monotonic() + SITE_REQUEST_DEADLINE_S
     try:
-        osm = overpass.fetch_features(
-            req.lat, req.lon, req.radius_m, deadline=deadline, client=client
-        )
+        osm = _features(req, client, overpass, deadline)
     except GisUnavailableError as exc:
         raise _unavailable(exc) from exc
 

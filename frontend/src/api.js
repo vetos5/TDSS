@@ -73,6 +73,97 @@ export async function getFootprint(body, lang = 'en') {
   return data
 }
 
+// ── Map data fetched by the browser ──────────────────────────────────────────
+// The public Overpass servers are often at capacity for this server's address. They are meant for
+// browser-based tools, and each visitor has their own address and query slots, so when the server
+// answers a map-data 503 the browser asks Overpass itself and sends the ways along with the
+// analysis request (backend/site_routes.py, `osm`).
+
+// The tags the server classifies ways by (OsmTagKey in backend/schemas.py).
+const OSM_TAG_KEYS = ['highway', 'building', 'natural', 'waterway', 'leisure', 'boundary', 'landuse']
+const MAX_OSM_WAYS = 20000 // the request's limit
+const MAX_WAY_NODES = 2000
+const HEDGE_AFTER_MS = 4000 // a silent server gets the next one started alongside it
+const OVERPASS_TIMEOUT_MS = 35000
+
+// 503 texts that a browser-side fetch cannot help with: the analysis slots themselves are taken
+// (the request needs one either way), or the area is too dense for any server.
+const NOT_MAP_DATA = ['The server is busy with other analyses', 'There is too much map data']
+
+export function isMapDataUnavailable(e) {
+  const detail = e?.response?.data?.detail
+  return e?.response?.status === 503 && !(typeof detail === 'string' && NOT_MAP_DATA.some(p => detail.startsWith(p)))
+}
+
+export async function fetchOsmInBrowser({ lat, lon, radius_m }) {
+  const { data } = await api.get('/site/overpass-query', { params: { lat, lon, radius_m } })
+  return compactWays(await raceOverpass(data.query, data.endpoints))
+}
+
+// The servers in order, each failure starting the next at once, and a server still silent after
+// HEDGE_AFTER_MS getting the next one started alongside it. The first good answer wins and the
+// others are aborted.
+function raceOverpass(query, endpoints) {
+  return new Promise((resolve, reject) => {
+    const controllers = []
+    let next = 0
+    let running = 0
+    let settled = false
+    let hedge = null
+    const finish = (settle, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(hedge)
+      clearTimeout(overall)
+      controllers.forEach(c => c.abort())
+      settle(value)
+    }
+    const overall = setTimeout(() => finish(reject, new Error('Overpass timed out')), OVERPASS_TIMEOUT_MS)
+    const start = () => {
+      clearTimeout(hedge)
+      if (settled || next >= endpoints.length) return
+      const controller = new AbortController()
+      controllers.push(controller)
+      running++
+      fetch(endpoints[next++], { method: 'POST', body: new URLSearchParams({ data: query }), signal: controller.signal })
+        .then(async res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          const raw = await res.json()
+          // A query that hit the server's time or memory limit comes back as 200 with a remark.
+          if (typeof raw?.remark === 'string' && /error/i.test(raw.remark)) throw new Error(raw.remark)
+          finish(resolve, raw)
+        })
+        .catch(() => {
+          running--
+          if (next < endpoints.length) start()
+          else if (running === 0) finish(reject, new Error('Every Overpass server failed'))
+        })
+      hedge = setTimeout(start, HEDGE_AFTER_MS)
+    }
+    start()
+  })
+}
+
+// Ways only, with the classifying tags only, coordinates to 6 decimals (about 0.1 m): a dense
+// cell's answer shrinks to a fraction of Overpass's. Buildings give way first at the way limit.
+function compactWays(raw) {
+  const ways = []
+  for (const el of raw?.elements ?? []) {
+    if (el.type !== 'way' || !Array.isArray(el.geometry)) continue
+    const coords = el.geometry.filter(Boolean).slice(0, MAX_WAY_NODES)
+      .map(p => [Number(p.lat.toFixed(6)), Number(p.lon.toFixed(6))])
+    if (!coords.length) continue
+    const tags = {}
+    for (const key of OSM_TAG_KEYS) {
+      if (el.tags?.[key] !== undefined) tags[key] = String(el.tags[key]).slice(0, 64)
+    }
+    ways.push({ id: el.id, tags, coords })
+  }
+  if (ways.length <= MAX_OSM_WAYS) return ways
+  const others = ways.filter(w => !('building' in w.tags))
+  return [...others, ...ways.filter(w => 'building' in w.tags)].slice(0, MAX_OSM_WAYS)
+}
+
 // ── Prediction model (document-trained criterion values) ─────────────────────
 
 export async function modelStatus() {

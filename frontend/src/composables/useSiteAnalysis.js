@@ -1,5 +1,5 @@
 import { ref, reactive, computed } from 'vue'
-import { analyseSite, getFootprint, errorText } from '../api.js'
+import { analyseSite, getFootprint, errorText, fetchOsmInBrowser, isMapDataUnavailable } from '../api.js'
 
 // Point A = the interchange centre (required). Point B = an optional second click that sets the
 // footprint's bearing (the direction from A to B becomes the interchange's primary-road axis).
@@ -11,7 +11,13 @@ const radiusM = reactive({ value: 500 })
 
 const analysis = ref(null) // last /api/site/analyse response
 const loading = ref(false)
+const fetchingInBrowser = ref(false) // the server could not reach Overpass; the browser is asking
 const error = ref('')
+
+// OSM ways the browser fetched itself, for one point and radius: { key, ways } | null. Sent with
+// every later request for that point (re-analysis, footprints) instead of the server's own query.
+let browserOsm = null
+const siteKey = () => `${pointA.value.lat},${pointA.value.lon},${radiusM.value}`
 
 const footprintAlternative = ref(null)
 const footprint = ref(null) // last /api/site/footprint response
@@ -27,6 +33,7 @@ function requestBody() {
     body.bearing_lat = pointB.value.lat
     body.bearing_lon = pointB.value.lon
   }
+  if (browserOsm?.key === siteKey()) body.osm = browserOsm.ways
   return body
 }
 
@@ -65,6 +72,7 @@ function reset() {
   footprint.value = null
   error.value = ''
   footprintError.value = ''
+  browserOsm = null
 }
 
 async function analyse(lang = 'en') {
@@ -72,7 +80,7 @@ async function analyse(lang = 'en') {
   loading.value = true
   error.value = ''
   try {
-    analysis.value = await analyseSite(requestBody(), lang)
+    analysis.value = await withBrowserOsm(() => analyseSite(requestBody(), lang))
     if (footprintAlternative.value) await loadFootprint(footprintAlternative.value, lang)
   } catch (e) {
     error.value = errorText(e)
@@ -82,13 +90,38 @@ async function analyse(lang = 'en') {
   }
 }
 
+// Runs a site request; if the server cannot reach Overpass, the browser fetches the map data and
+// the request is made again with it. A failed browser fetch reports the server's original error.
+async function withBrowserOsm(request) {
+  try {
+    return await request()
+  } catch (e) {
+    if (!isMapDataUnavailable(e) || browserOsm?.key === siteKey()) throw e
+    const key = siteKey()
+    fetchingInBrowser.value = true
+    let ways
+    try {
+      ways = await fetchOsmInBrowser({ lat: pointA.value.lat, lon: pointA.value.lon, radius_m: radiusM.value })
+    } catch {
+      throw e
+    } finally {
+      fetchingInBrowser.value = false
+    }
+    if (key !== siteKey()) throw e // the point moved meanwhile
+    browserOsm = { key, ways }
+    return await request()
+  }
+}
+
 async function loadFootprint(alternativeName, lang = 'en') {
   if (!pointA.value) return
   footprintAlternative.value = alternativeName
   footprintLoading.value = true
   footprintError.value = ''
   try {
-    footprint.value = await getFootprint({ alternative_name: alternativeName, ...requestBody() }, lang)
+    footprint.value = await withBrowserOsm(
+      () => getFootprint({ alternative_name: alternativeName, ...requestBody() }, lang),
+    )
   } catch (e) {
     footprintError.value = errorText(e)
     footprint.value = null
@@ -101,7 +134,7 @@ export function useSiteAnalysis() {
   return {
     pointA, pointB, settingDirection, radiusM,
     hasPointA, hasBearing,
-    analysis, loading, error,
+    analysis, loading, fetchingInBrowser, error,
     footprintAlternative, footprint, footprintLoading, footprintError,
     setPointA, setPointB, handleMapClick, reset,
     analyse, loadFootprint,

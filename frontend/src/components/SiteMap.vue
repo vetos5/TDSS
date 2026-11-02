@@ -4,6 +4,7 @@ import L from 'leaflet'
 import { useLocale } from '../composables/useLocale.js'
 import { useSiteAnalysis } from '../composables/useSiteAnalysis.js'
 import Icon from './Icon.vue'
+import { siteNoteKeyMap } from '../locales/backendKeys.js'
 
 const props = defineProps({
   dss: Object,
@@ -191,7 +192,7 @@ watch(locale, () => {
                   :disabled="!site.hasPointA.value || site.loading.value"
                   @click="onAnalyseClick">
             <span v-if="site.loading.value" class="spinner"></span>
-            {{ site.loading.value ? t.analysingLabel : t.analyseButton }}
+            {{ site.loading.value ? (site.fetchingInBrowser.value ? t.analysingInBrowserLabel : t.analysingLabel) : t.analyseButton }}
           </button>
         </div>
       </div>
@@ -242,7 +243,7 @@ watch(locale, () => {
 
       <ul v-if="site.analysis.value.notes.length" class="notice notice-warn mb-4 space-y-1 text-xs">
         <li v-for="(note, i) in site.analysis.value.notes" :key="i" class="flex items-start gap-1.5">
-          <Icon name="alert-triangle" class="mt-0.5" />{{ note }}
+          <Icon name="alert-triangle" class="mt-0.5" />{{ t.siteNotes[siteNoteKeyMap[note]] ?? note }}
         </li>
       </ul>
 

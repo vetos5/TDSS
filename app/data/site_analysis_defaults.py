@@ -77,19 +77,29 @@ SITE_REQUEST_SLOTS = 4
 # Time one site request may spend on outbound calls, retries included. Well under nginx's 120 s
 # proxy timeout and Cloudflare's 100 s, so the planner gets a clear 503 rather than a gateway error.
 SITE_REQUEST_DEADLINE_S = 40.0
-# overpass-api.de gives each client IP 2 query slots and answers 429 beyond them. Its usage policy
-# asks for well under 10,000 queries a day; 300 calls (retries included) keeps this app a small
-# user, and a cached 100 m cell costs nothing.
-OVERPASS_MAX_CONCURRENT = 2
-OVERPASS_MAX_PER_DAY = 300
+# Overpass calls in flight at once, over all mirrors. Each public Overpass server gives a client IP
+# 2 query slots and answers 429 beyond them, so the client also holds at most 2 per mirror (see
+# SLOTS_PER_ENDPOINT in overpass.py); this cap is that times the four mirrors.
+OVERPASS_MAX_CONCURRENT = 8
+# Every attempt counts, hedges and retries included, and a busy day can need two or three
+# attempts per lookup. overpass-api.de's usage policy asks for well under 10,000 queries a day,
+# and the load is spread over four mirrors; a cached 100 m cell costs nothing.
+OVERPASS_MAX_PER_DAY = 1200
 # The public Open Topo Data API allows 1 call per second and 1000 calls a day per client;
 # 800 leaves a margin so its own limit is never what stops us.
 ELEVATION_MIN_INTERVAL_S = 1.0
 ELEVATION_MAX_PER_DAY = 800
-# Each visitor's daily share of the outbound calls above, per service (so up to 40 Overpass and
-# 40 elevation calls). Far more than a planner exploring sites needs once cache hits (free) are
-# counted out, and small enough that one visitor cannot spend the whole Overpass budget.
+# Open-Meteo, the elevation fallback, allows 10,000 non-commercial calls a day.
+OPEN_METEO_MAX_PER_DAY = 2000
+# Each visitor's daily share of new lookups, per service (so up to 40 Overpass and 40 elevation
+# lookups; only a lookup's first call is charged, not the mirrors, retries or fallback it needed).
+# Far more than a planner exploring sites needs once cache hits (free) are counted out, and small
+# enough that one visitor cannot spend the whole Overpass budget.
 CLIENT_MAX_OUTBOUND_PER_DAY = 40
+# Nodes accepted in OSM data the browser fetched itself (when this server could not reach Overpass).
+# A dense city centre at the largest radius has about 100,000; the right-of-way estimate already
+# skips any building over MAX_BUILDING_NODES.
+MAX_CLIENT_OSM_NODES = 200_000
 # Map features returned for display. Buildings make up most of a dense cell and give way first;
 # the analysis itself always uses every feature.
 MAX_MAP_FEATURES = 5000

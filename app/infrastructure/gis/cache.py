@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import logging
 import math
 import os
 import tempfile
@@ -44,6 +45,7 @@ PRUNE_EVERY_N_WRITES = 50
 _STALE_TMP_S = 3600.0
 
 _MISS = object()
+logger = logging.getLogger(__name__)
 _write_count = itertools.count()
 
 
@@ -77,13 +79,16 @@ def cached_get(
     fetch: Callable[[], Any],
     *,
     cache_dir: Path | None = DEFAULT_CACHE_DIR,
+    stale_ttl_days: float | None = None,
 ) -> Any:
     """
     Return the cached value for *key* if present and younger than *ttl_days*, else call *fetch*
     and cache its result. ``cache_dir=None`` disables caching entirely (every call hits *fetch*).
 
-    *fetch* raising is never caught here — a failed fetch propagates to the caller and nothing is
-    written to the cache, so the next call retries instead of caching a failure.
+    A failed fetch is never cached, so the next call retries instead of caching a failure. With
+    *stale_ttl_days*, an expired entry younger than that is returned when the fetch fails (the
+    public GIS services are down far more often than OSM data or terrain change); otherwise, and
+    when there is no such entry, the fetch's exception propagates to the caller.
 
     Single-flight: while one caller fetches a key, other callers for that key wait and get its
     result instead of fetching again. If that fetch fails, each waiter then tries its own fetch
@@ -114,15 +119,22 @@ def cached_get(
         # the lead.
         data = _read(path, ttl_days)
         if data is _MISS:
-            data = fetch()
-            written = _write(path, cache_dir, data)
+            try:
+                data = fetch()
+            except Exception:
+                data = _MISS if stale_ttl_days is None else _read(path, stale_ttl_days)
+                if data is _MISS:
+                    raise
+                logger.warning("GIS fetch failed; serving the expired cache entry for %s", key)
+            else:
+                written = _write(path, cache_dir, data)
         flight.ok, flight.value = True, data
     finally:
         with _flights_lock:
             del _flights[path]
         flight.done.set()
     if written and next(_write_count) % PRUNE_EVERY_N_WRITES == 0:
-        prune(cache_dir, max_age_s=ttl_days * 86400)
+        prune(cache_dir, max_age_s=max(ttl_days, stale_ttl_days or 0.0) * 86400)
     return data
 
 

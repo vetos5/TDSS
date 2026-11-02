@@ -20,7 +20,7 @@ from app.infrastructure.gis.outbound import OutboundBudget
 from app.infrastructure.gis.overpass import (
     OVERPASS_ENDPOINT,
     OVERPASS_MIRROR_ENDPOINTS,
-    RETRIES_PER_ENDPOINT,
+    ROUNDS,
     OverpassClient,
     build_query,
     parse_features,
@@ -195,21 +195,74 @@ def test_does_not_retry_a_non_transient_error():
     assert len(calls) == 1  # no retry, no mirror fallback -- a 400 will fail the same way again
 
 
-def test_falls_back_to_the_mirror_after_primary_endpoint_exhausts_retries():
-    seen_urls = []
+@pytest.mark.parametrize("status", [429, 502, 503, 504, 403, 406])
+def test_a_failing_primary_hands_over_to_the_next_mirror_at_once(status):
+    seen_hosts = []
 
     def handler(request):
-        seen_urls.append(str(request.url))
+        seen_hosts.append(request.url.host)
         if request.url.host == "overpass-api.de":
+            return httpx.Response(status, text="at capacity")
+        return httpx.Response(200, json=SAMPLE_RAW)
+
+    features = make_client(handler).fetch_features(**KYIV)
+    assert len(features.roads) == 2
+    # The primary is asked once; its failure starts the second mirror without a backoff.
+    assert seen_hosts == ["overpass-api.de", httpx.URL(OVERPASS_MIRROR_ENDPOINTS[1]).host]
+
+
+def test_a_silent_primary_is_hedged_by_the_next_mirror(monkeypatch):
+    monkeypatch.setattr(overpass, "HEDGE_AFTER_S", 0.05)
+    release = threading.Event()
+    seen_hosts = []
+
+    def handler(request):
+        seen_hosts.append(request.url.host)
+        if request.url.host == "overpass-api.de":
+            release.wait(5)  # hangs until the test ends
             return httpx.Response(504, text="gateway timeout")
         return httpx.Response(200, json=SAMPLE_RAW)
 
-    client = make_client(handler)
-    features = client.fetch_features(**KYIV)
+    started = time.monotonic()
+    try:
+        features = make_client(handler).fetch_features(**KYIV, deadline=time.monotonic() + 30)
+    finally:
+        release.set()
     assert len(features.roads) == 2
-    # RETRIES_PER_ENDPOINT attempts against the primary, then the mirror succeeds.
-    assert sum("overpass-api.de" in u for u in seen_urls) == RETRIES_PER_ENDPOINT
-    assert any("kumi.systems" in u for u in seen_urls)
+    assert time.monotonic() - started < 2
+    assert seen_hosts[:2] == ["overpass-api.de", httpx.URL(OVERPASS_MIRROR_ENDPOINTS[1]).host]
+
+
+def test_only_the_first_attempt_is_charged_to_the_client():
+    budget = OutboundBudget("Overpass", max_concurrent=8, per_day=100, per_client_per_day=1)
+
+    def handler(request):
+        if request.url.host == "overpass-api.de":
+            return httpx.Response(503, text="busy")
+        return httpx.Response(200, json=SAMPLE_RAW)
+
+    # Two mirrors were needed, but the visitor's one-lookup share covers the whole lookup.
+    features = make_client(handler, budget=budget).fetch_features(**KYIV, client="1.2.3.4")
+    assert len(features.roads) == 2
+
+
+def test_an_expired_entry_is_served_when_every_mirror_fails(tmp_path, monkeypatch):
+    up = [True]
+
+    def handler(request):
+        if up[0]:
+            return httpx.Response(200, json=SAMPLE_RAW)
+        return httpx.Response(502, text="at capacity")
+
+    client = OverpassClient(
+        httpx.Client(transport=httpx.MockTransport(handler)), cache_dir=tmp_path,
+        cache_ttl_days=1.0,
+    )
+    client.fetch_features(**KYIV)
+    up[0] = False
+    real_time = time.time
+    monkeypatch.setattr(time, "time", lambda: real_time() + 5 * 86400)  # 5 days later
+    assert len(client.fetch_features(**KYIV).roads) == 2
 
 
 def test_raises_after_all_endpoints_and_retries_are_exhausted():
@@ -222,7 +275,7 @@ def test_raises_after_all_endpoints_and_retries_are_exhausted():
     client = make_client(handler)
     with pytest.raises(GisUnavailableError, match="unavailable after retrying"):
         client.fetch_features(**KYIV)
-    assert len(calls) == len(OVERPASS_MIRROR_ENDPOINTS) * RETRIES_PER_ENDPOINT
+    assert len(calls) == len(OVERPASS_MIRROR_ENDPOINTS) * ROUNDS
 
 
 def test_timeout_is_retried_then_can_still_succeed():
@@ -289,16 +342,17 @@ def test_nearby_points_and_radii_share_one_snapped_request(tmp_path):
 
 # ── Outbound limits ───────────────────────────────────────────────────────────
 
-def test_a_read_timeout_is_not_retried():
+def test_a_read_timeout_is_not_retried_on_the_same_mirror():
     calls = []
 
     def handler(request):
-        calls.append(1)
+        calls.append(request.url.host)
         raise httpx.ReadTimeout("read timed out", request=request)
 
     with pytest.raises(GisUnavailableError):
         make_client(handler).fetch_features(**KYIV)
-    assert len(calls) == 1  # a query heavy enough to time out would only time out again
+    # Each mirror once: a query heavy enough to time out would only time out there again.
+    assert sorted(calls) == sorted(httpx.URL(e).host for e in OVERPASS_MIRROR_ENDPOINTS)
 
 
 def test_no_request_once_the_deadline_has_passed():
@@ -323,7 +377,7 @@ def test_retries_stop_at_the_deadline():
 
     with pytest.raises(GisUnavailableError, match="deadline"):
         make_client(handler).fetch_features(**KYIV, deadline=time.monotonic() + 0.05)
-    assert len(calls) == 1  # not len(OVERPASS_MIRROR_ENDPOINTS) * RETRIES_PER_ENDPOINT
+    assert len(calls) == 1  # not len(OVERPASS_MIRROR_ENDPOINTS) * ROUNDS
 
 
 def test_oversized_response_is_refused_and_not_cached(tmp_path, monkeypatch):
@@ -361,7 +415,9 @@ def test_runtime_error_remark_is_a_failure_and_never_cached(tmp_path):
         with pytest.raises(GisUnavailableError) as info:
             client.fetch_features(**KYIV)
         assert info.value.public_message == QUERY_FAILED_MESSAGE
-    assert len(calls) == 2  # the second call asked again: nothing was cached
+    # Each mirror once per lookup (a timed-out query is not retried on the same mirror), and the
+    # second lookup asked again: nothing was cached.
+    assert len(calls) == 2 * len(OVERPASS_MIRROR_ENDPOINTS)
     assert list(tmp_path.iterdir()) == []
 
 

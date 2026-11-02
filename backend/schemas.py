@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -318,12 +318,30 @@ class ContextListResponse(BaseModel):
 
 # Leaflet's Web Mercator map ends at ±85.05°, and the UI's radius slider runs 200-1500 m. Each
 # request costs an Overpass query on a shared public server, so the radius stays within that range.
+# Tags the server classifies OSM ways by (see app.infrastructure.gis.overpass._CLASSIFIERS); a
+# browser-fetched way carries only these.
+OsmTagKey = Literal["highway", "building", "natural", "waterway", "leisure", "boundary", "landuse"]
+LatLon = Tuple[Annotated[float, Field(ge=-90, le=90)], Annotated[float, Field(ge=-180, le=180)]]
+
+
+class OsmWayInput(BaseModel):
+    """One OSM way that the browser fetched from Overpass itself (see ``osm`` below)."""
+
+    id: int
+    tags: Dict[OsmTagKey, Annotated[str, Field(max_length=64)]] = Field(max_length=7)
+    coords: List[LatLon] = Field(min_length=1, max_length=2000)  # [[lat, lon], ...]
+
+
 class SiteAnalyseRequest(BaseModel):
     lat: float = Field(ge=-85, le=85)
     lon: float = Field(ge=-180, le=180)
     bearing_lat: Optional[float] = Field(None, ge=-85, le=85)
     bearing_lon: Optional[float] = Field(None, ge=-180, le=180)
     radius_m: float = Field(500.0, ge=100, le=1500)
+    # OSM ways the browser fetched from a public Overpass server when this server could not reach
+    # one. Used instead of the server's own query for this request only; never cached. The total
+    # node count is capped in the route (MAX_CLIENT_OSM_NODES).
+    osm: Optional[List[OsmWayInput]] = Field(None, max_length=20_000)
 
 
 class RoadCorridorSchema(BaseModel):
@@ -358,6 +376,14 @@ class FootprintRequest(BaseModel):
     bearing_lon: Optional[float] = Field(None, ge=-180, le=180)
     radius_m: float = Field(500.0, ge=100, le=1500)
     demolition_cost_per_sqm: Optional[float] = Field(None, gt=0, le=100_000)
+    osm: Optional[List[OsmWayInput]] = Field(None, max_length=20_000)  # as in SiteAnalyseRequest
+
+
+class OverpassQueryResponse(BaseModel):
+    """What the browser needs to ask a public Overpass server itself."""
+
+    query: str
+    endpoints: List[str]
 
 
 class FootprintSegmentSchema(BaseModel):

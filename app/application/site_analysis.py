@@ -246,17 +246,27 @@ def free_land_ha(
 # ── Orchestration ─────────────────────────────────────────────────────────────
 
 def analyse_site(
-    lat: float, lon: float, osm: OsmFeatures, elevation: ElevationGrid, radius_m: float
+    lat: float, lon: float, osm: OsmFeatures, elevation: ElevationGrid | None, radius_m: float
 ) -> SiteAnalysis:
+    """*elevation* is ``None`` when the elevation services could not be reached: the rest of the
+    analysis still stands, and terrain is left to the planner."""
     corridors = group_corridors(osm.roads)
     context, confident, context_notes = classify_context(corridors)
 
-    grade = max_grade_pct(elevation)
+    grade = max_grade_pct(elevation) if elevation is not None else None
     terrain = terrain_class(grade) if grade is not None else "Flat"
-    terrain_notes = [] if grade is not None else [
-        "No usable elevation data in the search grid; terrain defaulted to Flat -- "
-        "confirm manually."
-    ]
+    if elevation is None:
+        terrain_notes = [
+            "Elevation data is unavailable right now; terrain defaulted to Flat -- "
+            "confirm manually."
+        ]
+    elif grade is None:
+        terrain_notes = [
+            "No usable elevation data in the search grid; terrain defaulted to Flat -- "
+            "confirm manually."
+        ]
+    else:
+        terrain_notes = []
 
     env, nearest_water, residential_share = classify_environment(lat, lon, osm, radius_m)
     land_ha, building_count, building_area, water_area = free_land_ha(lat, lon, osm, radius_m)

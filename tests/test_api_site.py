@@ -200,10 +200,14 @@ def test_analyse_caps_map_features_dropping_buildings_first(client):
     assert data["building_count"] == MAX_MAP_FEATURES + 10  # the analysis still counts them all
 
 
-def test_analyse_elevation_unavailable_is_503(client):
+def test_analyse_without_elevation_still_answers_with_a_note(client):
     override(FakeOverpass(), FakeElevation(error=GisUnavailableError("Elevation API timed out")))
     r = client.post("/api/site/analyse", json={**KYIV, "radius_m": 500})
-    assert r.status_code == 503
+    assert r.status_code == 200
+    data = r.json()
+    assert data["context"] == "Service (Highway + Urban)"  # the roads still count
+    assert data["terrain"] == "Flat" and data["max_grade_pct"] is None
+    assert any(n.startswith("Elevation data is unavailable") for n in data["notes"])
 
 
 def test_analyse_sparse_data_reports_low_confidence(client):
@@ -355,3 +359,72 @@ def test_client_share_used_up_is_503_with_its_own_message(client):
     r = client.post("/api/site/analyse", json={**KYIV, "radius_m": 500})
     assert r.status_code == 503
     assert r.json()["detail"] == CLIENT_QUOTA_MESSAGE and r.headers["retry-after"] == "60"
+
+
+# ── OSM data fetched by the browser ───────────────────────────────────────────
+
+def _browser_osm():
+    """crossing_features() as the browser sends it, plus a building 2 km away."""
+    ways = [
+        {"id": w.id, "tags": w.tags, "coords": [list(c) for c in w.coords]}
+        for w in crossing_features().roads
+    ]
+    far = [list(to_latlon(x, y, ORIGIN)) for x, y in [(2000, 0), (2010, 0), (2010, 10), (2000, 0)]]
+    return [*ways, {"id": 99, "tags": {"building": "yes"}, "coords": far}]
+
+
+def test_analyse_uses_browser_osm_without_asking_overpass(client):
+    overpass = FakeOverpass(error=GisUnavailableError("must not be called"))
+    override(overpass, FakeElevation())
+    r = client.post("/api/site/analyse", json={**KYIV, "radius_m": 500, "osm": _browser_osm()})
+    assert r.status_code == 200
+    data = r.json()
+    assert overpass.deadlines == []
+    assert [c["way_count"] for c in data["corridors"]] == [1, 1]
+    assert data["building_count"] == 0  # cut to the radius like the server's own answer
+
+
+def test_footprint_uses_browser_osm_without_asking_overpass(client):
+    overpass = FakeOverpass(error=GisUnavailableError("must not be called"))
+    override(overpass)
+    r = client.post("/api/site/footprint", json={
+        "alternative_name": "Cloverleaf", **KYIV, "radius_m": 500, "osm": _browser_osm(),
+    })
+    assert r.status_code == 200 and r.json()["available"] is True
+    assert overpass.deadlines == []
+
+
+@pytest.mark.parametrize("way", [
+    {"id": 1, "tags": {"name": "Main St"}, "coords": [[50.45, 30.52], [50.46, 30.53]]},
+    {"id": 1, "tags": {"highway": "x" * 65}, "coords": [[50.45, 30.52], [50.46, 30.53]]},
+    {"id": 1, "tags": {"highway": "primary"}, "coords": [[50.45, 30.52, 1.0]]},
+    {"id": 1, "tags": {"highway": "primary"}, "coords": [[95.0, 30.52]]},
+    {"id": 1, "tags": {"highway": "primary"}, "coords": [[50.45, 190.0]]},
+])
+def test_browser_osm_is_validated(client, way):
+    override(FakeOverpass(), FakeElevation())
+    r = client.post("/api/site/analyse", json={**KYIV, "osm": [way]})
+    assert r.status_code == 422
+
+
+def test_browser_osm_node_total_is_capped(client, monkeypatch):
+    monkeypatch.setattr(site_routes, "MAX_CLIENT_OSM_NODES", 3)
+    override(FakeOverpass(), FakeElevation())
+    r = client.post("/api/site/analyse", json={**KYIV, "osm": _browser_osm()})
+    assert r.status_code == 422
+    assert "smaller radius" in r.json()["detail"]
+
+
+def test_browser_osm_accepts_any_longitude(client):
+    override(FakeOverpass(), FakeElevation())
+    way = {"id": 1, "tags": {"highway": "primary"}, "coords": [[-33.9, 151.2], [-33.91, 151.21]]}
+    r = client.post("/api/site/analyse", json={"lat": -33.9, "lon": 151.2, "osm": [way]})
+    assert r.status_code == 200
+
+
+def test_overpass_query_is_the_servers_own_query(client):
+    r = client.get("/api/site/overpass-query", params={**KYIV, "radius_m": 600})
+    assert r.status_code == 200
+    data = r.json()
+    assert "around:600.0,50.4501,30.5234" in data["query"]
+    assert data["endpoints"][0].startswith("https://overpass-api.de/")

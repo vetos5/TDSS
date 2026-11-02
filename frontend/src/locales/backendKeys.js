@@ -22,3 +22,13 @@ export const backendErrorKeyMap = {
   'There is too much map data around this point. Choose a smaller radius.': 'mapTooMuchData',
   'The map data service could not finish this query. Try a smaller radius or try again later.': 'mapQueryFailed',
 }
+
+// The site analysis notes (app/application/site_analysis.py), keyed by their exact English
+// wording; SiteMap.vue shows the localised siteNotes entry instead.
+export const siteNoteKeyMap = {
+  "Two road corridors found, but neither reaches motorway/trunk class; context guessed as the most common case -- confirm manually.": 'twoMinor',
+  "Only one major road corridor found near this point; a junction needs at least two -- confirm the context manually.": 'oneCorridor',
+  "No major roads (tertiary or above) found within the search radius; confirm the context manually or widen the radius.": 'noRoads',
+  "No usable elevation data in the search grid; terrain defaulted to Flat -- confirm manually.": 'noElevationData',
+  "Elevation data is unavailable right now; terrain defaulted to Flat -- confirm manually.": 'elevationUnavailable',
+}

@@ -78,13 +78,18 @@ def can_back_off(delay_s: float, deadline: float | None) -> bool:
 
 
 def read_json(
-    response: httpx.Response, max_bytes: int, deadline: float | None, service: str
+    response: httpx.Response,
+    max_bytes: int,
+    deadline: float | None,
+    service: str,
+    stop: threading.Event | None = None,
 ) -> Any:
     """Read a streamed response body and parse it as JSON, refusing bodies over *max_bytes*.
 
     The body is counted after decompression, as it arrives, so an oversized answer is dropped
     before it is held in memory. The deadline is checked between chunks: the read timeout only
-    bounds each socket read, so a slow trickle could otherwise run far past it.
+    bounds each socket read, so a slow trickle could otherwise run far past it. *stop*, once set,
+    abandons the read at the next chunk (another mirror has already answered).
     """
     declared = response.headers.get("content-length", "")
     if declared.isdigit() and int(declared) > max_bytes:
@@ -102,6 +107,8 @@ def read_json(
                 public_message=TOO_MUCH_DATA_MESSAGE,
             )
         time_left(deadline, service)
+        if stop is not None and stop.is_set():
+            raise GisUnavailableError(f"{service}: abandoned, another endpoint answered first")
         chunks.append(chunk)
     return json.loads(b"".join(chunks))
 
