@@ -1,526 +1,833 @@
 """
 Procedural interchange geometry generators.
 
-Each generator is a factory that converts a compact set of engineering
-parameters into a fully-formed `RoadNetwork` of smooth `RoadSegment`s.
-The control-point placement uses trigonometric formulas derived from
-real interchange design manuals (AASHTO Green Book geometry).
+Each generator turns a few engineering parameters into a `RoadNetwork` of real-scale road
+centrelines for one interchange type. Dimensions come from ``app/data/interchange_geometry.py``.
+
+Geometry rules shared by every generator:
+
+* Everything is laid out in local metres around the crossing point. North is +y, and the
+  **primary road runs north-south**: it is the road whose direction the planner sets on the map
+  with the second click, and ``footprint.rotate`` keeps +y on that bearing. For the three-leg types
+  (trumpet, directional T) the primary road is the through road.
+* Traffic keeps to the right (Ukraine). A dual carriageway has its northbound carriageway on the
+  east side and its eastbound carriageway on the south side. Ramps leave and join a carriageway on
+  its right-hand side.
+* Every centreline is built by `_Path`, a "turtle" that only moves by straights and circular arcs,
+  each starting with the heading the previous piece ended on. Ramps are therefore G1-continuous
+  (no kinks) by construction. A ramp starts or ends on a parallel speed-change lane whose inner
+  edge touches the outer edge of its carriageway, so it meets the mainline tangentially.
+* Symmetric interchanges are built for one quadrant (or one half of a ramp) and copied by
+  rotation or reflection, so the copies match exactly.
+* Each centreline is sampled every `_STEP_M` metres. ``RoadSegment.generate_centreline`` then
+  fits a spline through the samples, and at that density the spline cannot overshoot.
+
+Output coordinates are ``center + metres / METRES_PER_COORD``, the convention shared with
+``app/domain/geometry.py``. ``app/application/footprint.py`` builds at the origin and scales back
+to metres before projecting to a real site.
 """
 
 from __future__ import annotations
 
 import math
-from typing import List, Tuple
+from dataclasses import dataclass
+from typing import List, Sequence, Tuple
 
-from shapely.affinity import rotate as _shapely_rotate
-from shapely.geometry import LineString as _ShapelyLine
+from shapely.geometry import LineString, MultiLineString
 
-from app.domain.geometry import ControlPoint, RoadNetwork, RoadSegment
+from app.data import interchange_geometry as dims
+from app.domain.geometry import METRES_PER_COORD, ControlPoint, RoadNetwork, RoadSegment
 
+Point = Tuple[float, float]
 
-def _arc_points(
-    cx: float,
-    cy: float,
-    radius: float,
-    start_angle: float,
-    end_angle: float,
-    n: int = 8,
-) -> List[ControlPoint]:
-    """Generate *n* control points along a circular arc."""
-    angles = [start_angle + (end_angle - start_angle) * i / (n - 1) for i in range(n)]
-    return [ControlPoint(x=cx + radius * math.cos(a), y=cy + radius * math.sin(a)) for a in angles]
+_STEP_M = 2.0
+_HALF_PI = math.pi / 2
+_INV_SQRT2 = 1.0 / math.sqrt(2.0)
+_QUADRANTS = ("SE", "NE", "NW", "SW")  # canonical SE, then each 90° anticlockwise rotation
 
 
-def _line_points(
-    x0: float, y0: float, x1: float, y1: float, n: int = 4
-) -> List[ControlPoint]:
-    """Generate *n* evenly spaced points along a straight segment."""
+# ── Path construction ────────────────────────────────────────────────────────
+
+
+class _Path:
+    """A centreline built from straights and arcs, each tangent to the one before (G1)."""
+
+    def __init__(self, x: float, y: float, heading: float):
+        self.x, self.y, self.heading = x, y, heading
+        self.points: List[Point] = [(x, y)]
+
+    def straight(self, length: float) -> "_Path":
+        if length <= 1e-9:
+            return self
+        n = max(1, math.ceil(length / _STEP_M))
+        dx, dy = math.cos(self.heading), math.sin(self.heading)
+        x0, y0 = self.x, self.y
+        for i in range(1, n + 1):
+            t = length * i / n
+            self.points.append((x0 + dx * t, y0 + dy * t))
+        self.x, self.y = self.points[-1]
+        return self
+
+    def arc(self, radius: float, angle: float) -> "_Path":
+        """Turn through *angle* radians (positive = left, anticlockwise) on a circle of *radius*."""
+        if abs(angle) <= 1e-12:
+            return self
+        side = 1.0 if angle > 0 else -1.0
+        h0 = self.heading
+        cx = self.x - side * radius * math.sin(h0)
+        cy = self.y + side * radius * math.cos(h0)
+        n = max(2, math.ceil(abs(angle) * radius / _STEP_M))
+        for i in range(1, n + 1):
+            h = h0 + angle * i / n
+            self.points.append((cx + side * radius * math.sin(h), cy - side * radius * math.cos(h)))
+        self.x, self.y = self.points[-1]
+        self.heading = h0 + angle
+        return self
+
+
+def _rotate_quarter(points: Sequence[Point], k: int) -> List[Point]:
+    """Rotate by k × 90° anticlockwise about the origin (exact, no trigonometric rounding)."""
+    out = list(points)
+    for _ in range(k % 4):
+        out = [(-y, x) for x, y in out]
+    return out
+
+
+def _mirror_x(points: Sequence[Point]) -> List[Point]:
+    """Reflect east-west (x → -x)."""
+    return [(-x, y) for x, y in points]
+
+
+def _mirror_y(points: Sequence[Point]) -> List[Point]:
+    """Reflect north-south (y → -y)."""
+    return [(x, -y) for x, y in points]
+
+
+def _translate(points: Sequence[Point], dx: float, dy: float) -> List[Point]:
+    return [(x + dx, y + dy) for x, y in points]
+
+
+# ── Cross-section ────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class _Section:
+    """Offsets of a dual carriageway, all measured from the road's centre line."""
+
+    lanes: int
+    lane_width: float
+    median: float
+    ramp_width: float
+
+    @property
+    def width(self) -> float:
+        return self.lanes * self.lane_width
+
+    @property
+    def carriageway(self) -> float:
+        """Centreline of each carriageway."""
+        return self.median / 2 + self.width / 2
+
+    @property
+    def edge(self) -> float:
+        """Outer edge of each carriageway."""
+        return self.median / 2 + self.width
+
+    @property
+    def ramp_line(self) -> float:
+        """Centreline of a ramp alongside, its inner edge on the carriageway's outer edge."""
+        return self.edge + self.ramp_width / 2
+
+
+@dataclass
+class _Seg:
+    id: str
+    points: List[Point]
+    lanes: int
+    kind: str
+    speed_kmh: float
+    is_bridge: bool = False
+
+
+def _dual_carriageway(
+    name: str, axis: str, section: _Section, start: float, end: float, kind: str, speed: float
+) -> List[_Seg]:
+    """Two straight one-way carriageways from *start* to *end* along *axis* ('ns' or 'ew')."""
+    d = section.carriageway
+    if axis == "ns":  # northbound on the east side
+        a = _Path(d, start, _HALF_PI).straight(end - start).points
+        b = _Path(-d, end, -_HALF_PI).straight(end - start).points
+        ids = (f"{name}-NB", f"{name}-SB")
+    else:  # eastbound on the south side
+        a = _Path(start, -d, 0.0).straight(end - start).points
+        b = _Path(end, d, math.pi).straight(end - start).points
+        ids = (f"{name}-EB", f"{name}-WB")
     return [
-        ControlPoint(
-            x=x0 + (x1 - x0) * i / (n - 1),
-            y=y0 + (y1 - y0) * i / (n - 1),
-        )
-        for i in range(n)
+        _Seg(ids[0], a, section.lanes, kind, speed),
+        _Seg(ids[1], b, section.lanes, kind, speed),
     ]
 
 
-def _cubic_bezier_coords(
-    p0: Tuple[float, float],
-    p1: Tuple[float, float],
-    p2: Tuple[float, float],
-    p3: Tuple[float, float],
-    n: int = 15,
-) -> List[Tuple[float, float]]:
+def _extent(segs: Sequence[_Seg]) -> float:
+    return max(max(abs(x), abs(y)) for s in segs for x, y in s.points)
+
+
+# ── Ramp shapes (canonical orientation; callers rotate or reflect them) ──────
+
+
+def _outer_connector(a: float, mid: float, run: float, radius: float) -> List[Point]:
     """
-    Evaluate a **cubic Bezier** curve at *n* evenly-spaced parameter values.
+    Right-turn connector in the SE quadrant, from northbound (ramp line x = a) to eastbound
+    (ramp line y = -a), passing the diagonal at (mid, -mid).
 
-        B(t) = (1-t)^3 * P0  +  3(1-t)^2 t * P1  +  3(1-t) t^2 * P2  +  t^3 * P3
-
-    G1-continuity guarantee:
-      - Tangent at t=0 is parallel to (P1 - P0).
-      - Tangent at t=1 is parallel to (P3 - P2).
-
-    To ensure a ramp starts parallel to Road A and ends parallel to Road B:
-      - Set P1 so that only the component *along* Road A differs from P0.
-      - Set P2 so that only the component *along* Road B differs from P3.
+    Half the ramp is a parallel run, a right curve of up to *radius* through 45°, and a straight
+    tangent that reaches the diagonal. The other half is its mirror image in the line y = -x. If
+    *mid* is too close for the full radius, the curve tightens instead of overshooting.
     """
-    coords: list[Tuple[float, float]] = []
-    for i in range(n):
-        t = i / (n - 1)
-        u = 1.0 - t
-        x = u**3 * p0[0] + 3 * u**2 * t * p1[0] + 3 * u * t**2 * p2[0] + t**3 * p3[0]
-        y = u**3 * p0[1] + 3 * u**2 * t * p1[1] + 3 * u * t**2 * p2[1] + t**3 * p3[1]
-        coords.append((x, y))
-    return coords
+    radius = min(radius, max((mid - a) / (1 - _INV_SQRT2), 1.0))
+    tangent = max(0.0, (mid - a - radius * (1 - _INV_SQRT2)) / _INV_SQRT2)
+    half = _Path(a, 0.0, _HALF_PI).straight(run).arc(radius, -math.pi / 4).straight(tangent).points
+    ex, ey = half[-1]
+    half = _translate(half, 0.0, -ex - ey)
+    return half + [(-y, -x) for x, y in reversed(half[:-1])]
 
 
-def _bezier_to_control_points(
-    coords: List[Tuple[float, float]],
-    cx: float = 0.0,
-    cy: float = 0.0,
-) -> List[ControlPoint]:
-    """Translate raw coordinates by (cx, cy) and wrap as ControlPoints."""
-    return [ControlPoint(x=c[0] + cx, y=c[1] + cy) for c in coords]
+def _clear_outer_connector(
+    a: float, run: float, radius: float, obstacles: Sequence[Sequence[Point]], clearance: float
+) -> List[Point]:
+    """The tightest `_outer_connector` whose centreline stays *clearance* from every obstacle.
 
-class CloverleafGenerator:
+    Solved by bisection on where it crosses the diagonal; moving that point outwards only
+    moves the connector away from the loops and ramps inside it.
     """
-    Generates a standard 4-loop cloverleaf interchange centred at the origin.
+    blocker = MultiLineString([list(o) for o in obstacles])
 
-    Produces:
-      - 2 straight through-road segments (N-S and E-W)
-      - 4 loop ramps (one in each quadrant)
-      - 4 connector ramps linking the mainline to each loop
+    def clear(mid: float) -> bool:
+        return LineString(_outer_connector(a, mid, run, radius)).distance(blocker) >= clearance
+
+    lo, hi = a + 5.0, a + 50.0
+    if clear(lo):
+        return _outer_connector(a, lo, run, radius)
+    while not clear(hi):
+        lo, hi = hi, hi * 1.5
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        lo, hi = (lo, mid) if clear(mid) else (mid, hi)
+    return _outer_connector(a, hi, run, radius)
+
+
+def _directional_left(
+    a: float, pass_distance: float, run: float, swing_radius: float, turn_radius: float
+) -> List[Point]:
+    """
+    Directional left turn from northbound (ramp line x = a, SE quadrant) to westbound (ramp line
+    y = a, NW quadrant), as in a turbine or a stack.
+
+    In right-hand traffic a left turn still leaves to the right. The ramp swings out on a right
+    curve through α, then turns left through 45° + α to cross the diagonal y = x heading north-west.
+    The second half is the mirror image in y = x. α is solved so that the ramp passes the centre
+    at *pass_distance*: about 70 m makes a turbine's spiral, about 15 m makes a stack's flyovers
+    crossing over the centre.
+
+        x_mid = a + R_s (1 - cos α) - R_t (cos α - 1/√2),   x_mid = pass_distance / √2
+    """
+    x_mid = pass_distance * _INV_SQRT2
+    cos_a = (a + swing_radius + turn_radius * _INV_SQRT2 - x_mid) / (swing_radius + turn_radius)
+    alpha = math.acos(min(1.0, max(math.cos(math.radians(60)), cos_a)))
+    half = (
+        _Path(a, 0.0, _HALF_PI)
+        .straight(run)
+        .arc(swing_radius, -alpha)
+        .arc(turn_radius, math.pi / 4 + alpha)
+        .points
+    )
+    ex, ey = half[-1]
+    half = _translate(half, 0.0, ex - ey)
+    return half + [(y, x) for x, y in reversed(half[:-1])]
+
+
+def _corner_connector(a1: float, a2: float, radius: float, run: float) -> List[Point]:
+    """Right turn in the SE quadrant on one quarter circle: north on x = a1 to east on y = -a2."""
+    return (
+        _Path(a1, -(a2 + radius) - run, _HALF_PI)
+        .straight(run)
+        .arc(radius, -_HALF_PI)
+        .straight(run)
+        .points
+    )
+
+
+def _terminal_ramp(a: float, x_terminal: float, y_end: float, run: float) -> _Path:
+    """
+    Service-interchange ramp in the SE quadrant: leaves northbound (ramp line x = a) on a parallel
+    lane, then shifts sideways on a reverse curve (two arcs with a tangent between) to the terminal
+    line x = *x_terminal*, and runs straight north to *y_end*. Returns the path so the caller can
+    continue it into the turns at the terminal.
+    """
+    shift = x_terminal - a
+    alpha = math.radians(dims.TERMINAL_RAMP_ANGLE_DEG)
+    radius = dims.TERMINAL_RAMP_RADIUS_M
+    if 2 * radius * (1 - math.cos(alpha)) > shift:
+        radius = shift / (2 * (1 - math.cos(alpha)))
+    tangent = (shift - 2 * radius * (1 - math.cos(alpha))) / math.sin(alpha)
+    rise = run + 2 * radius * math.sin(alpha) + tangent * math.cos(alpha)
+    approach = dims.TERMINAL_APPROACH_M
+    path = _Path(a, y_end - approach - rise, _HALF_PI)
+    return path.straight(run).arc(radius, -alpha).straight(tangent).arc(radius, alpha).straight(
+        approach
+    )
+
+
+# ── Base class ───────────────────────────────────────────────────────────────
+
+
+class _Generator:
+    """Shared plumbing: subclasses lay out `_Seg`s in metres, this turns them into a network."""
+
+    def __init__(self, lane_width: float, center_lon: float, center_lat: float):
+        self.lane_width = lane_width
+        self.cx = center_lon
+        self.cy = center_lat
+        self.scale = 1.0 / METRES_PER_COORD  # coordinate units per metre
+
+    def layout(self) -> List[_Seg]:
+        raise NotImplementedError
+
+    def generate(self) -> RoadNetwork:
+        network = RoadNetwork()
+        for seg in self.layout():
+            network.add_segment(RoadSegment(
+                id=seg.id,
+                control_points=[
+                    ControlPoint(x=self.cx + x * self.scale, y=self.cy + y * self.scale)
+                    for x, y in seg.points
+                ],
+                num_lanes=seg.lanes,
+                lane_width_meters=self.lane_width,
+                speed_limit_kmh=seg.speed_kmh,
+                is_bridge=seg.is_bridge,
+                kind=seg.kind,
+            ))
+        return network
+
+    def _section(self, lanes: int, median: float, ramp_lanes: int = dims.RAMP_LANES) -> _Section:
+        return _Section(lanes, self.lane_width, median, ramp_lanes * self.lane_width)
+
+
+def _service_quadrants(se: Sequence[Point]) -> List[Tuple[str, List[Point]]]:
+    """A service-interchange ramp in the SE quadrant copied to the other three by reflection."""
+    return [
+        ("NB-off", list(se)),
+        ("NB-on", _mirror_y(se)),
+        ("SB-off", _mirror_x(_mirror_y(se))),
+        ("SB-on", _mirror_x(se)),
+    ]
+
+
+# ── System interchanges (freeway × freeway) ──────────────────────────────────
+
+
+class CloverleafGenerator(_Generator):
+    """
+    Full four-leg cloverleaf between two freeways.
+
+    Left turns use a 270° loop in the quadrant after the crossing. For example, eastbound traffic
+    bound north leaves just past the bridge, loops clockwise and joins northbound just before it.
+    Right turns use an outer connector round the outside of the same quadrant's loop. The loop
+    radius (60 m by default, for 40 km/h) sets the size of the whole interchange, because each
+    connector must clear its loop by a ramp width plus a verge.
     """
 
     def __init__(
         self,
-        radius: float = 50.0,
-        lane_width: float = 3.5,
-        mainline_lanes: int = 3,
-        ramp_lanes: int = 1,
-        mainline_length: float = 300.0,
+        radius: float = dims.LOOP_RADIUS_M,
+        lane_width: float = dims.LANE_WIDTH_M,
+        mainline_lanes: int = dims.FREEWAY_LANES,
+        ramp_lanes: int = dims.RAMP_LANES,
+        mainline_length: float = 0.0,
         center_lon: float = 30.5234,
         center_lat: float = 50.4501,
     ):
+        super().__init__(lane_width, center_lon, center_lat)
         self.radius = radius
-        self.lane_width = lane_width
         self.mainline_lanes = mainline_lanes
         self.ramp_lanes = ramp_lanes
-        self.length = mainline_length
-        self.cx = center_lon
-        self.cy = center_lat
-        self.scale = 0.0005  # degrees per metre (rough approximation)
+        self.length = mainline_length  # minimum drawn length; the ramps decide the real one
 
-    def generate(self) -> RoadNetwork:
-        network = RoadNetwork()
-        s = self.scale
-        half = self.length / 2 * s
-        r = self.radius * s
-        cx, cy = self.cx, self.cy
-
-        network.add_segment(RoadSegment(
-            id="mainline-EW",
-            control_points=_line_points(cx - half, cy, cx + half, cy, n=6),
-            num_lanes=self.mainline_lanes,
-            lane_width_meters=self.lane_width,
-            speed_limit_kmh=80,
-        ))
-        network.add_segment(RoadSegment(
-            id="mainline-NS",
-            control_points=_line_points(cx, cy - half, cx, cy + half, n=6),
-            num_lanes=self.mainline_lanes,
-            lane_width_meters=self.lane_width,
-            speed_limit_kmh=80,
-        ))
-
-        quadrant_defs = [
-            ("loop-NE", 1,  1,  math.pi,        math.pi * 1.5),
-            ("loop-NW", -1, 1,  0.0,             -math.pi * 0.5),
-            ("loop-SW", -1, -1, 0.0,             math.pi * 0.5),
-            ("loop-SE", 1,  -1, math.pi,         math.pi * 0.5),
-        ]
-        for name, sx, sy, start_a, end_a in quadrant_defs:
-            loop_cx = cx + sx * r * 0.7
-            loop_cy = cy + sy * r * 0.7
-            pts = _arc_points(loop_cx, loop_cy, r, start_a, end_a, n=12)
-            network.add_segment(RoadSegment(
-                id=name,
-                control_points=pts,
-                num_lanes=self.ramp_lanes,
-                lane_width_meters=self.lane_width,
-                speed_limit_kmh=40,
+    def layout(self) -> List[_Seg]:
+        sec = self._section(self.mainline_lanes, dims.FREEWAY_MEDIAN_M, self.ramp_lanes)
+        a, r = sec.ramp_line, self.radius
+        # The loop's speed-change lanes stop short of the corner so the two never touch.
+        run = max(r - sec.ramp_width - dims.RAMP_GAP_M, 0.0)
+        loop = (
+            _Path(a + r - run, -a, 0.0).straight(run).arc(r, -1.5 * math.pi).straight(run).points
+        )
+        connector = _clear_outer_connector(
+            a, dims.SPEED_CHANGE_RUN_M, dims.OUTER_CONNECTOR_RADIUS_M, [loop],
+            sec.ramp_width + dims.RAMP_GAP_M,
+        )
+        ramps: List[_Seg] = []
+        for k, q in enumerate(_QUADRANTS):
+            ramps.append(_Seg(f"loop-{q}", _rotate_quarter(loop, k), self.ramp_lanes, "ramp", 40))
+            ramps.append(_Seg(
+                f"connector-{q}", _rotate_quarter(connector, k), self.ramp_lanes, "ramp", 50,
             ))
+        half = max(_extent(ramps) + dims.ROAD_MARGIN_M, self.length / 2)
+        return (
+            _dual_carriageway("mainline", "ns", sec, -half, half, "mainline", 100)
+            + _dual_carriageway("crossroad", "ew", sec, -half, half, "mainline", 100)
+            + ramps
+        )
 
-        return network
 
-
-class DDIGenerator:
+class TurbineGenerator(_Generator):
     """
-    Generates a Diverging Diamond Interchange.
+    Turbine (whirlpool) interchange between two freeways.
 
-    Produces:
-      - A straight freeway mainline (E-W).
-      - An overpass arterial that "crosses over" twice creating the
-        characteristic diamond cross-over pattern.
-      - 4 diagonal ramp segments.
+    Every left turn is a directional ramp that leaves to the right, then spirals anticlockwise
+    round the centre on a ring of *spiral_radius*, crossing both freeways on its way to the
+    opposite quadrant. The four spirals together make the turbine's pinwheel. Right turns use
+    outer connectors, pushed outwards just far enough to clear the spirals.
     """
 
     def __init__(
         self,
-        crossover_angle_deg: float = 30.0,
-        length: float = 200.0,
-        lane_width: float = 3.5,
-        mainline_lanes: int = 3,
-        arterial_lanes: int = 2,
+        spiral_radius: float = dims.TURBINE_RING_RADIUS_M,
+        mainline_length: float = 0.0,
+        lane_width: float = dims.LANE_WIDTH_M,
+        mainline_lanes: int = dims.FREEWAY_LANES,
+        ramp_lanes: int = dims.RAMP_LANES,
         center_lon: float = 30.5234,
         center_lat: float = 50.4501,
     ):
-        self.angle = math.radians(crossover_angle_deg)
-        self.length = length
-        self.lane_width = lane_width
+        super().__init__(lane_width, center_lon, center_lat)
+        self.spiral_radius = spiral_radius
+        self.mainline_length = mainline_length
         self.mainline_lanes = mainline_lanes
-        self.arterial_lanes = arterial_lanes
-        self.cx = center_lon
-        self.cy = center_lat
-        self.scale = 0.0005
+        self.ramp_lanes = ramp_lanes
 
-    def generate(self) -> RoadNetwork:
-        network = RoadNetwork()
-        s = self.scale
-        half = self.length / 2 * s
-        cx, cy = self.cx, self.cy
+    left_speed_kmh = 60
 
-        network.add_segment(RoadSegment(
-            id="freeway",
-            control_points=_line_points(cx - half, cy, cx + half, cy, n=6),
-            num_lanes=self.mainline_lanes,
-            lane_width_meters=self.lane_width,
-            speed_limit_kmh=100,
-            is_bridge=False,
-        ))
-
-        offset = self.length * 0.12 * s
-        half_ext = self.length * 0.08 * s
-        approach_s = [
-            ControlPoint(x=cx, y=cy - half),
-            ControlPoint(x=cx - half_ext * 0.3, y=cy - offset),
-            ControlPoint(x=cx - half_ext, y=cy - offset * 0.4),
-            ControlPoint(x=cx - half_ext, y=cy),
-        ]
-        network.add_segment(RoadSegment(
-            id="arterial-approach-S",
-            control_points=approach_s,
-            num_lanes=self.arterial_lanes,
-            lane_width_meters=self.lane_width,
-            speed_limit_kmh=50,
-            is_bridge=False,
-        ))
-        bridge_pts = [
-            ControlPoint(x=cx - half_ext, y=cy),
-            ControlPoint(x=cx, y=cy + offset * 0.3),
-            ControlPoint(x=cx + half_ext, y=cy),
-        ]
-        network.add_segment(RoadSegment(
-            id="arterial-bridge",
-            control_points=bridge_pts,
-            num_lanes=self.arterial_lanes,
-            lane_width_meters=self.lane_width,
-            speed_limit_kmh=50,
-            is_bridge=True,
-        ))
-        depart_n = [
-            ControlPoint(x=cx + half_ext, y=cy),
-            ControlPoint(x=cx + half_ext, y=cy + offset * 0.4),
-            ControlPoint(x=cx + half_ext * 0.3, y=cy + offset),
-            ControlPoint(x=cx, y=cy + half),
-        ]
-        network.add_segment(RoadSegment(
-            id="arterial-depart-N",
-            control_points=depart_n,
-            num_lanes=self.arterial_lanes,
-            lane_width_meters=self.lane_width,
-            speed_limit_kmh=50,
-            is_bridge=False,
-        ))
-
-        ramp_offset = self.length * 0.22 * s
-        tangent_len = offset * 0.6
-        ramp_defs = [
-            ("ramp-NE", +1, +1),
-            ("ramp-SE", +1, -1),
-            ("ramp-NW", -1, +1),
-            ("ramp-SW", -1, -1),
-        ]
-        for name, sx, sy in ramp_defs:
-            bp0 = (cx + sx * ramp_offset, cy)
-            bp1 = (cx + sx * ramp_offset, cy + sy * tangent_len)
-            bp2 = (cx + sx * (half_ext + tangent_len * 0.5), cy + sy * offset * 0.2)
-            bp3 = (cx + sx * half_ext, cy + sy * offset * 0.2)
-            bez = _cubic_bezier_coords(bp0, bp1, bp2, bp3, n=15)
-            network.add_segment(RoadSegment(
-                id=name,
-                control_points=[ControlPoint(x=c[0], y=c[1]) for c in bez],
-                num_lanes=1,
-                lane_width_meters=self.lane_width,
-                speed_limit_kmh=40,
-                is_bridge=False,
+    def layout(self) -> List[_Seg]:
+        sec = self._section(self.mainline_lanes, dims.FREEWAY_MEDIAN_M, self.ramp_lanes)
+        a = sec.ramp_line
+        left = _directional_left(
+            a, self.spiral_radius, dims.SPEED_CHANGE_RUN_M,
+            dims.DIRECTIONAL_SWING_RADIUS_M, dims.DIRECTIONAL_RADIUS_M,
+        )
+        lefts = [_rotate_quarter(left, k) for k in range(4)]
+        connector = _clear_outer_connector(
+            a, dims.SPEED_CHANGE_RUN_M, dims.OUTER_CONNECTOR_RADIUS_M, lefts,
+            sec.ramp_width + dims.RAMP_GAP_M,
+        )
+        ramps: List[_Seg] = []
+        for k, q in enumerate(_QUADRANTS):
+            ramps.append(_Seg(
+                f"left-from-{q}", lefts[k], self.ramp_lanes, "ramp", self.left_speed_kmh, True,
             ))
+            ramps.append(_Seg(
+                f"connector-{q}", _rotate_quarter(connector, k), self.ramp_lanes, "ramp", 50,
+            ))
+        half = max(_extent(ramps) + dims.ROAD_MARGIN_M, self.mainline_length / 2)
+        return (
+            _dual_carriageway("mainline", "ns", sec, -half, half, "mainline", 100)
+            + _dual_carriageway("crossroad", "ew", sec, -half, half, "mainline", 100)
+            + ramps
+        )
 
-        return network
 
-
-class RoundaboutGenerator:
+class StackGenerator(TurbineGenerator):
     """
-    Generates a circular roundabout with configurable entry/exit arms.
+    Four-level stack between two freeways.
+
+    The ramps are the same as a turbine's, but each left-turn flyover crosses close to the centre,
+    so the four of them cross one another above the two freeways (levels 3 and 4). The
+    interchange is more compact than a turbine but needs taller structures.
     """
 
     def __init__(
         self,
-        radius: float = 30.0,
+        centre_pass: float = dims.STACK_CENTRE_PASS_M,
+        mainline_length: float = 0.0,
+        lane_width: float = dims.LANE_WIDTH_M,
+        mainline_lanes: int = dims.FREEWAY_LANES,
+        ramp_lanes: int = dims.RAMP_LANES,
+        center_lon: float = 30.5234,
+        center_lat: float = 50.4501,
+    ):
+        # The turbine's ring radius is simply set small enough to cross the centre.
+        super().__init__(
+            spiral_radius=centre_pass, mainline_length=mainline_length, lane_width=lane_width,
+            mainline_lanes=mainline_lanes, ramp_lanes=ramp_lanes,
+            center_lon=center_lon, center_lat=center_lat,
+        )
+
+    left_speed_kmh = 70
+
+
+# ── Service interchanges (freeway × arterial) ────────────────────────────────
+
+
+class DiamondGenerator(_Generator):
+    """
+    Conventional diamond: a freeway (north-south) under an arterial, with one ramp in each
+    quadrant ending at a signalised terminal on the arterial.
+
+    Each ramp leaves the freeway on a parallel lane, moves out to the terminal line on a flat
+    reverse curve, and meets the arterial square-on after a straight approach that stores the
+    queue.
+    """
+
+    def __init__(
+        self,
+        terminal_offset: float = dims.DIAMOND_TERMINAL_OFFSET_M,
+        lane_width: float = dims.LANE_WIDTH_M,
+        mainline_lanes: int = dims.FREEWAY_LANES,
+        arterial_lanes: int = dims.ARTERIAL_LANES,
+        center_lon: float = 30.5234,
+        center_lat: float = 50.4501,
+    ):
+        super().__init__(lane_width, center_lon, center_lat)
+        self.terminal_offset = terminal_offset
+        self.mainline_lanes = mainline_lanes
+        self.arterial_lanes = arterial_lanes
+
+    def layout(self) -> List[_Seg]:
+        fwy = self._section(self.mainline_lanes, dims.FREEWAY_MEDIAN_M)
+        art = self._section(self.arterial_lanes, dims.ARTERIAL_MEDIAN_M)
+        se = _terminal_ramp(
+            fwy.ramp_line, self.terminal_offset, -art.edge, dims.SPEED_CHANGE_RUN_M
+        ).points
+        ramps = [_Seg(f"ramp-{n}", pts, 1, "ramp", 50) for n, pts in _service_quadrants(se)]
+        half_fwy = _extent(ramps) + dims.ROAD_MARGIN_M
+        half_art = self.terminal_offset + 2 * dims.ROAD_MARGIN_M
+        return (
+            _dual_carriageway("mainline", "ns", fwy, -half_fwy, half_fwy, "mainline", 100)
+            + _dual_carriageway("crossroad", "ew", art, -half_art, half_art, "crossroad", 60)
+            + ramps
+        )
+
+
+class SPUIGenerator(_Generator):
+    """
+    Single-point urban interchange: a compact diamond whose four ramp terminals merge into one
+    signalised intersection over the freeway.
+
+    The ramps come in close to the bridge. Each left turn then sweeps through the shared central
+    area on a large radius to the far side of the arterial, and opposing left turns pass
+    left-to-left without crossing. Right turns peel off just before on a channelised turning
+    roadway.
+    """
+
+    def __init__(
+        self,
+        leg_length: float = 2 * dims.ROAD_MARGIN_M,
+        lane_width: float = dims.LANE_WIDTH_M,
+        mainline_lanes: int = dims.FREEWAY_LANES,
+        arterial_lanes: int = dims.ARTERIAL_LANES,
+        center_lon: float = 30.5234,
+        center_lat: float = 50.4501,
+    ):
+        super().__init__(lane_width, center_lon, center_lat)
+        self.leg_length = leg_length  # arterial drawn beyond the right-turn roadways
+        self.mainline_lanes = mainline_lanes
+        self.arterial_lanes = arterial_lanes
+
+    def layout(self) -> List[_Seg]:
+        fwy = self._section(self.mainline_lanes, dims.FREEWAY_MEDIAN_M)
+        art = self._section(self.arterial_lanes, dims.ARTERIAL_MEDIAN_M)
+        x_t = max(dims.SPUI_TERMINAL_OFFSET_M, fwy.ramp_line + 5.0)
+        r_left = dims.SPUI_LEFT_TURN_RADIUS_M
+        r_right = dims.TERMINAL_RIGHT_TURN_RADIUS_M
+        # The left turn is tangent to the terminal line and to the far carriageway's centreline.
+        y_fork = art.carriageway - r_left
+        stem = _terminal_ramp(fwy.ramp_line, x_t, y_fork, dims.SPEED_CHANGE_RUN_M)
+        left = stem.arc(r_left, _HALF_PI).points
+        right = (
+            _Path(x_t, y_fork, _HALF_PI)
+            .straight(-art.ramp_line - r_right - y_fork)
+            .arc(r_right, -_HALF_PI)
+            .straight(dims.SPEED_CHANGE_RUN_M)
+            .points
+        )
+        ramps: List[_Seg] = []
+        for (name, pts), (_, rpts) in zip(
+            _service_quadrants(left), _service_quadrants(right), strict=True
+        ):
+            ramps.append(_Seg(f"ramp-{name}", pts, 1, "ramp", 40))
+            ramps.append(_Seg(f"ramp-{name}-right", rpts, 1, "ramp", 25))
+        half_fwy = _extent(ramps) + dims.ROAD_MARGIN_M
+        half_art = x_t + r_right + dims.SPEED_CHANGE_RUN_M + self.leg_length
+        return (
+            _dual_carriageway("mainline", "ns", fwy, -half_fwy, half_fwy, "mainline", 100)
+            + _dual_carriageway("crossroad", "ew", art, -half_art, half_art, "crossroad", 60)
+            + ramps
+        )
+
+
+class DDIGenerator(_Generator):
+    """
+    Diverging diamond: the arterial's two carriageways swap sides at a crossover on each side of
+    the freeway, so between the crossovers traffic drives on the left. Left turns to and from the
+    ramps then need no signal phase of their own: they turn off the arterial's outer side.
+
+    Each crossover is a reverse curve. Both carriageways deviate by half the crossing angle and
+    meet at the full angle (40° by default, FHWA's recommended 40-50°). Right turns from an
+    off-ramp skip the crossover zone on a lane along the arterial's outside and join beyond it.
+    """
+
+    def __init__(
+        self,
+        crossover_angle_deg: float = dims.DDI_CROSSOVER_ANGLE_DEG,
+        length: float = dims.DDI_CROSSOVER_SPACING_M,
+        lane_width: float = dims.LANE_WIDTH_M,
+        mainline_lanes: int = dims.FREEWAY_LANES,
+        arterial_lanes: int = dims.ARTERIAL_LANES,
+        center_lon: float = 30.5234,
+        center_lat: float = 50.4501,
+    ):
+        super().__init__(lane_width, center_lon, center_lat)
+        self.crossover_angle = math.radians(crossover_angle_deg)
+        self.length = length  # distance between the two crossover points
+        self.mainline_lanes = mainline_lanes
+        self.arterial_lanes = arterial_lanes
+
+    def layout(self) -> List[_Seg]:
+        fwy = self._section(self.mainline_lanes, dims.FREEWAY_MEDIAN_M)
+        art = self._section(self.arterial_lanes, dims.ARTERIAL_MEDIAN_M)
+        r_left, r_right = dims.DDI_LEFT_TURN_RADIUS_M, dims.TERMINAL_RIGHT_TURN_RADIUS_M
+        # The left turn must finish its curve before the bridge over the freeway.
+        x_t = max(dims.DDI_TERMINAL_OFFSET_M, fwy.edge + r_left + dims.RAMP_GAP_M)
+
+        # Crossover reverse curve: lateral shift 2d over two arcs of ρ, each through φ.
+        phi = self.crossover_angle / 2
+        d = art.carriageway
+        rho = 2 * d / (2 * (1 - math.cos(phi)))
+        s_half = rho * math.sin(phi)
+        # The crossovers must sit beyond the right-turn roadways.
+        x_c = max(self.length / 2, x_t + r_right + s_half + dims.RAMP_GAP_M)
+        half_art = x_c + s_half + dims.SPEED_CHANGE_RUN_M + 2 * dims.ROAD_MARGIN_M
+        eb = (
+            _Path(-half_art, -d, 0.0)
+            .straight(half_art - x_c - s_half)
+            .arc(rho, phi).arc(rho, -phi)
+            .straight(2 * (x_c - s_half))
+            .arc(rho, -phi).arc(rho, phi)
+            .straight(half_art - x_c - s_half)
+            .points
+        )
+        arterial = [
+            _Seg("crossroad-EB", eb, self.arterial_lanes, "crossroad", 50),
+            _Seg("crossroad-WB", _rotate_quarter(eb, 2), self.arterial_lanes, "crossroad", 50),
+        ]
+
+        a_art = art.ramp_line
+        y_fork = -a_art - max(r_left, r_right) - 5.0
+        stem = _terminal_ramp(fwy.ramp_line, x_t, y_fork, dims.SPEED_CHANGE_RUN_M)
+        # Left turn onto the westbound carriageway, which runs on the south side between the
+        # crossovers; it joins from the outside, alongside, just short of the bridge.
+        left = stem.straight(-a_art - r_left - y_fork).arc(r_left, _HALF_PI)
+        left = left.straight(x_t - r_left - fwy.edge - dims.RAMP_GAP_M).points
+        right = (
+            _Path(x_t, y_fork, _HALF_PI)
+            .straight(-a_art - r_right - y_fork)
+            .arc(r_right, -_HALF_PI)
+            .straight(x_c + s_half + dims.SPEED_CHANGE_RUN_M - x_t - r_right)
+            .points
+        )
+        ramps: List[_Seg] = []
+        for (name, pts), (_, rpts) in zip(
+            _service_quadrants(left), _service_quadrants(right), strict=True
+        ):
+            ramps.append(_Seg(f"ramp-{name}", pts, 1, "ramp", 40))
+            ramps.append(_Seg(f"ramp-{name}-right", rpts, 1, "ramp", 25))
+        half_fwy = _extent(ramps) + dims.ROAD_MARGIN_M
+        return (
+            _dual_carriageway("mainline", "ns", fwy, -half_fwy, half_fwy, "mainline", 100)
+            + arterial
+            + ramps
+        )
+
+
+# ── Three-leg interchanges ───────────────────────────────────────────────────
+
+
+def _through_road_north(segs: List[_Seg]) -> List[_Seg]:
+    """
+    Turn a layout drawn with its through road east-west and its stem to the south through 90°
+    anticlockwise. The through road then runs north-south (along the planner's bearing) and the
+    stem leaves to the east. Rotation keeps right-hand traffic right-handed. Carriageway ids are
+    renamed to their new directions.
+    """
+    rename = {"EB": "NB", "WB": "SB", "NB": "WB", "SB": "EB"}
+    out = []
+    for s in segs:
+        head, _, tail = s.id.rpartition("-")
+        new_id = f"{head}-{rename[tail]}" if tail in rename else s.id
+        out.append(_Seg(new_id, _rotate_quarter(s.points, 1), s.lanes, s.kind, s.speed_kmh,
+                        s.is_bridge))
+    return out
+
+
+class TrumpetGenerator(_Generator):
+    """
+    Trumpet: a three-leg interchange where a stem road ends at a freeway.
+
+    The stem crosses the freeway on a bridge and opens into the trumpet's "bell" on the far side.
+    One left turn is a 270° loop (freeway to stem), the other a semi-direct ramp that wraps round
+    the loop concentrically and drops onto the freeway well downstream. The two right turns are
+    single-curve connectors on the stem side.
+    """
+
+    def __init__(
+        self,
+        radius: float = dims.LOOP_RADIUS_M,
+        lane_width: float = dims.LANE_WIDTH_M,
+        mainline_lanes: int = dims.FREEWAY_LANES,
+        stem_lanes: int = dims.ARTERIAL_LANES,
+        ramp_lanes: int = dims.RAMP_LANES,
+        center_lon: float = 30.5234,
+        center_lat: float = 50.4501,
+    ):
+        super().__init__(lane_width, center_lon, center_lat)
+        self.radius = radius
+        self.mainline_lanes = mainline_lanes
+        self.stem_lanes = stem_lanes
+        self.ramp_lanes = ramp_lanes
+
+    def layout(self) -> List[_Seg]:
+        # Drawn with the through road east-west and the stem from the south, then turned.
+        thr = self._section(self.mainline_lanes, dims.FREEWAY_MEDIAN_M, self.ramp_lanes)
+        stem = self._section(self.stem_lanes, dims.FREEWAY_MEDIAN_M, self.ramp_lanes)
+        a, d_s, r = thr.ramp_line, stem.carriageway, self.radius
+        run = dims.SPEED_CHANGE_RUN_M
+
+        # Loop: westbound leaves on the north side, passes under the stem and turns clockwise
+        # 270° to run south down the stem's southbound carriageway.
+        x_loop = -d_s - r
+        x_div = stem.ramp_line + run
+        loop = _Path(x_div, a, math.pi).straight(x_div - x_loop).arc(r, -1.5 * math.pi).points
+
+        # Semi-direct: the stem's northbound carriageway curves left round the loop, concentric
+        # with it, then reverses onto westbound. cos β = (R3 - R) / (R2 + R3).
+        r2, r3 = r + 2 * d_s, dims.DIRECTIONAL_SWING_RADIUS_M
+        beta = math.acos((r3 - r) / (r2 + r3))
+        semi = (
+            _Path(d_s, a + r, _HALF_PI).arc(r2, _HALF_PI + beta).arc(r3, -beta).straight(run).points
+        )
+
+        corner = _corner_connector(stem.ramp_line, a, dims.OUTER_CONNECTOR_RADIUS_M, run)
+        ramps = [
+            _Seg("loop", loop, self.ramp_lanes, "ramp", 40),
+            _Seg("ramp-semi-direct", semi, self.ramp_lanes, "ramp", 60, True),
+            _Seg("connector-stem-out", corner, self.ramp_lanes, "ramp", 50),
+            _Seg("connector-stem-in", _mirror_x(corner), self.ramp_lanes, "ramp", 50),
+        ]
+        half = _extent(ramps) + dims.ROAD_MARGIN_M
+        stem_end = -max(dims.STEM_LENGTH_M, _extent(ramps[2:]) + dims.ROAD_MARGIN_M)
+        stem_segs = [
+            _Seg("stem-NB", _Path(d_s, stem_end, _HALF_PI).straight(a + r - stem_end).points,
+                 self.stem_lanes, "crossroad", 80),
+            _Seg("stem-SB", _Path(-d_s, a + r, -_HALF_PI).straight(a + r - stem_end).points,
+                 self.stem_lanes, "crossroad", 80),
+        ]
+        through = _dual_carriageway("mainline", "ew", thr, -half, half, "mainline", 100)
+        return _through_road_north(through + stem_segs + ramps)
+
+
+class DirectionalTGenerator(_Generator):
+    """
+    Directional T (fully directional three-leg interchange) between two freeways.
+
+    Both left turns are flyovers that start where the stem's carriageways split. They curve
+    across the through road on the diagonal, cross each other above its centre and join the
+    through road from the right. The two right turns are single-curve connectors.
+    """
+
+    def __init__(
+        self,
+        lane_width: float = dims.LANE_WIDTH_M,
+        mainline_lanes: int = dims.FREEWAY_LANES,
+        ramp_lanes: int = dims.RAMP_LANES,
+        center_lon: float = 30.5234,
+        center_lat: float = 50.4501,
+    ):
+        super().__init__(lane_width, center_lon, center_lat)
+        self.mainline_lanes = mainline_lanes
+        self.ramp_lanes = ramp_lanes
+
+    def layout(self) -> List[_Seg]:
+        sec = self._section(self.mainline_lanes, dims.FREEWAY_MEDIAN_M, self.ramp_lanes)
+        a, d = sec.ramp_line, sec.carriageway
+        run = dims.SPEED_CHANGE_RUN_M
+        split = dims.DIRECTIONAL_T_SPLIT_M
+        r_l, r3 = dims.DIRECTIONAL_RADIUS_M, dims.DIRECTIONAL_SWING_RADIUS_M
+        # Left arc from (d, -split) heading north, then a reverse curve onto y = a heading west:
+        # cos β = (a + split + R3) / (R_l + R3).
+        beta = math.acos((a + split + r3) / (r_l + r3))
+        flyover = _Path(d, -split, _HALF_PI).arc(r_l, _HALF_PI + beta).arc(r3, -beta)
+        flyover = flyover.straight(run).points
+        corner = _corner_connector(a, a, dims.OUTER_CONNECTOR_RADIUS_M, run)
+        ramps = [
+            _Seg("flyover-stem-out", flyover, self.ramp_lanes, "ramp", 70, True),
+            _Seg("flyover-stem-in", _mirror_x(flyover), self.ramp_lanes, "ramp", 70, True),
+            _Seg("connector-stem-out", corner, self.ramp_lanes, "ramp", 50),
+            _Seg("connector-stem-in", _mirror_x(corner), self.ramp_lanes, "ramp", 50),
+        ]
+        half = _extent(ramps) + dims.ROAD_MARGIN_M
+        stem_end = -max(dims.STEM_LENGTH_M, _extent(ramps[2:]) + dims.ROAD_MARGIN_M)
+        stem_segs = [
+            _Seg("stem-NB", _Path(d, stem_end, _HALF_PI).straight(-split - stem_end).points,
+                 self.mainline_lanes, "mainline", 100),
+            _Seg("stem-SB", _Path(-d, -split, -_HALF_PI).straight(-split - stem_end).points,
+                 self.mainline_lanes, "mainline", 100),
+        ]
+        through = _dual_carriageway("mainline", "ew", sec, -half, half, "mainline", 100)
+        return _through_road_north(through + stem_segs + ramps)
+
+
+# ── At-grade (legacy view only) ──────────────────────────────────────────────
+
+
+class RoundaboutGenerator(_Generator):
+    """
+    Circular roundabout with *num_entries* evenly spaced radial arms.
+
+    The circulatory carriageway is split into one arc per gap between arms. Each arm is a
+    straight radial road ending at the ring's outer edge.
+    """
+
+    def __init__(
+        self,
+        radius: float = dims.ROUNDABOUT_RADIUS_M,
         num_entries: int = 4,
-        arm_length: float = 100.0,
-        lane_width: float = 3.5,
+        arm_length: float = dims.ROUNDABOUT_ARM_LENGTH_M,
+        lane_width: float = dims.LANE_WIDTH_M,
         circulatory_lanes: int = 2,
         arm_lanes: int = 2,
         center_lon: float = 30.5234,
         center_lat: float = 50.4501,
     ):
+        super().__init__(lane_width, center_lon, center_lat)
         self.radius = radius
         self.num_entries = num_entries
         self.arm_length = arm_length
-        self.lane_width = lane_width
         self.circ_lanes = circulatory_lanes
         self.arm_lanes = arm_lanes
-        self.cx = center_lon
-        self.cy = center_lat
-        self.scale = 0.0005
 
-    def generate(self) -> RoadNetwork:
-        network = RoadNetwork()
-        s = self.scale
-        r = self.radius * s
-        arm_len = self.arm_length * s
-        cx, cy = self.cx, self.cy
-
-        entry_angles = [2 * math.pi * i / self.num_entries for i in range(self.num_entries)]
-
-        for i in range(self.num_entries):
-            start_a = entry_angles[i]
-            end_a = entry_angles[(i + 1) % self.num_entries]
-            if end_a <= start_a:
-                end_a += 2 * math.pi
-            pts = _arc_points(cx, cy, r, start_a, end_a, n=10)
-            network.add_segment(RoadSegment(
-                id=f"circ-{i}",
-                control_points=pts,
-                num_lanes=self.circ_lanes,
-                lane_width_meters=self.lane_width,
-                speed_limit_kmh=30,
-            ))
-
-        for i, angle in enumerate(entry_angles):
-            tip_x = cx + (r + arm_len) * math.cos(angle)
-            tip_y = cy + (r + arm_len) * math.sin(angle)
-            entry_x = cx + r * math.cos(angle)
-            entry_y = cy + r * math.sin(angle)
-
-            mid_x = cx + (r + arm_len * 0.3) * math.cos(angle + 0.05)
-            mid_y = cy + (r + arm_len * 0.3) * math.sin(angle + 0.05)
-
-            network.add_segment(RoadSegment(
-                id=f"arm-{i}",
-                control_points=[
-                    ControlPoint(x=tip_x, y=tip_y),
-                    ControlPoint(x=mid_x, y=mid_y),
-                    ControlPoint(x=entry_x, y=entry_y),
-                ],
-                num_lanes=self.arm_lanes,
-                lane_width_meters=self.lane_width,
-                speed_limit_kmh=50,
-            ))
-
-        return network
-
-
-class SPUIGenerator:
-    """
-    Single Point Urban Interchange: all left turns converge at one signalized
-    intersection, usually on a bridge. Very compact land use; high structural cost.
-    """
-
-    def __init__(
-        self,
-        leg_length: float = 80.0,
-        lane_width: float = 3.5,
-        mainline_lanes: int = 3,
-        arterial_lanes: int = 2,
-        center_lon: float = 30.5234,
-        center_lat: float = 50.4501,
-    ):
-        self.leg_length = leg_length
-        self.lane_width = lane_width
-        self.mainline_lanes = mainline_lanes
-        self.arterial_lanes = arterial_lanes
-        self.cx = center_lon
-        self.cy = center_lat
-        self.scale = 0.0005
-
-    def generate(self) -> RoadNetwork:
-        network = RoadNetwork()
-        s = self.scale
-        L = self.leg_length * s
-        cx, cy = self.cx, self.cy
-
-        network.add_segment(RoadSegment(
-            id="freeway",
-            control_points=_line_points(cx - L * 1.5, cy, cx + L * 1.5, cy, n=6),
-            num_lanes=self.mainline_lanes,
-            lane_width_meters=self.lane_width,
-            speed_limit_kmh=90,
-            is_bridge=False,
-        ))
-
-        r = L * 0.35
-        bridge_pts = [
-            ControlPoint(x=cx - r, y=cy),
-            ControlPoint(x=cx - r * 0.6, y=cy + r * 0.6),
-            ControlPoint(x=cx, y=cy + r),
-            ControlPoint(x=cx + r * 0.6, y=cy + r * 0.6),
-            ControlPoint(x=cx + r, y=cy),
-            ControlPoint(x=cx + r * 0.6, y=cy - r * 0.6),
-            ControlPoint(x=cx, y=cy - r),
-            ControlPoint(x=cx - r * 0.6, y=cy - r * 0.6),
-            ControlPoint(x=cx - r, y=cy),
-        ]
-        network.add_segment(RoadSegment(
-            id="spui-bridge",
-            control_points=bridge_pts,
-            num_lanes=self.arterial_lanes,
-            lane_width_meters=self.lane_width,
-            speed_limit_kmh=40,
-            is_bridge=True,
-        ))
-
-        for i, (dx, dy) in enumerate([(0, -1), (1, 0), (0, 1), (-1, 0)]):
-            ax = cx + dx * (r + L * 0.5)
-            ay = cy + dy * (r + L * 0.5)
-            bx = cx + dx * r
-            by = cy + dy * r
-            network.add_segment(RoadSegment(
-                id=f"leg-{i}",
-                control_points=_line_points(ax, ay, bx, by, n=4),
-                num_lanes=self.arterial_lanes,
-                lane_width_meters=self.lane_width,
-                speed_limit_kmh=50,
-                is_bridge=False,
-            ))
-
-        ramp_offsets = [(1, 0, L * 0.4), (1, 0, -L * 0.4), (-1, 0, L * 0.4), (-1, 0, -L * 0.4)]
-        for i, (sx, sy, off) in enumerate(ramp_offsets):
-            x0, y0 = cx + sx * L * 0.5, cy + off
-            x1, y1 = cx + sx * r * 0.7, cy + sy * r * 0.7
-            network.add_segment(RoadSegment(
-                id=f"ramp-{i}",
-                control_points=[
-                    ControlPoint(x=x0, y=y0),
-                    ControlPoint(x=(x0 + x1) / 2, y=(y0 + y1) / 2),
-                    ControlPoint(x=x1, y=y1),
-                ],
-                num_lanes=1,
-                lane_width_meters=self.lane_width,
-                speed_limit_kmh=40,
-                is_bridge=False,
-            ))
-
-        return network
-
-
-class TurbineGenerator:
-    """
-    Turbine (spiral) interchange with 4 sweeping directional ramps.
-
-    Each ramp is a **cubic Bezier** curve whose control points are placed so
-    that the ramp starts tangent to Road A and ends tangent to Road B
-    (G1 geometric continuity at both join points).
-
-    Canonical ramp (South → West):
-        P0 = (lane_off, −start)   heading North   (on S road, right lane)
-        P1 = (lane_off, +sweep)   tangent handle — only y differs → pure North
-        P2 = (−sweep,   lane_off) tangent handle — only x differs → pure West
-        P3 = (−end,     lane_off) heading West    (on W road, right lane)
-
-    The remaining three ramps are produced by rotating this Bezier
-    by 90°, 180°, 270° around the origin via ``shapely.affinity.rotate``.
-    """
-
-    def __init__(
-        self,
-        spiral_radius: float = 80.0,
-        mainline_length: float = 400.0,
-        lane_width: float = 3.5,
-        mainline_lanes: int = 3,
-        ramp_lanes: int = 1,
-        center_lon: float = 30.5234,
-        center_lat: float = 50.4501,
-    ):
-        self.spiral_radius = spiral_radius
-        self.mainline_length = mainline_length
-        self.lane_width = lane_width
-        self.mainline_lanes = mainline_lanes
-        self.ramp_lanes = ramp_lanes
-        self.cx = center_lon
-        self.cy = center_lat
-        self.scale = 0.0005
-
-    def generate(self) -> RoadNetwork:
-        network = RoadNetwork()
-        s = self.scale
-        half = self.mainline_length / 2 * s
-        cx, cy = self.cx, self.cy
-
-        network.add_segment(RoadSegment(
-            id="mainline-EW",
-            control_points=_line_points(cx - half, cy, cx + half, cy, n=6),
-            num_lanes=self.mainline_lanes,
-            lane_width_meters=self.lane_width,
-            speed_limit_kmh=100,
-            is_bridge=False,
-        ))
-        network.add_segment(RoadSegment(
-            id="mainline-NS",
-            control_points=_line_points(cx, cy - half, cx, cy + half, n=6),
-            num_lanes=self.mainline_lanes,
-            lane_width_meters=self.lane_width,
-            speed_limit_kmh=100,
-            is_bridge=False,
-        ))
-
-        lane_off = (self.mainline_lanes * self.lane_width / 2
-                    + self.ramp_lanes * self.lane_width / 2) * s
-        start_d = self.mainline_length * 0.38 * s
-        end_d = self.mainline_length * 0.38 * s
-        sweep = self.spiral_radius * 1.0 * s
-
-        p0 = (lane_off, -start_d)
-        p1 = (lane_off, sweep)
-        p2 = (-sweep, lane_off)
-        p3 = (-end_d, lane_off)
-
-        base_coords = _cubic_bezier_coords(p0, p1, p2, p3, n=40)
-        base_line = _ShapelyLine(base_coords)
-
-        ramp_names = ["ramp-S2W", "ramp-E2S", "ramp-N2E", "ramp-W2N"]
-        for i, name in enumerate(ramp_names):
-            rotated = _shapely_rotate(base_line, -i * 90, origin=(0.0, 0.0))
-            rot_coords = list(rotated.coords)
-            ctrl_pts = [ControlPoint(x=cx + c[0], y=cy + c[1]) for c in rot_coords]
-            network.add_segment(RoadSegment(
-                id=name,
-                control_points=ctrl_pts,
-                num_lanes=self.ramp_lanes,
-                lane_width_meters=self.lane_width,
-                speed_limit_kmh=50,
-                is_bridge=False,
-            ))
-
-        return network
+    def layout(self) -> List[_Seg]:
+        n, r = self.num_entries, self.radius
+        gap = 2 * math.pi / n
+        segs: List[_Seg] = []
+        for i in range(n):
+            theta = i * gap
+            start = (r * math.cos(theta), r * math.sin(theta))
+            ring = _Path(*start, theta + _HALF_PI).arc(r, gap).points
+            segs.append(_Seg(f"circ-{i}", ring, self.circ_lanes, "crossroad", 30))
+        inner = r + self.circ_lanes * self.lane_width / 2
+        for i in range(n):
+            theta = i * gap
+            arm = _Path(inner * math.cos(theta), inner * math.sin(theta), theta)
+            segs.append(_Seg(f"arm-{i}", arm.straight(self.arm_length).points, self.arm_lanes,
+                             "crossroad", 50))
+        return segs
