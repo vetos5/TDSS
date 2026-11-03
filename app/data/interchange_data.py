@@ -70,10 +70,10 @@ CRITERIA: list[Criterion] = [
 
 # Human-readable labels used by the UI and charts (key = criterion name).
 CRITERION_LABELS: Dict[str, str] = {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares":    "Land Area",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares":    "Land area",
     "throughput_vph":        "Throughput (vph)",
-    "safety_index":          "Safety Index",
+    "safety_index":          "Safety index",
 }
 
 CRITERION_LABELS_UK: Dict[str, str] = {

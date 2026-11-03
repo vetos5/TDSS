@@ -1283,6 +1283,8 @@ A scenario is `useDSS().snapshotState()`: the context, the project parameters, t
 
 Provides a complete EN/UA translation dictionary. All UI strings are keyed through `t.value.<key>`. Switching language is instant (reactive computed).
 
+`ctxName(key)` returns the display name of a task context from the locale's `contextNames` map (sentence case in English, translated in Ukrainian). The API key itself (e.g. `"T-Type (3 Directions)"`) stays the stored and sent value, so use `ctxName` wherever a context is shown, never the raw key.
+
 #### `useTheme.js` — Theme
 
 Manages the `dark` boolean ref and syncs the `dark` CSS class on the `<html>` element via `watchEffect`.
@@ -1408,7 +1410,7 @@ Initialises a Leaflet map with **Esri World Imagery** satellite tiles. Adds a na
 
 #### `SiteMap.vue` — GIS Site Analysis (v5, Phase 3)
 
-Leaflet map for the Site Analysis tab (§3.11). A click places a draggable marker (the interchange centre); "Set direction" arms a second click that places a bearing marker and draws a dashed line between them. "Analyse site" calls `/api/site/analyse` and renders the returned GeoJSON as a styled overlay (conventional cartographic colours — blue water, green protected land — not the chart categorical palette, since this is a basemap legend, not a chart). Picking an interchange type calls `/api/site/footprint` and overlays its real-scale segments plus a right-of-way summary. Each segment is drawn at its real paved width for the current zoom (Web Mercator metres per pixel, recomputed on `zoomend`), with round caps and joins and a white casing so it reads on the aerial basemap in both themes. Through carriageways are slate and ramps purple (by the segment's `kind`), with matching legend entries. "Apply to project parameters" writes the inferred terrain/environment/land into `useDSS`'s `params`, confirming first if the inferred context differs (switching it changes which alternatives are being compared). Takes an `active` prop and calls `map.invalidateSize()` when the tab becomes visible — required because the tab is `v-show`'d, not `v-if`'d, so the map would otherwise initialise in a hidden, zero-size container.
+Leaflet map for the Site analysis tab (§3.11). A click places a draggable marker (the interchange centre); "Set direction" arms a second click that places a bearing marker and draws a dashed line between them. "Analyse site" calls `/api/site/analyse` and renders the returned GeoJSON as a styled overlay (conventional cartographic colours — blue water, green protected land — not the chart categorical palette, since this is a basemap legend, not a chart). Picking an interchange type calls `/api/site/footprint` and overlays its real-scale segments plus a right-of-way summary. Each segment is drawn at its real paved width for the current zoom (Web Mercator metres per pixel, recomputed on `zoomend`), with round caps and joins and a white casing so it reads on the aerial basemap in both themes. Through carriageways are slate and ramps purple (by the segment's `kind`), with matching legend entries. "Apply to project parameters" writes the inferred terrain/environment/land into `useDSS`'s `params`, confirming first if the inferred context differs (switching it changes which alternatives are being compared). Takes an `active` prop and calls `map.invalidateSize()` when the tab becomes visible — required because the tab is `v-show`'d, not `v-if`'d, so the map would otherwise initialise in a hidden, zero-size container.
 
 ---
 
@@ -1698,7 +1700,7 @@ TDSS/
 │       ├── composables/
 │       │   ├── useDSS.js       Global reactive state: methods, weighting, weights, params, valueSource, evalData
 │       │   ├── useRobustness.js    SMAA/sensitivity request state (Robustness tab)
-│       │   ├── useSiteAnalysis.js  Click-to-place state, /api/site/* calls (Site Analysis tab)
+│       │   ├── useSiteAnalysis.js  Click-to-place state, /api/site/* calls (Site analysis tab)
 │       │   ├── useModel.js     Prediction-model status, documents, predictions (Prediction model tab)
 │       │   ├── useLocale.js    EN/UA i18n string store
 │       │   └── useTheme.js     Dark/light mode toggle
@@ -1706,7 +1708,7 @@ TDSS/
 │           ├── Sidebar.vue     Left panel: context, methods, weighting mode, sliders, value source, params
 │           ├── MethodSelector.vue    MCDA method toggle chips
 │           ├── WeightingControls.vue Weighting mode + AHP pairwise editor
-│           ├── TabNav.vue      Tab bar: Evaluation / Site Analysis / Robustness / Prediction model /
+│           ├── TabNav.vue      Tab bar: Evaluation / Site analysis / Robustness / Prediction model /
 │           │                   Gallery / Methodology
 │           ├── DssEvaluation.vue     Main results: ranking, detail, charts, tables
 │           ├── MethodComparison.vue  Rank table, consensus, agreement heatmap

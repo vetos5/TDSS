@@ -14,7 +14,7 @@ import Icon from './Icon.vue'
 const props = defineProps({ open: Boolean, dss: Object })
 const emit = defineEmits(['close'])
 
-const { t, locale } = useLocale()
+const { t, locale, ctxName } = useLocale()
 const robust = useRobustness()
 const model = useModel()
 const { scenarios, shareUrl } = useScenarios()
@@ -69,7 +69,7 @@ const envLabel = computed(() => ({ Low: t.value.envLow, Medium: t.value.envMediu
 const inputRows = computed(() => {
   const p = state.value.params
   return [
-    [t.value.taskContext, state.value.context],
+    [t.value.taskContext, ctxName(state.value.context)],
     [t.value.designSpeed, p.design_speed],
     [t.value.aadt, p.aadt.toLocaleString()],
     [t.value.peakFactor, p.peak_factor],
@@ -137,7 +137,7 @@ function print() {
             <p class="text-[11px] font-semibold tracking-[0.12em] text-neutral-500 uppercase">TDSS v5 · {{ t.appTitle }}</p>
             <h1 class="mt-1 text-[24px] leading-tight font-bold">{{ r.title }}</h1>
             <p class="mt-1 text-neutral-600">
-              {{ state.context }}<template v-if="scenarioName"> · {{ r.scenario }}: <strong>{{ scenarioName }}</strong></template>
+              {{ ctxName(state.context) }}<template v-if="scenarioName"> · {{ r.scenario }}: <strong>{{ scenarioName }}</strong></template>
             </p>
             <p class="mt-0.5 text-neutral-500">{{ r.generated }} {{ generatedAt }}</p>
           </header>

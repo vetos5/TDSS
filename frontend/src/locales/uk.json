@@ -28,6 +28,11 @@
   "language": "Мова",
   "done": "Готово",
   "toggleTheme": "Світла / темна тема",
+  "contextNames": {
+    "System (Highway + Highway)": "Системний (автодорога + автодорога)",
+    "Service (Highway + Urban)": "Сервісний (автодорога + місто)",
+    "T-Type (3 Directions)": "Т-подібний (3 напрямки)"
+  },
   "taskContext": "Контекст задачі",
   "taskContextDesc": "Оберіть категорію транспортних розв\u2019язок для порівняння альтернатив.",
   "criteriaWeights": "Ваги критеріїв",
@@ -145,7 +150,7 @@
   "currentRanking": "Поточний рейтинг",
   "ordinals": ["1-е", "2-е", "3-є", "4-е", "5-е", "6-е", "7-е", "8-е"],
 
-  "chartRadarTitle": "Нормалізований профіль критеріїв — Топ",
+  "chartRadarTitle": "Нормалізований профіль критеріїв — топ",
   "chartBarTitle": "Рейтинг оцінок WSM",
   "chartBarXAxis": "Комплексна оцінка WSM",
   "chartStackTitle": "Розбивка зважених внесків",

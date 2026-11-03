@@ -16,7 +16,7 @@ const props = defineProps({
   dark: Boolean,
 })
 
-const { t, locale } = useLocale()
+const { t, locale, ctxName } = useLocale()
 const { narrow } = useViewport()
 
 const selectedDetail = ref(null)
@@ -220,7 +220,7 @@ const descHtml = computed(() => (detailInfo.value?.engineering_desc ?? '')
       <span class="min-w-0 flex-1">
         {{ t.recommended }}: <strong class="font-semibold">{{ winner?.alternative_name }}</strong> —
         {{ t.wsmScore }} <span class="num">{{ winner?.total_score?.toFixed(4) }}</span>
-        ({{ t.rankOf }} {{ data.results.length }} {{ t.alternatives }} "{{ data.context }}")
+        ({{ t.rankOf }} {{ data.results.length }} {{ t.alternatives }} "{{ ctxName(data.context) }}")
       </span>
       <button type="button" class="btn shrink-0 !py-0.5 text-xs" @click="exportCsv"><Icon name="download" class="text-sm" /> {{ t.exportCsv }}</button>
     </div>

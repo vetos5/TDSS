@@ -9,7 +9,7 @@ import Icon from './Icon.vue'
 const props = defineProps({ dss: Object })
 const emit = defineEmits(['compare'])
 
-const { t, locale } = useLocale()
+const { t, locale, ctxName } = useLocale()
 const { scenarios, compared, save, remove, toggleCompared, shareUrl } = useScenarios()
 
 const name = ref('')
@@ -71,7 +71,7 @@ function savedAt(iso) {
         <button type="button" class="min-w-0 flex-1 rounded-md px-1 py-1 text-left hover:bg-surface-2"
                 :title="t.scenarioLoad" @click="dss.applyState(s.state)">
           <span class="block truncate text-[13px] font-medium">{{ s.name }}</span>
-          <span class="block truncate text-[11px] text-subtle">{{ s.state.context }} · {{ savedAt(s.savedAt) }}</span>
+          <span class="block truncate text-[11px] text-subtle">{{ ctxName(s.state.context) }} · {{ savedAt(s.savedAt) }}</span>
         </button>
         <button type="button" class="icon-btn shrink-0" :title="t.scenarioCopyLink" :aria-label="t.scenarioCopyLink"
                 @click="copyLink(s.id, s.state, s.name)">

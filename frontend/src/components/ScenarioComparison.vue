@@ -10,7 +10,7 @@ import { errorText } from '../api.js'
 // inputs differ are highlighted.
 const props = defineProps({ dss: Object, active: Boolean, dark: Boolean })
 
-const { t, locale } = useLocale()
+const { t, locale, ctxName } = useLocale()
 const { scenarios, compared } = useScenarios()
 
 const results = ref({})   // scenario id → evaluate response | { error }
@@ -50,7 +50,7 @@ const criterionLabel = computed(() => ({
 
 // Input rows: label and how to show the value of one column.
 const inputRows = computed(() => [
-  { label: t.value.taskContext, value: c => c.state.context },
+  { label: t.value.taskContext, value: c => ctxName(c.state.context) },
   { label: t.value.designSpeed, value: c => c.state.params.design_speed },
   { label: t.value.aadt, value: c => c.state.params.aadt.toLocaleString() },
   { label: t.value.peakFactor, value: c => c.state.params.peak_factor },

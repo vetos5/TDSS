@@ -445,8 +445,8 @@ def test_robustness_overrides_beat_model_ranges(demo_corpus):
     low, high = expected["safety_index"]
     assert data["value_uncertainty"]["safety_index"]["low"] == pytest.approx(low)
     note = data["adjustments"][-1]
-    assert note["kind"] == "model" and "Safety Index" in note["message"]
-    assert "Construction Cost" not in note["message"]
+    assert note["kind"] == "model" and "Safety index" in note["message"]
+    assert "Construction cost" not in note["message"]
 
 
 def test_robustness_with_model_on_empty_corpus_keeps_the_default_ranges(corpus):
@@ -466,8 +466,8 @@ def test_robustness_takes_model_ranges_only_for_observed_criteria(corpus):
     for c in ("land_area_hectares", "throughput_vph", "safety_index"):
         assert data["value_uncertainty"][c] == defaults[c]
     note = data["adjustments"][-1]
-    assert note["kind"] == "model" and "Construction Cost" in note["message"]
-    assert "Land Area" not in note["message"]
+    assert note["kind"] == "model" and "Construction cost" in note["message"]
+    assert "Land area" not in note["message"]
 
 
 # ---------------------------------------------------------------------------

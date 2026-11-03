@@ -16,5 +16,8 @@ export function useLocale() {
 
   const t = computed(() => messages.value[locale.value] ?? messages.value['en'])
 
-  return { locale, lang, setLocale, toggleLang, t }
+  // Display name of a task context; the API key (e.g. "T-Type (3 Directions)") stays the value.
+  const ctxName = (key) => t.value.contextNames?.[key] ?? key
+
+  return { locale, lang, setLocale, toggleLang, t, ctxName }
 }

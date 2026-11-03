@@ -39,9 +39,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -176,9 +176,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -317,9 +317,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -458,9 +458,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -599,9 +599,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -740,9 +740,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -873,9 +873,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -1006,9 +1006,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -1147,9 +1147,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -1288,9 +1288,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -1433,9 +1433,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -1578,9 +1578,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -1723,9 +1723,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -1868,9 +1868,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -2021,9 +2021,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -2135,9 +2135,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -2253,9 +2253,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -2371,9 +2371,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -2489,9 +2489,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -2607,9 +2607,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -2721,9 +2721,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {
@@ -2808,9 +2808,9 @@
     }
    ],
    "criterion_labels": {
-    "construction_cost_mln": "Construction Cost",
-    "land_area_hectares": "Land Area",
-    "safety_index": "Safety Index",
+    "construction_cost_mln": "Construction cost",
+    "land_area_hectares": "Land area",
+    "safety_index": "Safety index",
     "throughput_vph": "Throughput (vph)"
    },
    "normalised_weights": {

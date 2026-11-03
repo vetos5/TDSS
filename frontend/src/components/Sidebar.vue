@@ -18,7 +18,7 @@ const props = defineProps({
 const emit = defineEmits(['toggle-theme', 'show-results', 'show-compare', 'open-report'])
 const { scenarios } = useScenarios()
 
-const { locale, setLocale, t } = useLocale()
+const { locale, setLocale, t, ctxName } = useLocale()
 
 const criterionLabel = computed(() => ({
   construction_cost_mln: t.value.constructionCost,
@@ -118,7 +118,7 @@ const envOptions = computed(() => [
       <section class="border-b border-line p-4">
         <label class="eyebrow" for="ctx">{{ t.taskContext }}</label>
         <select id="ctx" v-model="dss.selectedContext.value" class="field mt-2">
-          <option v-for="ctx in dss.contexts.value" :key="ctx" :value="ctx">{{ ctx }}</option>
+          <option v-for="ctx in dss.contexts.value" :key="ctx" :value="ctx">{{ ctxName(ctx) }}</option>
         </select>
         <p class="mt-1.5 text-xs text-subtle">{{ t.taskContextDesc }}</p>
       </section>

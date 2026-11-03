@@ -13,7 +13,7 @@ const props = defineProps({
   active: Boolean,
 })
 
-const { t, locale } = useLocale()
+const { t, locale, ctxName } = useLocale()
 const site = useSiteAnalysis()
 
 function exportFootprint(kind) {
@@ -274,7 +274,7 @@ watch(locale, () => {
       </div>
 
       <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div><p class="eyebrow">{{ t.taskContext }}</p><p class="mt-0.5 text-[13px] font-medium text-fg">{{ site.analysis.value.context }}</p></div>
+        <div><p class="eyebrow">{{ t.taskContext }}</p><p class="mt-0.5 text-[13px] font-medium text-fg">{{ ctxName(site.analysis.value.context) }}</p></div>
         <div><p class="eyebrow">{{ t.terrainType }}</p><p class="mt-0.5 text-[13px] font-medium text-fg">{{ t.terrainDisplay?.[site.analysis.value.terrain] ?? site.analysis.value.terrain }}</p></div>
         <div><p class="eyebrow">{{ t.envSensitivity }}</p><p class="mt-0.5 text-[13px] font-medium text-fg">{{ t.envDisplay?.[site.analysis.value.env_sensitivity] ?? site.analysis.value.env_sensitivity }}</p></div>
         <div><p class="eyebrow">{{ t.landLimit }}</p><p class="num mt-0.5 text-[13px] font-medium text-fg">{{ site.analysis.value.land_limit_ha.toFixed(1) }} ha</p></div>

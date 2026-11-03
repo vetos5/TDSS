@@ -14,7 +14,7 @@ const props = defineProps({
   dark: Boolean,
 })
 
-const { t, locale } = useLocale()
+const { t, locale, ctxName } = useLocale()
 const { narrow, coarse } = useViewport()
 const model = useModel()
 const status = model.status
@@ -576,7 +576,7 @@ const coefRows = computed(() => (status.value?.coefficients?.[coefCriterion.valu
       <div class="mb-2 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 class="card-title">
-            {{ t.modelChartTitle }}<template v-if="prediction"><span class="font-normal text-muted"> · {{ prediction.context }}</span></template>
+            {{ t.modelChartTitle }}<template v-if="prediction"><span class="font-normal text-muted"> · {{ ctxName(prediction.context) }}</span></template>
           </h3>
           <p class="card-desc">{{ fmt(t.modelChartDesc, { level: levelPct }) }}</p>
         </div>
