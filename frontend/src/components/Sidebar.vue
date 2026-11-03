@@ -43,6 +43,9 @@ const STUDY_FIELDS = [
   { key: 'directional_split', label: 'directionalSplit', min: 50,   max: 100,  step: 1 },
   { key: 'heavy_pct',         label: 'heavyPct',         min: 0,    max: 60,   step: 1 },
   { key: 'turning_pct',       label: 'turningPct',       min: 0,    max: 100,  step: 5 },
+  { key: 'discount_pct',      label: 'discount',         min: 0,    max: 20,   step: 0.5 },
+  { key: 'value_of_time',     label: 'valueOfTime',      min: 0,    max: 500,  step: 1 },
+  { key: 'maintenance_pct',   label: 'maintenance',      min: 0,    max: 10,   step: 0.1 },
 ]
 
 const BAR_COLORS = {

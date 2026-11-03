@@ -473,3 +473,66 @@ class EngineeringResponse(BaseModel):
     lane_capacity_pcph: float
     hv_factor: float
     alternatives: List[AlternativeEngineeringSchema]
+
+
+# ── Professional analyses: economics and break-even (Phase 2) ────────────────
+
+
+class AlternativeEconomicsSchema(BaseModel):
+    """Present values in M USD over the design life (DOCUMENTATION.md §3.15)."""
+
+    name: str
+    color: str = ""
+    color_dark: str = ""
+    feasible: bool
+    construction_mln: float
+    pv_maintenance: float
+    pv_residual: float
+    pv_delay: float
+    pv_crash: float
+    pv_agency: float
+    pv_user: float
+    pv_total: float
+    cumulative_total: List[float]
+    is_base: bool
+    incremental_cost: Optional[float]
+    benefits: Optional[float]
+    npv: Optional[float]
+    bcr: Optional[float]
+    dominant: bool
+    payback_year: Optional[int]
+
+
+class EconomicsResponse(BaseModel):
+    context: str
+    study: StudyParams
+    years: List[int]
+    base: str
+    best_lcc: str
+    crash_cost_fi: float
+    crash_cost_pdo: float
+    alternatives: List[AlternativeEconomicsSchema]
+
+
+class BreakEvenItemSchema(BaseModel):
+    alternative: str
+    criterion: str
+    current: float
+    value: Optional[float]           # None: not reachable within ×20 / ÷20 (or the scale's end)
+    change_pct: Optional[float]
+    kind: Literal["overtake", "hold"]
+    new_winner: Optional[str] = None
+
+
+class BreakEvenMethodSchema(BaseModel):
+    method: str
+    label: str
+    winner: str
+    items: List[BreakEvenItemSchema]
+
+
+class BreakEvenResponse(BaseModel):
+    context: str
+    alternatives: List[str]
+    methods: Dict[str, BreakEvenMethodSchema]
+    adjustments: List[AdjustmentNote] = []

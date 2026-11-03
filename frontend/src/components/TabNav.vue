@@ -14,6 +14,7 @@ const tabs = computed(() => [
   { id: 'evaluation',  label: t.value.tabEvaluation,   icon: 'chart-column' },
   { id: 'site',        label: t.value.tabSiteAnalysis, icon: 'map' },
   { id: 'engineering', label: t.value.tabEngineering,  icon: 'gauge' },
+  { id: 'economics',   label: t.value.tabEconomics,    icon: 'coins' },
   { id: 'robustness',  label: t.value.tabRobustness,   icon: 'shield-check' },
   { id: 'model',       label: t.value.tabModel,        icon: 'activity' },
   { id: 'compare',     label: t.value.tabCompare,      icon: 'columns' },

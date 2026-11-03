@@ -3,24 +3,43 @@ group decisions. The maths lives in app.application; these handlers only transla
 
 from __future__ import annotations
 
+import threading
+
 from fastapi import APIRouter, HTTPException, Query
 
 from app.application.adjustments import apply_site_adjustments, filter_feasible
+from app.application.economics import appraise
 from app.application.engineering import Study, analyse
+from app.application.mcda import METHODS
+from app.application.mcda.breakeven import analyse_breakeven
 from app.data.interchange_data import (
     ALTERNATIVE_COLORS,
     ALTERNATIVE_COLORS_DARK,
     INTERCHANGE_DATA,
     get_alternatives_for_context,
 )
+from app.data.mcda_methods import resolve_method_info
+from backend.limits import slot
+from backend.routes import _prepare
 from backend.schemas import (
+    AlternativeEconomicsSchema,
     AlternativeEngineeringSchema,
+    BreakEvenItemSchema,
+    BreakEvenMethodSchema,
+    BreakEvenResponse,
+    EconomicsResponse,
     ElementStateSchema,
     EngineeringRequest,
     EngineeringResponse,
+    EvaluateRequest,
 )
 
 router = APIRouter()
+
+# Break-even re-runs a method a few hundred times per cell; cap it like the robustness analysis.
+_BREAKEVEN_SLOTS = threading.BoundedSemaphore(2)
+# Criterion scales with a natural end: the safety index is out of 10.
+_VALUE_BOUNDS = {"safety_index": (0.0, 10.0)}
 
 
 def _locale(lang: str) -> str:
@@ -74,3 +93,52 @@ def engineering(req: EngineeringRequest, lang: str = Query(default="en")):
             for a in result.alternatives
         ],
     )
+
+
+@router.post("/economics", response_model=EconomicsResponse)
+def economics(req: EngineeringRequest, lang: str = Query(default="en")):
+    """Life-cycle cost, NPV, BCR and payback of each alternative against the do-minimum."""
+    adjusted, feasible = _site_alternatives(req.context, req.params)
+    study = Study.of(req.study)
+    eng = analyse([a.name for a in adjusted], req.params, study, _locale(lang))
+    costs = {a.name: a.raw_values["construction_cost_mln"] for a in adjusted}
+    result = appraise(costs, eng.alternatives, study, feasible)
+    return EconomicsResponse(
+        context=req.context,
+        study=req.study,
+        years=result.years,
+        base=result.base,
+        best_lcc=result.best_lcc,
+        crash_cost_fi=result.crash_cost_fi,
+        crash_cost_pdo=result.crash_cost_pdo,
+        alternatives=[
+            AlternativeEconomicsSchema(
+                **vars(a),
+                color=ALTERNATIVE_COLORS.get(a.name, "#0f766e"),
+                color_dark=ALTERNATIVE_COLORS_DARK.get(a.name, "#2dd4bf"),
+            )
+            for a in result.alternatives
+        ],
+    )
+
+
+@router.post("/breakeven", response_model=BreakEvenResponse)
+def breakeven(req: EvaluateRequest, lang: str = Query(default="en")):
+    """Criterion values at which each challenger would win, and each winner's margin."""
+    with slot(_BREAKEVEN_SLOTS):
+        prep = _prepare(req, lang)
+        out = {}
+        for m in req.methods:
+            res = analyse_breakeven(prep.matrix, prep.selection.weights, METHODS[m], _VALUE_BOUNDS)
+            out[m] = BreakEvenMethodSchema(
+                method=m,
+                label=resolve_method_info(m, prep.locale)["label"],
+                winner=res.winner,
+                items=[BreakEvenItemSchema(**vars(i)) for i in res.items],
+            )
+        return BreakEvenResponse(
+            context=req.context,
+            alternatives=list(prep.matrix.alternatives),
+            methods=out,
+            adjustments=prep.notes,
+        )

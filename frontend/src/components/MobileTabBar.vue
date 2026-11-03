@@ -21,6 +21,7 @@ const PRIMARY = [
 ]
 const MORE = [
   { id: 'engineering', icon: 'gauge',        title: 'tabEngineering' },
+  { id: 'economics',   icon: 'coins',        title: 'tabEconomics' },
   { id: 'robustness',  icon: 'shield-check', title: 'tabRobustness' },
   { id: 'compare',     icon: 'columns',      title: 'tabCompare' },
   { id: 'gallery',     icon: 'layout-grid',  title: 'tabGallery' },

@@ -17,6 +17,7 @@ import PredictionModel from './components/PredictionModel.vue'
 import ScenarioComparison from './components/ScenarioComparison.vue'
 import DecisionReport from './components/DecisionReport.vue'
 import EngineeringAnalysis from './components/EngineeringAnalysis.vue'
+import EconomicsAnalysis from './components/EconomicsAnalysis.vue'
 import { useScenarios } from './composables/useScenarios.js'
 
 const { dark, toggle } = useTheme()
@@ -32,6 +33,7 @@ const title = computed(() => ({
   evaluation: t.value.tabEvaluation,
   site: t.value.tabSiteAnalysis,
   engineering: t.value.tabEngineering,
+  economics: t.value.tabEconomics,
   robustness: t.value.tabRobustness,
   model: t.value.tabModel,
   compare: t.value.tabCompare,
@@ -172,6 +174,13 @@ watch(() => model.status.value?.revision, (now, before) => {
             class="tab-pane"
             :dss="dss"
             :active="activeTab === 'engineering'"
+            :dark="dark"
+          />
+          <EconomicsAnalysis
+            v-show="activeTab === 'economics'"
+            class="tab-pane"
+            :dss="dss"
+            :active="activeTab === 'economics'"
             :dark="dark"
           />
           <RobustnessAnalysis

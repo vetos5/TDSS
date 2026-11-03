@@ -23,6 +23,8 @@
    - 3.12 [Criterion-Value Prediction Model (v5, Phase 4)](#312-criterion-value-prediction-model-v5-phase-4)
    - 3.13 [Design-Life Traffic per Interchange Element](#313-design-life-traffic-per-interchange-element-v6-professional-phase-1)
    - 3.14 [Expected Crashes](#314-expected-crashes-v6-professional-phase-1)
+   - 3.15 [Life-Cycle Cost Appraisal](#315-life-cycle-cost-appraisal-v6-professional-phase-2)
+   - 3.16 [Break-Even Values](#316-break-even-values-v6-professional-phase-2)
 4. [Decision Alternatives](#4-decision-alternatives)
 5. [Evaluation Criteria](#5-evaluation-criteria)
 6. [Backend (FastAPI)](#6-backend-fastapi)
@@ -483,6 +485,38 @@ $$N_t = R_{\text{type}}\cdot \text{AADT}\,(1+g)^t \cdot 365\cdot 10^{-6}\cdot \t
 These counts are what §3.15 prices. They complement the 0–10 safety index, which stays the MCDA criterion.
 
 
+### 3.15 Life-Cycle Cost Appraisal (v6, Professional Phase 2)
+
+`app/application/economics.py`. Construction *C₀* (the site-adjusted `construction_cost_mln`) is spent in year 0. Operation runs from the opening year (*i* = 1) to the design year (*i* = *N* + 1), with df_i = (1 + r)^−i:
+
+$$PV_{agency} = C_0 + \sum_i m\,C_0\,df_i - C_0\left(1 - \tfrac{N+1}{L}\right)^{+} df_{N+1}$$
+
+$$PV_{users} = \sum_i \left(D_i \cdot VOT + FI_i\,c_{FI} + PDO_i\,c_{PDO}\right) df_i$$
+
+- *m* is the maintenance share and *L* = 50 years the service life (straight-line residual value).
+- *D_i* is the annual delay and *FI_i* / *PDO_i* the expected crashes from §3.13–3.14.
+- *c_FI* = $285,000 and *c_PDO* = $13,000: HSM Table 4-3 comprehensive costs indexed to about 2024.
+
+The **do-minimum** is the feasible alternative with the lowest *PV_agency*. Against it, each other alternative gets:
+
+- incremental cost ΔC = PV_agency − PV_agency,base
+- benefits B = PV_users,base − PV_users
+- NPV = B − ΔC
+- BCR = B / ΔC, or "dominant" when ΔC ≤ 0 and B ≥ 0
+- the discounted payback year: the first year in which the cumulative discounted user savings, net of the extra maintenance, repay the extra construction cost
+
+The appraisal informs the decision next to the MCDA ranking; it does not change the criterion values.
+
+### 3.16 Break-Even Values (v6, Professional Phase 2)
+
+`app/application/mcda/breakeven.py`. For every cell (alternative *a*, criterion *c*) of the decision matrix, only *x_ac* is varied and the method is re-run, with normalisation included, so all five methods are handled alike.
+
+- For a challenger, the answer is the smallest improvement for which *a* ranks first.
+- For the winner, it is the smallest worsening for which it loses first place, and to whom.
+
+A geometric grid of 48 factors up to ×20 (or ÷20) finds the first flip, and 30 bisection steps refine it. Scales with an end are clamped (safety index ≤ 10). "Not reachable" is a real answer under min–max normalisation: once a value passes the best of the others, it gains nothing more. This complements the weight sensitivity of §3.10 ("how far may a weight move") with "how far may a value move".
+
+
 ---
 
 ## 4. Decision Alternatives
@@ -875,6 +909,27 @@ The response also carries the opening-year flows `peak_hour_veh`, `peak_directio
 
 ---
 
+
+#### `POST /api/economics` (v6, Professional Phase 2)
+
+The body is the same as `/api/engineering`. The `study` fields `discount_pct`, `value_of_time` (USD/veh·h) and `maintenance_pct` (% of construction a year) drive it.
+
+The response names the `base` (do-minimum) and `best_lcc` alternatives, gives `years` (year 0 … design year) and the crash unit costs, and lists every alternative with:
+
+- `construction_mln`
+- present values in M USD: `pv_maintenance`, `pv_residual`, `pv_delay`, `pv_crash`, `pv_agency`, `pv_user`, `pv_total`
+- `cumulative_total` per year
+- against the base: `incremental_cost`, `benefits`, `npv`, `bcr`, `dominant`, `payback_year`
+
+See §3.15.
+
+#### `POST /api/breakeven` (v6, Professional Phase 2)
+
+The body is the same as `/api/evaluate`: the same weighting, methods and `value_source`. The route runs `backend.routes._prepare` and holds one of two concurrency slots, like `/robustness`.
+
+For each method, the response gives the `winner` and an item per (alternative, criterion): `current`, `value` (null if not reachable), `change_pct`, `kind` (`overtake` for a challenger, `hold` for the winner) and `new_winner`. See §3.16.
+
+---
 
 ### 6.3 DSS Engine
 

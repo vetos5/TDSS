@@ -62,6 +62,16 @@ export async function engineering(body, lang = 'en') {
   return data
 }
 
+export async function economics(body, lang = 'en') {
+  const { data } = await api.post('/economics', body, { params: { lang } })
+  return data
+}
+
+export async function breakeven(body, lang = 'en') {
+  const { data } = await api.post('/breakeven', body, { params: { lang } })
+  return data
+}
+
 export async function fetchInterchangeDetail(name, lang = 'en') {
   const { data } = await api.get(`/interchange/${encodeURIComponent(name)}`, {
     params: { lang, _t: Date.now() },

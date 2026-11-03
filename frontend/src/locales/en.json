@@ -17,7 +17,8 @@
     "gallery": "Gallery",
     "methodology": "Method",
     "compare": "Compare",
-    "engineering": "Traffic"
+    "engineering": "Traffic",
+    "economics": "Economics"
   },
   "showResults": "Show results",
   "appearance": "Appearance",
@@ -743,5 +744,48 @@
     "year": "Year",
     "vc": "V/C",
     "assumptions": "Planning-level model: capacities after HCM 7 (ramp roadways, weaving, signalised terminals), BPR delay, crash rates per million entering vehicles after the HSM and FHWA studies. Constants are in app/data/engineering_defaults.py; replace them with local values on a real project."
+  },
+
+  "tabEconomics": "Economics",
+
+  "econ": {
+    "title": "Life-cycle cost appraisal",
+    "desc": "Each alternative costed over its design life in present values: construction, maintenance and residual value for the road agency; delay and crashes for road users. Benefits are measured against the do-minimum, the feasible alternative with the lowest agency cost.",
+    "basis": "Discount rate {r}% · value of time ${vot}/veh·h · maintenance {m}%/yr · crash costs: fatal + injury ${fi}, property damage ${pdo} · {from}–{to}",
+    "alternative": "Alternative",
+    "construction": "Construction",
+    "agency": "Agency PV",
+    "users": "Users PV",
+    "total": "Life-cycle cost",
+    "incremental": "Extra cost",
+    "benefits": "Benefits",
+    "npv": "NPV",
+    "bcr": "B/C",
+    "payback": "Payback",
+    "base": "do-minimum",
+    "bestLcc": "lowest life-cycle cost",
+    "dominant": "dominant",
+    "never": "—",
+    "unit": "All money in M USD, present values at the opening year minus one.",
+    "breakdownTitle": "What the life-cycle cost is made of",
+    "breakdownDesc": "Present values by component; the residual value at the end of the design life is credited.",
+    "capital": "Construction",
+    "maintenance": "Maintenance",
+    "delay": "User delay",
+    "crash": "Crashes",
+    "residual": "Residual value",
+    "cumulativeTitle": "Discounted cost to date",
+    "cumulativeDesc": "Where two lines cross, the dearer alternative has paid back its extra construction cost through lower delay, crash and maintenance costs.",
+    "year": "Year",
+    "musd": "M USD",
+    "beTitle": "Break-even values",
+    "beDesc": "How good would one criterion value have to be for an alternative to rank first under the current weights? For the winner: how far could each of its values worsen before it loses first place? One value changes at a time; the others stay as they are.",
+    "method": "Method",
+    "winner": "Winner: {name}",
+    "winnerBadge": "winner",
+    "notReachable": "not reachable",
+    "losesTo": "then {name} wins",
+    "beHint": "Not reachable means even a 20-fold change (or the end of the scale) does not change the outcome: under min–max normalisation a value beyond the best of the others gains nothing more.",
+    "assumptions": "Crash costs: HSM Table 4-3 comprehensive costs indexed to about 2024. Residual value: straight-line over a 50-year service life. Off-peak delay is not counted."
   }
 }
