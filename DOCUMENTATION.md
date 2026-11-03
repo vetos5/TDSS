@@ -21,6 +21,8 @@
    - 3.10 [Weight Sensitivity (v5)](#310-weight-sensitivity-v5)
    - 3.11 [GIS Site Analysis and Footprint Placement (v5, Phase 3)](#311-gis-site-analysis-and-footprint-placement-v5-phase-3)
    - 3.12 [Criterion-Value Prediction Model (v5, Phase 4)](#312-criterion-value-prediction-model-v5-phase-4)
+   - 3.13 [Design-Life Traffic per Interchange Element](#313-design-life-traffic-per-interchange-element-v6-professional-phase-1)
+   - 3.14 [Expected Crashes](#314-expected-crashes-v6-professional-phase-1)
 4. [Decision Alternatives](#4-decision-alternatives)
 5. [Evaluation Criteria](#5-evaluation-criteria)
 6. [Backend (FastAPI)](#6-backend-fastapi)
@@ -451,6 +453,36 @@ The distribution is **triangular**, with its mode at 1 (the point prediction). T
 - **Synthetic demo data.** The shipped corpus is **invented**. It contains 60 CSV rows from `scripts/make_synthetic_corpus.py` (the real `expert_baseline` times planted effects and log-normal noise, `default_rng(2026)`) and four records from three Markdown examples. Its accuracy table shows that the method works; it says nothing about whether the expert values are wrong. The UI flags synthetic records with an amber badge, and the files should be deleted once real documents exist.
 - **USD only.** Costs in other currencies (UAH, EUR, GBP, PLN, CHF) are skipped with a warning rather than converted, because exchange rates and price years would add more error than the field is worth. USD amounts are not adjusted for inflation either.
 
+### 3.13 Design-Life Traffic per Interchange Element (v6, Professional Phase 1)
+
+`app/application/engineering.py`, constants in `app/data/engineering_defaults.py`. The MCDA criterion `throughput_vph` is one number per type; engineers check each element against the site's own traffic over the design life instead.
+
+**Flows.** With the study inputs (`StudyParams`: opening year, design life *N*, growth *g*, directional split *D*, heavy-vehicle share *P_T*, turning share *τ*):
+
+$$V = \text{AADT}\cdot K,\quad f_{HV} = 1 + P_T(E_T - 1),\quad Q_t = V\cdot D\cdot f_{HV}\cdot(1+g)^t,\quad T_t = \tau\, Q_t$$
+
+*K* is the peak factor, and *E_T* the heavy-vehicle PCE by terrain (1.5 / 2.5 / 4.5). *Q* is the peak-direction flow in pc/h and *T* the turning flow.
+
+**Elements.** Each type is a list of the elements that limit its capacity (`TRAFFIC_ELEMENTS`): loop and directional ramps, the cloverleaf weaving section, and the signalised terminals of Diamond, SPUI and DDI. Each carries `share × T` against its capacity. Ramp capacities follow HCM 7 Exh. 14-12, weaving HCM 7 Ch. 13, and signals use 1,900 pc/h/ln × lanes × g/C. The mainline merge carries *Q* against `lanes × c_lane(design speed)`, where c_lane = 2,200 + 10·(FFS[mi/h] − 50) is clamped to [1,900, 2,400] (HCM 7 Eq. 12-6). The merge is the same for every alternative of a site, so it is reported (`shared`) but excluded from the critical element.
+
+**Results.** For each element: V/C, LOS (`traffic_engine.los_grade`), and delay from BPR (α = 0.15, β = 4) plus the fixed control delay of signals. The critical element is the interchange's own element with the highest V/C. Because every load grows with (1+g)^t, the year a threshold *x* is crossed is closed-form:
+
+$$t^* = \left\lfloor \frac{\ln(x / (V/C)_0)}{\ln(1+g)} \right\rfloor + 1$$
+
+This is reported for LOS E (x = 0.93) and capacity (x = 1.0), or as "not within the design life". Annual delay (veh·h) sums both directions (*D* and 1 − *D*) over 500 equivalent peak hours a year.
+
+### 3.14 Expected Crashes (v6, Professional Phase 1)
+
+$$N_t = R_{\text{type}}\cdot \text{AADT}\,(1+g)^t \cdot 365\cdot 10^{-6}\cdot \text{CMF}_{speed}\cdot \text{CMF}_{cong}$$
+
+- *R* is the crash rate per million entering vehicles of the interchange type (`CRASH_RATE_PER_MEV`). Its ordering follows the HSM freeway-ramp models, the FHWA DDI/SPUI studies and PIARC: weaving loops and signalised terminals are highest, fully directional ramps lowest.
+- CMF_speed = 1 + 0.10 per 20 km/h of design speed above 80 km/h, for types with loop ramps. It mirrors the safety-index rule of §3.4.
+- CMF_cong = 1 + 0.8·max(0, V/C − 0.85) of the critical element.
+- `FI_SHARE` splits the crashes into fatal-and-injury and property-damage-only.
+
+These counts are what §3.15 prices. They complement the 0–10 safety index, which stays the MCDA criterion.
+
+
 ---
 
 ## 4. Decision Alternatives
@@ -823,6 +855,26 @@ Deletes a document, retrains and returns the new `ModelStatus`. Returns `404` if
 Accepts `"expert"` (default) or `"model"`. Both responses echo the field as `value_source`. With `"model"`, the evaluation uses the model-corrected constants before the site rules, and the robustness analysis takes value ranges from the model's prediction intervals for every criterion that has no explicit range (§3.12). Both add `AdjustmentNote`s of the new kind `model`. With `"expert"`, the corpus store is never touched and the responses are unchanged.
 
 ---
+
+#### `POST /api/engineering` (v6, Professional Phase 1)
+
+```json
+{ "context": "Service (Highway + Urban)", "params": { "aadt": 60000 },
+  "study": { "opening_year": 2027, "design_years": 20, "growth_pct": 2, "directional_split": 55,
+             "heavy_pct": 10, "turning_pct": 25 } }
+```
+
+`params` is `ProjectParams` and `study` is `StudyParams`; both are optional and default to the UI's defaults. Every alternative of the context comes back with the site rules applied, and `feasible: false` marks those that break the budget or land limit. Each alternative has:
+
+- `opening` and `design`: the element states, each with `id`, `label`, `kind`, `capacity_pcph`, `volume_pcph`, `vc`, `los`, `delay_s` and `shared`.
+- Per-year series over `years`: `vc_series`, `mainline_vc_series`, `delay_vehh`, `crashes` and `fi_crashes`.
+- `critical_element`, `year_los_e`, `year_capacity` and `cmf_speed`.
+- Life totals: `crashes_total`, `fi_total` and `delay_total_vehh`.
+
+The response also carries the opening-year flows `peak_hour_veh`, `peak_direction_pcph` and `turning_pcph`, plus `lane_capacity_pcph` and `hv_factor`. The maths is in §3.13–3.14.
+
+---
+
 
 ### 6.3 DSS Engine
 

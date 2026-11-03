@@ -35,6 +35,20 @@ class ProjectParams(BaseModel):
     env_sensitivity: str = Field("Medium", max_length=32)
 
 
+class StudyParams(BaseModel):
+    """Design-life inputs of the engineering and economic analyses (engineering_defaults.py)."""
+
+    opening_year: int = Field(2027, ge=2000, le=2100)
+    design_years: int = Field(20, ge=1, le=50)
+    growth_pct: float = Field(2.0, ge=-5, le=15)
+    directional_split: float = Field(55, ge=50, le=100)
+    heavy_pct: float = Field(10.0, ge=0, le=60)
+    turning_pct: float = Field(25.0, ge=0, le=100)
+    discount_pct: float = Field(4.0, ge=0, le=20)
+    value_of_time: float = Field(18.0, ge=0, le=500)
+    maintenance_pct: float = Field(1.0, ge=0, le=10)
+
+
 MethodId = Literal["wsm", "topsis", "ahp", "promethee", "vikor"]
 WeightingMode = Literal["manual", "entropy", "critic", "ahp", "combined"]
 # expert — the fixed expert constants; model — the constants corrected by the document-trained
@@ -405,3 +419,57 @@ class FootprintResponse(BaseModel):
     message: Optional[str] = None
     segments: List[FootprintSegmentSchema] = []
     right_of_way: Optional[RightOfWaySchema] = None
+
+
+# ── Professional analyses: engineering (traffic and safety) ──────────────────
+
+
+class EngineeringRequest(BaseModel):
+    context: str = Field(max_length=64)
+    params: ProjectParams = Field(default_factory=ProjectParams)
+    study: StudyParams = Field(default_factory=StudyParams)
+
+
+class ElementStateSchema(BaseModel):
+    id: str
+    label: str
+    kind: str                 # loop | ramp | weave | merge | signal
+    capacity_pcph: float
+    volume_pcph: float
+    vc: float
+    los: str
+    delay_s: float
+    shared: bool = False      # mainline merge, the same for every alternative
+
+
+class AlternativeEngineeringSchema(BaseModel):
+    name: str
+    color: str = ""
+    color_dark: str = ""
+    feasible: bool = True
+    opening: List[ElementStateSchema]
+    design: List[ElementStateSchema]
+    critical_element: str
+    vc_series: List[float]
+    mainline_vc_series: List[float]
+    delay_vehh: List[float]
+    crashes: List[float]
+    fi_crashes: List[float]
+    year_los_e: Optional[int]
+    year_capacity: Optional[int]
+    cmf_speed: float
+    crashes_total: float
+    fi_total: float
+    delay_total_vehh: float
+
+
+class EngineeringResponse(BaseModel):
+    context: str
+    study: StudyParams
+    years: List[int]
+    peak_hour_veh: float
+    peak_direction_pcph: float
+    turning_pcph: float
+    lane_capacity_pcph: float
+    hv_factor: float
+    alternatives: List[AlternativeEngineeringSchema]

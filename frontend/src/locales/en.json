@@ -16,7 +16,8 @@
     "model": "Model",
     "gallery": "Gallery",
     "methodology": "Method",
-    "compare": "Compare"
+    "compare": "Compare",
+    "engineering": "Traffic"
   },
   "showResults": "Show results",
   "appearance": "Appearance",
@@ -685,5 +686,62 @@
     "mapClientQuota": "You have used today's share of new map data requests. Points analysed before still work; try new points tomorrow.",
     "mapTooMuchData": "There is too much map data around this point. Choose a smaller radius.",
     "mapQueryFailed": "The map data service could not finish this query. Try a smaller radius or try again later."
+  },
+
+  "tabEngineering": "Traffic & safety",
+
+  "study": {
+    "title": "Traffic and life cycle",
+    "desc": "Design-life inputs of the traffic, safety and economic analyses. They do not change the MCDA ranking.",
+    "openingYear": "Opening year",
+    "designYears": "Design life (years)",
+    "growth": "Traffic growth (%/yr)",
+    "directionalSplit": "Directional split D (%)",
+    "heavyPct": "Heavy vehicles (%)",
+    "turningPct": "Turning share (%)",
+    "discount": "Discount rate (%)",
+    "valueOfTime": "Value of time (USD/veh·h)",
+    "maintenance": "Maintenance (% of cost/yr)",
+    "summary": "{from}–{to} · +{growth}%/yr"
+  },
+
+  "eng": {
+    "title": "Traffic and safety over the design life",
+    "desc": "Peak-hour traffic per interchange element (ramps, loops, weaving sections, signals) from the opening year to the design year, its volume/capacity ratio and level of service, and the expected crashes per year.",
+    "site": "Opening-year peak hour {v} veh/h · peak direction {q} pc/h · turning {t} pc/h · basic lane capacity {c} pc/h/ln · heavy-vehicle factor ×{hv}",
+    "summaryTitle": "Design-life summary",
+    "alternative": "Alternative",
+    "critical": "Critical element",
+    "vcOpening": "V/C {year}",
+    "vcDesign": "V/C {year}",
+    "los": "LOS",
+    "yearLosE": "LOS E reached",
+    "yearCapacity": "Capacity reached",
+    "never": "not within {year}",
+    "crashesYear": "Crashes/yr (opening)",
+    "fiTotal": "Fatal + injury, life",
+    "crashesTotal": "Crashes, life",
+    "delayTotal": "Delay, life (veh·h)",
+    "infeasible": "infeasible",
+    "vcChart": "Critical V/C by year",
+    "vcChartDesc": "The interchange's most loaded element in the peak direction. Above 0.93 the element runs at LOS E; above 1.0 demand exceeds capacity and queues form.",
+    "losE": "LOS E",
+    "capacity": "Capacity",
+    "mainline": "Mainline merge (shared)",
+    "crashChart": "Expected crashes over the design life",
+    "crashChartDesc": "Crash rate of the interchange type × entering vehicles × crash modification factors (loop ramps above 80 km/h, congestion above V/C 0.85).",
+    "fi": "Fatal + injury",
+    "pdo": "Property damage only",
+    "elementsTitle": "Elements of {name}",
+    "elementsDesc": "Peak-direction volume against the capacity of each element, in the opening year and the design year. The mainline merge is the same for every alternative of this site.",
+    "element": "Element",
+    "capacityPcph": "Capacity (pc/h)",
+    "volume": "Volume (pc/h)",
+    "delay": "Delay (s/veh)",
+    "shared": "shared",
+    "cmf": "Loop-ramp speed CMF ×{cmf}",
+    "year": "Year",
+    "vc": "V/C",
+    "assumptions": "Planning-level model: capacities after HCM 7 (ramp roadways, weaving, signalised terminals), BPR delay, crash rates per million entering vehicles after the HSM and FHWA studies. Constants are in app/data/engineering_defaults.py; replace them with local values on a real project."
   }
 }

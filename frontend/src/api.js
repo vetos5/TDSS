@@ -56,6 +56,12 @@ export async function robustness(body, lang = 'en') {
   return data
 }
 
+// Professional analyses (backend/analysis_routes.py).
+export async function engineering(body, lang = 'en') {
+  const { data } = await api.post('/engineering', body, { params: { lang } })
+  return data
+}
+
 export async function fetchInterchangeDetail(name, lang = 'en') {
   const { data } = await api.get(`/interchange/${encodeURIComponent(name)}`, {
     params: { lang, _t: Date.now() },

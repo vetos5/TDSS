@@ -4,7 +4,7 @@ import { useLocale } from '../composables/useLocale.js'
 import Icon from './Icon.vue'
 
 // Toolbar view switcher (macOS segmented control, as in Activity Monitor). Labels show on
-// wide windows, icons only below that. Keys 1–7 switch views when no field has focus.
+// wide windows, icons only below that. Keys 1–9 and 0 switch views when no field has focus.
 const props = defineProps({ active: String })
 const emit = defineEmits(['update'])
 
@@ -13,6 +13,7 @@ const { t, locale } = useLocale()
 const tabs = computed(() => [
   { id: 'evaluation',  label: t.value.tabEvaluation,   icon: 'chart-column' },
   { id: 'site',        label: t.value.tabSiteAnalysis, icon: 'map' },
+  { id: 'engineering', label: t.value.tabEngineering,  icon: 'gauge' },
   { id: 'robustness',  label: t.value.tabRobustness,   icon: 'shield-check' },
   { id: 'model',       label: t.value.tabModel,        icon: 'activity' },
   { id: 'compare',     label: t.value.tabCompare,      icon: 'columns' },
@@ -33,7 +34,8 @@ function place() {
 function onKey(e) {
   if (e.metaKey || e.ctrlKey || e.altKey) return
   if (e.target.closest?.('input, select, textarea, [contenteditable], [role=dialog]')) return
-  const tab = tabs.value[Number(e.key) - 1]
+  if (!/^[0-9]$/.test(e.key)) return
+  const tab = tabs.value[e.key === '0' ? 9 : Number(e.key) - 1]
   if (tab) emit('update', tab.id)
 }
 
@@ -58,7 +60,7 @@ watch(() => [props.active, locale.value], () => nextTick(place))
           :style="{ left: pill.left + 'px', width: pill.width + 'px', boxShadow: 'var(--control-shadow)' }"></span>
     <button v-for="(tab, i) in tabs" :key="tab.id" :ref="el => { if (el) buttons[tab.id] = el }"
             type="button" role="tab" :aria-selected="active === tab.id" :aria-label="tab.label"
-            :title="`${tab.label}  (${i + 1})`"
+            :title="i < 10 ? `${tab.label}  (${(i + 1) % 10})` : tab.label"
             @click="$emit('update', tab.id)"
             class="relative flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors duration-200"
             :class="active === tab.id ? 'text-fg' : 'text-muted hover:text-fg'">

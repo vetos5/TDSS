@@ -30,6 +30,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.analysis_routes import router as analysis_router
 from backend.model_routes import router as model_router
 from backend.routes import router
 from backend.site_routes import router as site_router
@@ -57,6 +58,7 @@ async def validation_error(request: Request, exc: RequestValidationError) -> JSO
 
 
 app.include_router(router, prefix="/api")
+app.include_router(analysis_router, prefix="/api")
 app.include_router(site_router, prefix="/api/site")
 app.include_router(model_router, prefix="/api/model")
 

@@ -56,6 +56,21 @@ const params = reactive({
   env_sensitivity: 'Medium',
 })
 
+// Design-life inputs of the engineering and economic analyses (backend StudyParams). They do not
+// change the MCDA ranking, so editing them does not re-run the evaluation.
+export const STUDY_DEFAULTS = {
+  opening_year: 2027,
+  design_years: 20,
+  growth_pct: 2,
+  directional_split: 55,
+  heavy_pct: 10,
+  turning_pct: 25,
+  discount_pct: 4,
+  value_of_time: 18,
+  maintenance_pct: 1,
+}
+const study = reactive({ ...STUDY_DEFAULTS })
+
 function normalizedWeights() {
   return weightsOf(weights)
 }
@@ -89,6 +104,7 @@ function snapshotState() {
     weighting: { ...weighting },
     ahpJudgements: [...ahpJudgements],
     valueSource: valueSource.value,
+    study: { ...study },
   }
 }
 
@@ -104,6 +120,18 @@ const PARAM_RULES = {
   land_limit: { min: 0, max: 1e9 },
   terrain: { oneOf: TERRAINS },
   env_sensitivity: { oneOf: ENV_LEVELS },
+}
+// Same bounds as backend/schemas.py StudyParams.
+const STUDY_RULES = {
+  opening_year: { min: 2000, max: 2100, int: true },
+  design_years: { min: 1, max: 50, int: true },
+  growth_pct: { min: -5, max: 15 },
+  directional_split: { min: 50, max: 100 },
+  heavy_pct: { min: 0, max: 60 },
+  turning_pct: { min: 0, max: 100 },
+  discount_pct: { min: 0, max: 20 },
+  value_of_time: { min: 0, max: 500 },
+  maintenance_pct: { min: 0, max: 10 },
 }
 const WEIGHT_RULES = Object.fromEntries(CRITERION_KEYS.map(k => [k, { min: 0, max: 100 }]))
 const WEIGHTING_RULES = {
@@ -147,6 +175,7 @@ function normalizeState(state, base = snapshotState()) {
     weighting: pick(s.weighting, WEIGHTING_RULES, base.weighting),
     ahpJudgements: judgements.length && judgements.every(v => v !== undefined) ? judgements : [...base.ahpJudgements],
     valueSource: VALUE_SOURCES.includes(s.valueSource) ? s.valueSource : base.valueSource,
+    study: pick(s.study, STUDY_RULES, base.study ?? STUDY_DEFAULTS),
   }
 }
 
@@ -161,6 +190,7 @@ function applyState(state) {
   methods.value = next.methods
   ahpJudgements.splice(0, AHP_PAIRS.length, ...next.ahpJudgements)
   valueSource.value = next.valueSource
+  Object.assign(study, next.study)
 }
 
 function weightsOf(w) {
@@ -219,6 +249,7 @@ export function useDSS() {
     evalError,
     weights,
     params,
+    study,
     methods,
     weighting,
     ahpJudgements,

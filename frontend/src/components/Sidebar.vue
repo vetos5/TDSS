@@ -35,6 +35,16 @@ const SLIDERS = [
   { key: 'safety_index',          dir: 'maximize', tint: 'blue' },
 ]
 
+// Design-life inputs (useDSS STUDY_DEFAULTS); bounds as in backend/schemas.py StudyParams.
+const STUDY_FIELDS = [
+  { key: 'opening_year',      label: 'openingYear',      min: 2000, max: 2100, step: 1 },
+  { key: 'design_years',      label: 'designYears',      min: 1,    max: 50,   step: 1 },
+  { key: 'growth_pct',        label: 'growth',           min: -5,   max: 15,   step: 0.5 },
+  { key: 'directional_split', label: 'directionalSplit', min: 50,   max: 100,  step: 1 },
+  { key: 'heavy_pct',         label: 'heavyPct',         min: 0,    max: 60,   step: 1 },
+  { key: 'turning_pct',       label: 'turningPct',       min: 0,    max: 100,  step: 5 },
+]
+
 const BAR_COLORS = {
   construction_cost_mln: '#0f766e',
   land_area_hectares: '#ea580c',
@@ -64,6 +74,10 @@ const summaries = computed(() => {
     weights: t.value.weightingModes[d.weighting.mode],
     scenarios: scenarios.value.length ? `${scenarios.value.length}` : '',
     params: `${d.params.design_speed} km/h · ${d.params.aadt.toLocaleString()} · ${terrain}`,
+    study: t.value.study.summary
+      .replace('{from}', d.study.opening_year)
+      .replace('{to}', d.study.opening_year + d.study.design_years)
+      .replace('{growth}', d.study.growth_pct),
   }
 })
 
@@ -152,6 +166,17 @@ const envOptions = computed(() => [
             <select v-model="dss.params.env_sensitivity" class="field">
               <option v-for="opt in envOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
+          </div>
+        </div>
+      </PanelSection>
+
+      <PanelSection id="study" :title="t.study.title" :summary="summaries.study">
+        <p class="mb-3 text-xs text-subtle">{{ t.study.desc }}</p>
+        <div class="grid grid-cols-2 items-end gap-x-2 gap-y-3">
+          <div v-for="f in STUDY_FIELDS" :key="f.key">
+            <label class="field-label" :for="'study-' + f.key">{{ t.study[f.label] }}</label>
+            <input :id="'study-' + f.key" type="number" v-model.number="dss.study[f.key]"
+                   :min="f.min" :max="f.max" :step="f.step" class="field num" />
           </div>
         </div>
       </PanelSection>
