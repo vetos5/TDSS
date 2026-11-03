@@ -1,0 +1,18 @@
+# CI override (see .github/workflows/ci.yml). The CI stack shares the Docker host with the live
+# site, so it gets its own image tags (a CI build must not move the tags the deployer keeps as the
+# rollback point) and its own network: tdss_net and its subnet belong to the live stack.
+services:
+  backend:
+    image: tdss-backend:ci
+    environment:
+      FORWARDED_ALLOW_IPS: 172.16.59.0/24
+  frontend:
+    image: tdss-frontend:ci
+
+networks:
+  default:
+    name: tdss_ci_net
+    ipam:
+      config: !override
+        - subnet: 172.16.59.0/24
+          gateway: 172.16.59.1

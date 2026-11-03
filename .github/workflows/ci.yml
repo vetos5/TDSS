@@ -1,8 +1,11 @@
 name: CI
 
+# Runs on the self-hosted runner on the home server (vetos-prodesk1). Only pushes start it: this
+# repository is public, and a pull request from a fork would otherwise run its own code on that
+# machine.
 on:
   push:
-  pull_request:
+  workflow_dispatch:
 
 # The jobs only read the repository.
 permissions:
@@ -10,51 +13,63 @@ permissions:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    # The runner is not root: run as its user so the workspace stays cleanable between runs.
+    container:
+      image: python:3.11
+      options: --user 1000:1000
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install -r requirements-dev.txt
-      - run: ruff check .
-      - run: pytest -q
+      - name: Lint and test
+        run: |
+          python -m venv /tmp/venv
+          . /tmp/venv/bin/activate
+          pip install -q -r requirements-dev.txt
+          ruff check .
+          pytest -q
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    container:
+      image: node:22
+      options: --user 1000:1000
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
 
-  # The ZimaOS deployer (deploy/zima) deploys a commit on main only once this workflow's run for
-  # the push has passed, so a commit whose images do not build or start is never deployed.
+  # The deployer (deploy/zima, running on the home server) deploys a commit on main only once this
+  # workflow's run for the push has passed, so a commit whose images do not build or start is
+  # never deployed.
   docker:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     env:
-      TDSS_DATA: /tmp/tdss-ci
+      # The CI copy runs on the same Docker host as the live site: its own project, image tags,
+      # network, port and data folder, so it never touches the running one.
+      COMPOSE_PROJECT_NAME: tdss-ci
+      COMPOSE_FILE: docker-compose.zima.yml:.github/ci/compose.ci.yml
+      TDSS_PORT: "18580"
     steps:
       - uses: actions/checkout@v4
+      - name: Set the CI data folder
+        run: echo "TDSS_DATA=$RUNNER_TEMP/tdss-ci" >> "$GITHUB_ENV"
       - name: Check the deploy scripts
-        run: shellcheck -s sh -S warning -e SC3043 deploy/zima/deployer.sh scripts/deploy_zima.sh backend/docker-entrypoint.sh
+        run: >
+          docker run --rm --user 1000:1000 -v "$PWD:/mnt:ro" -w /mnt koalaman/shellcheck:stable
+          -s sh -S warning -e SC3043 deploy/zima/deployer.sh scripts/deploy_zima.sh backend/docker-entrypoint.sh
       - name: Validate the compose files
         run: |
-          docker compose -f docker-compose.zima.yml config --quiet
+          docker compose config --quiet
           docker compose -f deploy/zima/docker-compose.yml config --quiet
       - name: Build the images
-        run: docker compose -f docker-compose.zima.yml build
+        run: docker compose build
       - name: Start the stack and smoke-test it through nginx
         run: |
-          docker compose -f docker-compose.zima.yml up -d --wait --wait-timeout 120
-          site=http://127.0.0.1:8580
+          docker compose up -d --wait --wait-timeout 120
+          site=http://127.0.0.1:$TDSS_PORT
           curl -fsS $site/ > /dev/null
           curl -fsS $site/api/contexts
           curl -fsS $site/api/model/status | python3 -c "import sys, json; print('model records:', json.load(sys.stdin)['n_records'])"
@@ -70,9 +85,16 @@ jobs:
               || { echo "no security headers on $path"; exit 1; }
           done
           # Published on loopback only, not on the runner's network address.
-          if curl -s -o /dev/null --max-time 5 "http://$(hostname -I | cut -d' ' -f1):8580/"; then
+          if curl -s -o /dev/null --max-time 5 "http://$(hostname -I | cut -d' ' -f1):$TDSS_PORT/"; then
             echo "the site is reachable beyond 127.0.0.1"; exit 1
           fi
       - name: Logs on failure
         if: failure()
-        run: docker compose -f docker-compose.zima.yml logs --tail 100
+        run: docker compose logs --tail 100
+      - name: Clean up
+        if: always()
+        run: |
+          docker compose down --remove-orphans || true
+          docker image rm tdss-backend:ci tdss-frontend:ci 2>/dev/null || true
+          # The entrypoint chowns the data folders; remove them as root.
+          docker run --rm -v "$RUNNER_TEMP:/t" alpine rm -rf /t/tdss-ci
