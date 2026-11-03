@@ -18,7 +18,8 @@
     "methodology": "Method",
     "compare": "Compare",
     "engineering": "Traffic",
-    "economics": "Economics"
+    "economics": "Economics",
+    "group": "Group"
   },
   "showResults": "Show results",
   "appearance": "Appearance",
@@ -787,5 +788,39 @@
     "losesTo": "then {name} wins",
     "beHint": "Not reachable means even a 20-fold change (or the end of the scale) does not change the outcome: under min–max normalisation a value beyond the best of the others gains nothing more.",
     "assumptions": "Crash costs: HSM Table 4-3 comprehensive costs indexed to about 2024. Residual value: straight-line over a 50-year service life. Off-peak delay is not counted."
-  }
+  },
+
+  "tabGroup": "Group decision",
+
+  "group": {
+    "title": "Group decision",
+    "desc": "Several stakeholders each give their own criterion weights. Each one's ranking is computed with the selected methods, the weights are combined by the influence-weighted geometric mean, and agreement with the group ranking is measured with Kendall's τ.",
+    "stakeholder": "Stakeholder",
+    "name": "Name",
+    "influence": "Influence",
+    "add": "Add stakeholder",
+    "remove": "Remove",
+    "reset": "Reset to the example",
+    "groupWinner": "Group recommendation: {name}",
+    "basisConsensus": "Ranked by the Borda consensus of the selected methods.",
+    "basisMethod": "Ranked by {method}.",
+    "groupWeights": "Group weights",
+    "rankings": "Rankings by stakeholder",
+    "ranking": "Ranking (best first)",
+    "winner": "First choice",
+    "kendall": "Agreement τ",
+    "kendallHint": "Kendall's τ between a stakeholder's ranking and the group's: 1 the same order, 0 unrelated, −1 reversed.",
+    "share": "Who wins for whom",
+    "shareDesc": "Share of total influence held by the stakeholders whose first choice each alternative is.",
+    "group": "Group",
+    "weightsPct": "Weights (%)"
+  },
+
+  "exportCsv": "Export CSV",
+
+  "exportGeoJson": "GeoJSON",
+
+  "exportKml": "KML",
+
+  "exportFootprint": "Download the footprint for GIS / CAD:"
 }

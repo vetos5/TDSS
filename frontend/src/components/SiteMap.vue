@@ -5,6 +5,7 @@ import { useLocale } from '../composables/useLocale.js'
 import { useSiteAnalysis } from '../composables/useSiteAnalysis.js'
 import Icon from './Icon.vue'
 import { siteNoteKeyMap } from '../locales/backendKeys.js'
+import { download, footprintGeoJSON, footprintKML, slug } from '../exporters.js'
 
 const props = defineProps({
   dss: Object,
@@ -14,6 +15,14 @@ const props = defineProps({
 
 const { t, locale } = useLocale()
 const site = useSiteAnalysis()
+
+function exportFootprint(kind) {
+  const fp = site.footprint.value
+  const name = site.footprintAlternative.value ?? fp?.alternative_name ?? 'footprint'
+  if (!fp?.available) return
+  if (kind === 'kml') download(`tdss-footprint-${slug(name)}.kml`, footprintKML(fp, name), 'application/vnd.google-earth.kml+xml')
+  else download(`tdss-footprint-${slug(name)}.geojson`, footprintGeoJSON(fp, name), 'application/geo+json')
+}
 
 // Conventional cartographic colours (not the chart categorical palette -- this is a basemap
 // overlay legend, where blue-for-water / green-for-nature are the reader's existing expectation).
@@ -316,6 +325,11 @@ watch(locale, () => {
           <div><p class="eyebrow">{{ t.buildingsAffectedLabel }}</p><p class="num mt-0.5 text-lg font-semibold text-fg">{{ site.footprint.value.right_of_way.buildings_affected }}</p></div>
           <div><p class="eyebrow">{{ t.demolishedAreaLabel }}</p><p class="num mt-0.5 text-lg font-semibold text-fg">{{ Math.round(site.footprint.value.right_of_way.demolished_area_m2).toLocaleString() }} m²</p></div>
           <div><p class="eyebrow">{{ t.estimatedCostLabel }}</p><p class="num mt-0.5 text-lg font-semibold text-fg">${{ Math.round(site.footprint.value.right_of_way.estimated_cost_usd / 1000).toLocaleString() }}k</p></div>
+        </div>
+        <div v-if="site.footprint.value.available" class="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+          <span>{{ t.exportFootprint }}</span>
+          <button type="button" class="btn" @click="exportFootprint('geojson')"><Icon name="download" class="text-sm" /> {{ t.exportGeoJson }}</button>
+          <button type="button" class="btn" @click="exportFootprint('kml')"><Icon name="download" class="text-sm" /> {{ t.exportKml }}</button>
         </div>
       </template>
     </section>

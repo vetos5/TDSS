@@ -8,6 +8,7 @@ import Icon from './Icon.vue'
 import { useLocale } from '../composables/useLocale.js'
 import { chartInk } from '../chartPalette.js'
 import { useViewport } from '../composables/useViewport.js'
+import { downloadCsv, slug } from '../exporters.js'
 
 const props = defineProps({
   data: Object,
@@ -22,6 +23,28 @@ const selectedDetail = ref(null)
 const detailInfo = ref(null)
 
 const winner = computed(() => props.data?.results?.[0])
+
+// Decision matrix (site-adjusted values), normalised weights and every method's score and rank.
+function exportCsv() {
+  const d = props.data
+  if (!d) return
+  const crits = d.criteria.map(c => c.name)
+  const methods = Object.keys(d.method_results ?? {})
+  const head = ['Alternative', ...crits.map(c => `${d.criterion_labels[c] ?? c} (${d.criteria.find(x => x.name === c).unit})`),
+    ...methods.flatMap(m => [`${d.method_results[m].label} score`, `${d.method_results[m].label} rank`])]
+  if (d.rank_agreement) head.push('Consensus rank')
+  const rows = d.results.map(r => {
+    const out = [r.alternative_name, ...crits.map(c => r.raw_values[c])]
+    for (const m of methods) {
+      const s = d.method_results[m].scores.find(x => x.alternative_name === r.alternative_name)
+      out.push(s?.score, s?.rank)
+    }
+    if (d.rank_agreement) out.push(d.rank_agreement.consensus.find(x => x.alternative_name === r.alternative_name)?.rank)
+    return out
+  })
+  const weights = ['Weight', ...crits.map(c => d.normalised_weights[c]?.toFixed(4))]
+  downloadCsv(`tdss-evaluation-${slug(d.context)}.csv`, [head, ...rows, [], weights])
+}
 const maxScore = computed(() => winner.value?.total_score || 1)
 
 const criterionLabels = computed(() => ({
@@ -194,11 +217,12 @@ const descHtml = computed(() => (detailInfo.value?.engineering_desc ?? '')
 
     <div class="notice notice-ok flex items-start gap-2">
       <Icon name="check" class="mt-0.5 text-sm" />
-      <span>
+      <span class="min-w-0 flex-1">
         {{ t.recommended }}: <strong class="font-semibold">{{ winner?.alternative_name }}</strong> —
         {{ t.wsmScore }} <span class="num">{{ winner?.total_score?.toFixed(4) }}</span>
         ({{ t.rankOf }} {{ data.results.length }} {{ t.alternatives }} "{{ data.context }}")
       </span>
+      <button type="button" class="btn shrink-0 !py-0.5 text-xs" @click="exportCsv"><Icon name="download" class="text-sm" /> {{ t.exportCsv }}</button>
     </div>
 
     <!-- Project params summary -->

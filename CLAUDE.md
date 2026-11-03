@@ -143,6 +143,13 @@ Where things are and what they hold, so a session can go straight to the file it
   Peak-hour demand = `aadt * peak_factor/100`.
 - `app/application/traffic_engine.py` — `bpr_travel_time`, `stress_level`, `los_grade(vc)` (A–F).
 - `app/application/evaluation.py` — `select_weights`, `run_methods`, `analyse_robustness`.
+- Professional analyses (DOCUMENTATION §3.13–3.18), routes in `backend/analysis_routes.py`:
+  `engineering.py` (`Study`, `analyse` — per-element design-life traffic, crashes; constants in
+  `app/data/engineering_defaults.py`) → `/api/engineering`; `economics.py` (`appraise` — LCC, NPV,
+  BCR, payback) → `/api/economics`; `mcda/breakeven.py` → `/api/breakeven`; `mcda/group.py`
+  (geometric-mean weight aggregation, Kendall τ) → `/api/group`. Request schemas: `StudyParams`,
+  `EngineeringRequest`, `GroupRequest` in `schemas.py`. Tests: `test_engineering.py`,
+  `test_economics.py`, `test_group.py`.
 - `app/application/mcda/` — `DecisionMatrix.from_alternatives(alts, CRITERIA)`, `METHODS` dict
   (method fn on matrix + weights), `evaluate()`, `weighting`, `smaa.py`, `sensitivity.py`.
 - `backend/routes.py` — `_prepare(req, lang)` is the shared pipeline (context check → optional model
@@ -159,14 +166,18 @@ Where things are and what they hold, so a session can go straight to the file it
 
 ### Frontend
 
-- `App.vue` — tab ids `evaluation, site, robustness, model, compare, gallery, methodology`; each
+- `App.vue` — tab ids `evaluation, site, engineering, economics, robustness, model, compare, group,
+  gallery, methodology` (TabNav keys 1–9, 0); each
   pane is mounted with `v-show` and gets `:dss`, `:active`, `:dark`. `title` map per tab id.
   Watches `dss` inputs and re-evaluates (debounced 300 ms).
-- Adding a tab touches: `App.vue` (import, `title`, pane), `TabNav.vue` (`tabs`, keys 1–9),
+- Adding a tab touches: `App.vue` (import, `title`, pane), `TabNav.vue` (`tabs`; labels show ≥1760px),
   `MobileTabBar.vue` (`PRIMARY` max 4 or `MORE`), `locales/*.json` (`tabX`, `tabShort.x`).
 - `composables/useDSS.js` — module-level shared state: `params`, `weights`, `weighting`, `methods`,
   `valueSource`, `evalData`. `snapshotState / normalizeState / applyState` define what scenarios and
   share links store; a new input must be added there with a rule (`PARAM_RULES`-style).
+- `useDSS.study` holds the design-life inputs (`STUDY_DEFAULTS`, `STUDY_RULES`; Sidebar `STUDY_FIELDS`).
+- `composables/useAnalysis.js` — `useAnalysis(key)` request state for the professional tabs and
+  `siteBody(dss)`; `useGroup.js` holds stakeholders (localStorage). `exporters.js` — CSV/GeoJSON/KML.
 - `composables/useRobustness.js` — the pattern for a view's own request state (`data`, `loading`,
   `error`, `requestId` guard, `errorText(e)`).
 - `api.js` — axios `/api`, one exported function per endpoint, `lang` as a query param.

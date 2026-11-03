@@ -25,6 +25,8 @@
    - 3.14 [Expected Crashes](#314-expected-crashes-v6-professional-phase-1)
    - 3.15 [Life-Cycle Cost Appraisal](#315-life-cycle-cost-appraisal-v6-professional-phase-2)
    - 3.16 [Break-Even Values](#316-break-even-values-v6-professional-phase-2)
+   - 3.17 [Group Decision](#317-group-decision-v6-professional-phase-3)
+   - 3.18 [Exports](#318-exports-v6-professional-phase-3)
 4. [Decision Alternatives](#4-decision-alternatives)
 5. [Evaluation Criteria](#5-evaluation-criteria)
 6. [Backend (FastAPI)](#6-backend-fastapi)
@@ -517,6 +519,31 @@ The appraisal informs the decision next to the MCDA ranking; it does not change 
 A geometric grid of 48 factors up to ×20 (or ÷20) finds the first flip, and 30 bisection steps refine it. Scales with an end are clamped (safety index ≤ 10). "Not reachable" is a real answer under min–max normalisation: once a value passes the best of the others, it gains nothing more. This complements the weight sensitivity of §3.10 ("how far may a weight move") with "how far may a value move".
 
 
+### 3.17 Group Decision (v6, Professional Phase 3)
+
+`app/application/mcda/group.py`. Each of 2–8 stakeholders *k* gives criterion weights *w_k* (normalised) and an influence λ_k.
+
+- **Individual rankings.** Each stakeholder's ranking comes from the selected method, or the Borda consensus of several methods (§3.8).
+- **Group weights.** The weights are aggregated as the influence-weighted geometric mean, i.e. the aggregation of individual priorities (Forman & Peniwati 1998), which keeps the ratio scale:
+
+$$w_c^{G} \propto \prod_k \max(w_{kc}, 0.01)^{\lambda_k / \sum \lambda}$$
+
+  The 0.01 floor stops one stakeholder's zero from vetoing a criterion for the whole group.
+- **Group ranking.** The group's ranking uses *w^G*.
+- **Agreement.** Kendall's τ between each stakeholder's ranking and the group's measures how far they agree. The "who wins for whom" share is the influence held by the stakeholders whose first choice each alternative is.
+
+### 3.18 Exports (v6, Professional Phase 3)
+
+The browser builds every export from data already on screen (`frontend/src/exporters.js`):
+
+- **CSV** (UTF-8 with BOM, so Excel opens it correctly) from four tabs:
+  - Evaluation: the decision matrix, weights, and each method's scores and ranks.
+  - Traffic & safety: element states and the yearly series.
+  - Economics: present values and cumulative costs.
+  - Group decision: weights, utilities and τ.
+- **GeoJSON** (RFC 7946, `[lon, lat]`) and **KML** of the placed footprint, from the site map, for GIS and CAD tools.
+
+
 ---
 
 ## 4. Decision Alternatives
@@ -930,6 +957,22 @@ The body is the same as `/api/evaluate`: the same weighting, methods and `value_
 For each method, the response gives the `winner` and an item per (alternative, criterion): `current`, `value` (null if not reachable), `change_pct`, `kind` (`overtake` for a challenger, `hold` for the winner) and `new_winner`. See §3.16.
 
 ---
+
+#### `POST /api/group` (v6, Professional Phase 3)
+
+The body is the same as `/api/evaluate` plus `stakeholders`: 2–8 items of `{ "name": ≤40 chars, "influence": (0, 10], "weights": WeightsInput }`. The request's own `weights` and `weighting` are not used for ranking.
+
+The response contains:
+
+- `basis`: the method id, or `consensus` when several methods are selected
+- `group_weights`, `group_ranking`, `group_utility`, `group_winner`
+- `stakeholders`: for each, its normalised `weights`, `ranking`, `utility`, `winner`, and `kendall` against the group
+- `winner_share`
+
+See §3.17.
+
+---
+
 
 ### 6.3 DSS Engine
 

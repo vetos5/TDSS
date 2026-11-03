@@ -536,3 +536,40 @@ class BreakEvenResponse(BaseModel):
     alternatives: List[str]
     methods: Dict[str, BreakEvenMethodSchema]
     adjustments: List[AdjustmentNote] = []
+
+
+# ── Professional analyses: group decision (Phase 3) ──────────────────────────
+
+
+class StakeholderInput(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    influence: float = Field(1.0, gt=0, le=10)
+    weights: WeightsInput
+
+
+class GroupRequest(EvaluateRequest):
+    stakeholders: List[StakeholderInput] = Field(min_length=2, max_length=8)
+
+
+class StakeholderResultSchema(BaseModel):
+    name: str
+    influence: float
+    weights: Dict[str, float]          # normalised
+    ranking: List[str]                 # best first
+    utility: Dict[str, float]
+    winner: str
+    kendall: Optional[float]           # τ against the group ranking
+
+
+class GroupResponse(BaseModel):
+    context: str
+    alternatives: List[str]
+    criteria: List[str]
+    basis: str                         # a method id, or "consensus" for several methods
+    group_weights: Dict[str, float]
+    group_ranking: List[str]
+    group_utility: Dict[str, float]
+    group_winner: str
+    stakeholders: List[StakeholderResultSchema]
+    winner_share: Dict[str, float]     # alternative → influence share of stakeholders it wins for
+    adjustments: List[AdjustmentNote] = []

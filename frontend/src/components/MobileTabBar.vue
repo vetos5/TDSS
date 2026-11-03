@@ -24,6 +24,7 @@ const MORE = [
   { id: 'economics',   icon: 'coins',        title: 'tabEconomics' },
   { id: 'robustness',  icon: 'shield-check', title: 'tabRobustness' },
   { id: 'compare',     icon: 'columns',      title: 'tabCompare' },
+  { id: 'group',       icon: 'users',        title: 'tabGroup' },
   { id: 'gallery',     icon: 'layout-grid',  title: 'tabGallery' },
   { id: 'methodology', icon: 'book-open',    title: 'tabMethodology' },
   { id: 'report',      icon: 'file' },   // opens the decision report, not a tab

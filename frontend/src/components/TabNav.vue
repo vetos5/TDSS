@@ -18,6 +18,7 @@ const tabs = computed(() => [
   { id: 'robustness',  label: t.value.tabRobustness,   icon: 'shield-check' },
   { id: 'model',       label: t.value.tabModel,        icon: 'activity' },
   { id: 'compare',     label: t.value.tabCompare,      icon: 'columns' },
+  { id: 'group',       label: t.value.tabGroup,        icon: 'users' },
   { id: 'gallery',     label: t.value.tabGallery,      icon: 'layout-grid' },
   { id: 'methodology', label: t.value.tabMethodology,  icon: 'book-open' },
 ])
@@ -66,7 +67,7 @@ watch(() => [props.active, locale.value], () => nextTick(place))
             class="relative flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors duration-200"
             :class="active === tab.id ? 'text-fg' : 'text-muted hover:text-fg'">
       <Icon :name="tab.icon" class="text-sm" :class="active === tab.id ? 'text-accent' : ''" />
-      <span class="hidden min-[1360px]:inline">{{ tab.label }}</span>
+      <span class="hidden min-[1760px]:inline">{{ tab.label }}</span>
     </button>
   </div>
 </template>

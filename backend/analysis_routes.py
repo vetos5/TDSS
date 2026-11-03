@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import threading
 
+import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 
 from app.application.adjustments import apply_site_adjustments, filter_feasible
@@ -12,6 +13,7 @@ from app.application.economics import appraise
 from app.application.engineering import Study, analyse
 from app.application.mcda import METHODS
 from app.application.mcda.breakeven import analyse_breakeven
+from app.application.mcda.group import Stakeholder, analyse_group
 from app.data.interchange_data import (
     ALTERNATIVE_COLORS,
     ALTERNATIVE_COLORS_DARK,
@@ -32,6 +34,9 @@ from backend.schemas import (
     EngineeringRequest,
     EngineeringResponse,
     EvaluateRequest,
+    GroupRequest,
+    GroupResponse,
+    StakeholderResultSchema,
 )
 
 router = APIRouter()
@@ -142,3 +147,46 @@ def breakeven(req: EvaluateRequest, lang: str = Query(default="en")):
             methods=out,
             adjustments=prep.notes,
         )
+
+
+@router.post("/group", response_model=GroupResponse)
+def group(req: GroupRequest, lang: str = Query(default="en")):
+    """Rank for each stakeholder's weights, aggregate them, and measure agreement."""
+    prep = _prepare(req, lang)
+    m = prep.matrix
+    crits = m.criterion_names
+    stakeholders = []
+    for s in req.stakeholders:
+        w = np.array([getattr(s.weights, c) for c in crits], dtype=float)
+        w = np.full(len(crits), 1.0 / len(crits)) if w.sum() <= 0 else w / w.sum()
+        stakeholders.append(Stakeholder(s.name, s.influence, w))
+    res = analyse_group(m, stakeholders, req.methods)
+    names = list(m.alternatives)
+
+    def ordered(ranks) -> list[str]:
+        return [names[i] for i in sorted(range(len(names)), key=lambda i: (ranks[i], i))]
+
+    return GroupResponse(
+        context=req.context,
+        alternatives=names,
+        criteria=crits,
+        basis=req.methods[0] if len(req.methods) == 1 else "consensus",
+        group_weights={c: float(v) for c, v in zip(crits, res.group_weights, strict=True)},
+        group_ranking=ordered(res.group.ranks),
+        group_utility={n: float(u) for n, u in zip(names, res.group.utility, strict=True)},
+        group_winner=names[res.group.winner],
+        stakeholders=[
+            StakeholderResultSchema(
+                name=r.stakeholder.name,
+                influence=r.stakeholder.influence,
+                weights={c: float(v) for c, v in zip(crits, r.stakeholder.weights, strict=True)},
+                ranking=ordered(r.ranking.ranks),
+                utility={n: float(u) for n, u in zip(names, r.ranking.utility, strict=True)},
+                winner=names[r.ranking.winner],
+                kendall=r.kendall,
+            )
+            for r in res.stakeholders
+        ],
+        winner_share={names[i]: float(v) for i, v in res.winner_counts.items()},
+        adjustments=prep.notes,
+    )

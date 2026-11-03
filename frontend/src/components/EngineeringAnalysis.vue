@@ -5,6 +5,8 @@ import { useAnalysis, siteBody } from '../composables/useAnalysis.js'
 import { engineering } from '../api.js'
 import { chartInk } from '../chartPalette.js'
 import PlotlyChart from './PlotlyChart.vue'
+import Icon from './Icon.vue'
+import { downloadCsv, slug } from '../exporters.js'
 
 // Design-life traffic per interchange element and expected crashes (POST /api/engineering).
 // Recomputed when the site, its parameters or the study inputs change while the tab is shown.
@@ -118,6 +120,24 @@ const crashChart = computed(() => {
   }
 })
 
+function exportCsv() {
+  const d = data.value
+  if (!d) return
+  const rows = [['Alternative', 'Feasible', 'Element', 'Kind', 'Capacity (pc/h)',
+    `Volume ${firstYear.value} (pc/h)`, `V/C ${firstYear.value}`, `LOS ${firstYear.value}`,
+    `Volume ${lastYear.value} (pc/h)`, `V/C ${lastYear.value}`, `LOS ${lastYear.value}`, `Delay ${lastYear.value} (s/veh)`]]
+  for (const a of d.alternatives) {
+    a.opening.forEach((e, i) => {
+      const x = a.design[i]
+      rows.push([a.name, a.feasible, e.label, e.kind, e.capacity_pcph, e.volume_pcph, e.vc, e.los,
+        x.volume_pcph, x.vc, x.los, x.delay_s])
+    })
+  }
+  rows.push([], ['Year', ...d.alternatives.flatMap(a => [`${a.name} V/C`, `${a.name} crashes`, `${a.name} F+I`, `${a.name} delay (veh·h)`])])
+  d.years.forEach((y, i) => rows.push([y, ...d.alternatives.flatMap(a => [a.vc_series[i], a.crashes[i], a.fi_crashes[i], a.delay_vehh[i]])]))
+  downloadCsv(`tdss-traffic-safety-${slug(d.context)}.csv`, rows)
+}
+
 const elementRows = computed(() => {
   const a = selectedAlt.value
   if (!a) return []
@@ -134,6 +154,7 @@ const elementRows = computed(() => {
           <p class="card-desc">{{ t.eng.desc }}</p>
         </div>
         <span class="spinner mt-1 transition-opacity duration-200" :class="eng.loading.value ? 'opacity-100' : 'opacity-0'"></span>
+        <button type="button" class="btn shrink-0" :disabled="!data" @click="exportCsv"><Icon name="download" class="text-sm" /> {{ t.exportCsv }}</button>
       </div>
       <p v-if="data" class="num mt-3 text-xs text-muted">
         {{ fill(t.eng.site, { v: nf(data.peak_hour_veh), q: nf(data.peak_direction_pcph), t: nf(data.turning_pcph),

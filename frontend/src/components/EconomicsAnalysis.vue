@@ -5,6 +5,8 @@ import { useAnalysis, siteBody } from '../composables/useAnalysis.js'
 import { economics, breakeven } from '../api.js'
 import { chartInk } from '../chartPalette.js'
 import PlotlyChart from './PlotlyChart.vue'
+import Icon from './Icon.vue'
+import { downloadCsv, slug } from '../exporters.js'
 
 // Life-cycle cost appraisal (POST /api/economics) and break-even values of the MCDA ranking
 // (POST /api/breakeven). Both refresh while the tab is shown and their inputs change.
@@ -116,6 +118,21 @@ const cumulativeChart = computed(() => {
   }
 })
 
+function exportCsv() {
+  const d = data.value
+  if (!d) return
+  const keys = ['construction_mln', 'pv_maintenance', 'pv_residual', 'pv_delay', 'pv_crash', 'pv_agency', 'pv_user',
+    'pv_total', 'incremental_cost', 'benefits', 'npv', 'bcr', 'dominant', 'payback_year', 'is_base', 'feasible']
+  const rows = [['Alternative', ...keys.map(k => k.startsWith('pv_') || k.endsWith('_mln') || ['incremental_cost', 'benefits', 'npv'].includes(k) ? `${k} (M USD)` : k)]]
+  for (const a of d.alternatives) rows.push([a.name, ...keys.map(k => a[k])])
+  rows.push([], ['Year', ...d.alternatives.map(a => `${a.name} cumulative (M USD)`)])
+  d.years.forEach((y, i) => rows.push([y, ...d.alternatives.map(a => a.cumulative_total[i])]))
+  const s = d.study
+  rows.push([], ['discount_pct', s.discount_pct], ['value_of_time_usd', s.value_of_time], ['maintenance_pct', s.maintenance_pct],
+    ['crash_cost_fi_usd', d.crash_cost_fi], ['crash_cost_pdo_usd', d.crash_cost_pdo])
+  downloadCsv(`tdss-economics-${slug(d.context)}.csv`, rows)
+}
+
 // ── Break-even ──────────────────────────────────────────────────────────────
 const beMethod = ref('')
 watch(() => be.data.value, d => {
@@ -147,6 +164,7 @@ const digits = k => (k === 'throughput_vph' ? 0 : 2)
           <p class="card-desc">{{ t.econ.desc }}</p>
         </div>
         <span class="spinner mt-1 transition-opacity duration-200" :class="econ.loading.value ? 'opacity-100' : 'opacity-0'"></span>
+        <button type="button" class="btn shrink-0" :disabled="!data" @click="exportCsv"><Icon name="download" class="text-sm" /> {{ t.exportCsv }}</button>
       </div>
       <p v-if="data" class="num mt-3 text-xs text-muted">{{ basis }}</p>
       <p v-if="econ.error.value" class="notice notice-bad mt-3">{{ econ.error.value }}</p>
