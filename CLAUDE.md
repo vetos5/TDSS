@@ -114,3 +114,68 @@ The layers are strict. Keep maths out of the routes and the frontend.
   panel and the views as tabs along the top. On phones, use the iOS-style bottom tab bar. The look
   is macOS-like (system font, system blue, grouped cards). Tab and panel changes use short eased
   transitions, without blank loading states.
+
+## Code map (read this instead of re-exploring)
+
+Where things are and what they hold, so a session can go straight to the file it needs.
+
+### Machines and checkouts
+
+- Dev checkout: `~/projects/TDSS` on `vetos-prodesk1` (remote `origin` = `vetos5/TDSS`, work on
+  `main` or a `diploma/phase-N-*` branch merged into `main`). Venv: `.venv` (Python 3.14 locally,
+  CI uses 3.11, so avoid 3.12+ only syntax); `frontend/node_modules` installed.
+- `~/apps/tdss` on the same box is the **deployer's** home (`TDSS_HOME`): `src/` is the deployed
+  tarball (root-owned, replaced on every deploy), `deployer/` its state, `app.env` secrets. Never
+  edit there.
+- Deploy = push to `main`. CI runs on the self-hosted runner on this box; the deployer polls
+  GitHub every 60 s and deploys a `main` commit once CI passed (`deployer/history.log`).
+
+### Backend
+
+- `app/data/interchange_data.py` — `CRITERIA` (4: `construction_cost_mln` min, `land_area_hectares`
+  min, `throughput_vph` max, `safety_index` max /10), `INTERCHANGE_DATA[context][alt]`, 3 contexts:
+  System (Cloverleaf, Turbine, Stack (4-Level)), Service (Diamond, SPUI, DDI), T-Type (Trumpet,
+  Directional T). Also labels (EN/UK), descriptions, colours, `resolve_*` helpers,
+  `get_alternatives_for_context()`.
+- `app/data/adjustment_rules.py` — terrain cost factor, env land factor, loop-ramp speed penalty
+  (`LOOP_RAMP_ALTERNATIVES`), capacity penalty constants.
+- `app/application/adjustments.py` — `apply_project_params(alts, params)` → (feasible alts, notes).
+  Peak-hour demand = `aadt * peak_factor/100`.
+- `app/application/traffic_engine.py` — `bpr_travel_time`, `stress_level`, `los_grade(vc)` (A–F).
+- `app/application/evaluation.py` — `select_weights`, `run_methods`, `analyse_robustness`.
+- `app/application/mcda/` — `DecisionMatrix.from_alternatives(alts, CRITERIA)`, `METHODS` dict
+  (method fn on matrix + weights), `evaluate()`, `weighting`, `smaa.py`, `sensitivity.py`.
+- `backend/routes.py` — `_prepare(req, lang)` is the shared pipeline (context check → optional model
+  values → site rules → matrix → weights) returning `_Prepared(locale, alternatives, matrix,
+  selection, weights, notes, model)`; reuse it for any new endpoint that ranks alternatives.
+  `/robustness` wraps itself in `backend.limits.slot(semaphore)`.
+- `backend/schemas.py` — `ProjectParams` (design_speed, aadt, peak_factor, num_lanes, budget,
+  land_limit, terrain, env_sensitivity), `EvaluateRequest` (context, weights, params, methods,
+  weighting, value_source). Every field needs bounds.
+- `backend/main.py` mounts the routers under `/api`.
+- Tests: `tests/test_api*.py` use `TestClient(backend.main.app)` and a `body(context, **extra)`
+  helper; `tests/test_evaluate_regression.py` + `tests/snapshots/evaluate_v4.json` freeze
+  `/api/evaluate`.
+
+### Frontend
+
+- `App.vue` — tab ids `evaluation, site, robustness, model, compare, gallery, methodology`; each
+  pane is mounted with `v-show` and gets `:dss`, `:active`, `:dark`. `title` map per tab id.
+  Watches `dss` inputs and re-evaluates (debounced 300 ms).
+- Adding a tab touches: `App.vue` (import, `title`, pane), `TabNav.vue` (`tabs`, keys 1–9),
+  `MobileTabBar.vue` (`PRIMARY` max 4 or `MORE`), `locales/*.json` (`tabX`, `tabShort.x`).
+- `composables/useDSS.js` — module-level shared state: `params`, `weights`, `weighting`, `methods`,
+  `valueSource`, `evalData`. `snapshotState / normalizeState / applyState` define what scenarios and
+  share links store; a new input must be added there with a rule (`PARAM_RULES`-style).
+- `composables/useRobustness.js` — the pattern for a view's own request state (`data`, `loading`,
+  `error`, `requestId` guard, `errorText(e)`).
+- `api.js` — axios `/api`, one exported function per endpoint, `lang` as a query param.
+- `components/Sidebar.vue` — inputs in collapsible `PanelSection`s (`id`, `title`, `summary`).
+- `PlotlyChart.vue` takes `{ chart: { data, layout }, dark }`; colours from `chartPalette.js`
+  (`chartInk(dark)`, `METHOD_COLORS`, `rankColors`); alternative colours come from the API
+  (`color`, `color_dark`).
+- CSS classes (`style.css`): `card card-title card-desc eyebrow field field-label btn btn-primary
+  btn-ghost icon-btn seg seg-item table table-scroll notice notice-ok notice-warn notice-bad badge
+  badge-accent num spinner tab-pane ios-slider`. Icons: `Icon.vue` `ICONS` map (Lucide paths).
+- `locales/en.json` and `uk.json` are flat-ish objects read as `t.value.key`; keep them in sync.
+- `DecisionReport.vue` is the printable report (`.report-*` classes).
