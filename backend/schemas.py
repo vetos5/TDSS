@@ -335,6 +335,9 @@ class Model3DSegmentSchema(BaseModel):
     edge_left: str = ""
     edge_right: str = ""
     marks: str = ""
+    # The road carries on beyond the model at its first / last point; the viewer draws it on.
+    open_start: bool = False
+    open_end: bool = False
 
 
 class Model3DResponse(BaseModel):

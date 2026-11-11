@@ -99,6 +99,10 @@ class Segment3D:
     edge_left: str = ""
     edge_right: str = ""
     marks: str = ""
+    # The road carries on beyond the model at its first / last point (a freeway leaving the
+    # interchange), as opposed to ending at a ramp or a junction.
+    open_start: bool = False
+    open_end: bool = False
 
 
 @dataclass(frozen=True)
@@ -149,6 +153,8 @@ class _Line:
     edge_left: np.ndarray | None = None   # index into _CODES, per sample
     edge_right: np.ndarray | None = None
     marks: np.ndarray | None = None       # lane lines drawn at this sample
+    open_start: bool = False              # the road carries on beyond the model at this end
+    open_end: bool = False
 
     def tangents(self) -> np.ndarray:
         """Unit direction at each sample, (n, 2)."""
@@ -600,6 +606,11 @@ def _widths(lines: list[_Line]) -> None:
                 r.width for r in ramps
                 if min(np.hypot(*(r.xy[0] - end)), np.hypot(*(r.xy[-1] - end))) < _CONTACT_M
             ]
+            if not onward:  # no ramp takes over here: the road leaves the interchange
+                if from_start:
+                    road.open_start = True
+                else:
+                    road.open_end = True
             if not onward or max(onward) / 2 >= half:
                 continue
             narrow = max(onward) / 2
@@ -696,9 +707,11 @@ def build_model(alternative_name: str) -> Model3D | None:
             keep = np.append(keep, len(ln.s) - 1)
         # Left and right are as seen in the travel direction, so they swap with the samples.
         left, right, e_left, e_right = ln.left, ln.right, ln.edge_left, ln.edge_right
+        open_start, open_end = ln.open_start, ln.open_end
         if ln.reverse:
             keep = keep[::-1]
             left, right, e_left, e_right = right, left, e_right, e_left
+            open_start, open_end = open_end, open_start
         segments.append(Segment3D(
             id=ln.id, kind=ln.kind, lanes=ln.lanes, width_m=ln.width, speed_kmh=ln.speed,
             points=tuple(
@@ -711,6 +724,8 @@ def build_model(alternative_name: str) -> Model3D | None:
             edge_left="".join(_CODES[e_left[i]] for i in keep),
             edge_right="".join(_CODES[e_right[i]] for i in keep),
             marks="".join("1" if ln.marks[i] else "0" for i in keep),
+            open_start=open_start,
+            open_end=open_end,
         ))
     max_height = max(float(ln.z.max()) for ln in lines)
     return Model3D(

@@ -218,3 +218,19 @@ def test_stem_drops_to_the_width_of_the_ramp_that_carries_on(name, stem, ramp):
     road, onward = _segment(name, stem), _segment(name, ramp)
     assert _width(road, 0) == pytest.approx(road.width_m, abs=0.02)
     assert _width(road, len(road.points) - 1) == pytest.approx(onward.width_m, abs=0.02)
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_roads_leaving_the_interchange_are_marked_open(name):
+    model = build_model(name)
+    for seg in model.segments:
+        if seg.kind == "ramp":
+            assert not seg.open_start and not seg.open_end, seg.id
+    # Every leg of the interchange leaves it on two carriageways: four legs, or three for a T.
+    legs = 3 if name in ("Trumpet", "Directional T") else 4
+    assert sum(s.open_start + s.open_end for s in model.segments) == 2 * legs
+    # An open end is out at the edge of the plan and on the ground.
+    for seg in model.segments:
+        for is_open, (x, y, z) in ((seg.open_start, seg.points[0]), (seg.open_end, seg.points[-1])):
+            if is_open:
+                assert max(abs(x), abs(y)) > 150 and z < 0.05, seg.id

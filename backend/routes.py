@@ -498,6 +498,7 @@ def get_interchange_model3d(name: str, response: Response):
                 points=[list(p) for p in s.points],
                 left_m=list(s.left_m), right_m=list(s.right_m),
                 edge_left=s.edge_left, edge_right=s.edge_right, marks=s.marks,
+                open_start=s.open_start, open_end=s.open_end,
             )
             for s in model.segments
         ],

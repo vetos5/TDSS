@@ -62,6 +62,8 @@ let controls = null
 let sun = null
 let hemi = null
 let mats = null
+let fade = null                    // uniforms of the radial fade shared by every material
+let fadeBroken = false
 let current = null                 // { group, geometries, cars, bodyMesh, lampMesh, extent }
 let requestId = 0
 let disposed = false
@@ -92,11 +94,55 @@ const PALETTE = {
 }
 const CAR_COLOURS = ['#e8eaee', '#1f2937', '#b91c1c', '#1d4ed8', '#f59e0b', '#0f766e', '#94a3b8']
 
+// Roads that leave the interchange are drawn on to REACH x extent, and everything fades into the
+// background between FADE_FROM and FADE_TO x extent from the centre, so no road end and no edge
+// of the ground is ever visible, whatever the camera does.
+const REACH = 2.0
+const FADE_FROM = 1.15
+const FADE_TO = 1.8
+
+// Fade a material into the background by distance from the scene centre (not from the camera, as
+// fog does). Injected into the built-in shaders; if a marker is missing in some future three, or
+// the program fails to compile, the material is left exactly as three ships it.
+function withFade(material) {
+  material.onBeforeCompile = (shader) => {
+    const vs = shader.vertexShader, fs = shader.fragmentShader
+    const ok = vs.includes('#include <common>') && vs.includes('#include <project_vertex>')
+      && fs.includes('#include <common>') && fs.includes('#include <dithering_fragment>')
+    if (!ok || fadeBroken) return
+    shader.uniforms.uFadeRange = fade.range
+    shader.uniforms.uFadeColor = fade.color
+    shader.vertexShader = vs
+      .replace('#include <common>', '#include <common>\nvarying vec2 vFadeXZ;')
+      .replace('#include <project_vertex>', `#include <project_vertex>
+        vec4 fadeWorld = vec4( transformed, 1.0 );
+        #ifdef USE_INSTANCING
+          fadeWorld = instanceMatrix * fadeWorld;
+        #endif
+        vFadeXZ = ( modelMatrix * fadeWorld ).xz;`)
+    shader.fragmentShader = fs
+      .replace('#include <common>', '#include <common>\nvarying vec2 vFadeXZ;\nuniform vec2 uFadeRange;\nuniform vec3 uFadeColor;')
+      .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+        gl_FragColor.rgb = mix( gl_FragColor.rgb, uFadeColor, smoothstep( uFadeRange.x, uFadeRange.y, length( vFadeXZ ) ) );`)
+  }
+  material.customProgramCacheKey = () => (fadeBroken ? 'plain' : 'radial-fade')
+  return material
+}
+
+function onShaderError() {
+  if (fadeBroken || !mats) return
+  fadeBroken = true                 // recompile every material without the fade
+  for (const m of Object.values(mats)) m.needsUpdate = true
+  requestRender()
+}
+
 function applyTheme() {
   if (!scene || !mats) return
   const p = props.dark ? PALETTE.dark : PALETTE.light
   scene.background.set(p.bg)
   scene.fog.color.set(p.bg)
+  // The shader mixes after the output colour space conversion, so the uniform holds sRGB values.
+  fade.color.value.set(p.bg).convertLinearToSRGB()
   mats.ground.color.set(p.ground)
   mats.asphalt.color.set(p.asphalt)
   mats.concrete.color.set(p.concrete)
@@ -155,6 +201,9 @@ async function init() {
     car: lambert({ vertexColors: true }),
     lamp: new THREE.MeshBasicMaterial({ vertexColors: true }),
   }
+  fade = { range: { value: new THREE.Vector2(1e6, 2e6) }, color: { value: new THREE.Color() } }
+  Object.values(mats).forEach(withFade)
+  renderer.debug.onShaderError = onShaderError
 
   controls = new OrbitControls(camera, canvas.value)
   controls.enableDamping = !reduced.value
@@ -205,13 +254,13 @@ function buildModel(model) {
   groundMesh.receiveShadow = true
   group.add(groundMesh)
 
-  const built = buildInterchange(model)
+  const built = buildInterchange(model, { reach: extent * REACH })
   add(built.asphalt, mats.asphalt)
   add(built.markings, mats.marks)
   add(built.concrete, mats.concrete, { cast: true })
 
   // Traffic: one instanced body mesh and one instanced lamp mesh sharing the same matrices.
-  const cars = planTraffic(model, { speedFactor: 1.5, colours: CAR_COLOURS.length })
+  const cars = planTraffic(model, { speedFactor: 1.5, colours: CAR_COLOURS.length, reach: extent * REACH })
   let bodyMesh = null, lampMesh = null
   if (cars.length) {
     const car = buildCarGeometry()
@@ -241,6 +290,7 @@ function disposeModel(m) {
 }
 
 function placeSceneFor(extent) {
+  fade.range.value.set(extent * FADE_FROM, extent * FADE_TO)
   scene.fog.near = extent * 2.0
   scene.fog.far = extent * 4.4
   camera.far = extent * 14

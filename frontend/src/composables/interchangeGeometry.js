@@ -18,6 +18,7 @@ const DASH_ON = 6
 const DASH_OFF = 9
 const MERGE_DASH = 3                // a speed-change lane's line: short dashes, short gaps
 const MERGE_LINE_WIDTH = 0.25
+const LEAD_STEP = 25                 // spacing of the points of a road drawn on beyond the model
 const CAR_MARGIN = 1.1              // a car's centre stays this far inside the pavement edge
 
 // ── Mesh accumulator ────────────────────────────────────────────────────────
@@ -111,7 +112,9 @@ const num = (v, fallback) => (Number.isFinite(v) ? v : fallback)
 // length), l / r (centreline to the left / right pavement edge), el / er (what that edge is:
 // 'f' free, 'm' narrow median, 's' shared with a lane alongside, 'o' open into a junction) and mk (lane lines drawn).
 // The backend decides all of l, r, el, er and mk; a response without them means plain full width.
-function preparePath(seg) {
+// With `reach` > 0, an end where the road carries on beyond the model (open_start / open_end) is
+// drawn on, straight and level, until it is `reach` metres from the centre.
+function preparePath(seg, reach = 0) {
   const hw = (Number(seg.width_m) > 0 ? Number(seg.width_m) : 7) / 2
   const P = [], l = [], r = [], el = [], er = [], mk = []
   const points = seg.points || []
@@ -128,8 +131,34 @@ function preparePath(seg) {
     er.push(seg.edge_right?.[k] || 'f')
     mk.push(seg.marks ? seg.marks[k] !== '0' : true)
   }
+  if (P.length < 2) return null
+  if (reach > 0) {
+    const edge = c => (c === 'm' ? 'm' : 'f')
+    const extend = (atStart) => {
+      const tip = atStart ? P[0] : P[P.length - 1]
+      const prev = atStart ? P[1] : P[P.length - 2]
+      const h = Math.hypot(tip[0] - prev[0], tip[2] - prev[2])
+      if (h < 1e-6) return
+      const ux = (tip[0] - prev[0]) / h, uz = (tip[2] - prev[2]) / h
+      // Distance along the ray from the tip to the circle of radius `reach`.
+      const along = tip[0] * ux + tip[2] * uz
+      const inside = reach * reach - (tip[0] * tip[0] + tip[2] * tip[2]) + along * along
+      const far = inside > 0 ? -along + Math.sqrt(inside) : 0
+      if (far < 1) return
+      const i = atStart ? 0 : P.length - 1
+      const attrs = [l[i], r[i], edge(el[i]), edge(er[i])]
+      const steps = Math.ceil(far / LEAD_STEP)
+      for (let k = 1; k <= steps; k++) {
+        const t = (far * k) / steps
+        const p = [tip[0] + ux * t, tip[1], tip[2] + uz * t]
+        const put = atStart ? 'unshift' : 'push'
+        P[put](p); l[put](attrs[0]); r[put](attrs[1]); el[put](attrs[2]); er[put](attrs[3]); mk[put](true)
+      }
+    }
+    if (seg.open_start) extend(true)
+    if (seg.open_end) extend(false)
+  }
   const n = P.length
-  if (n < 2) return null
 
   // Horizontal unit direction of each leg.
   const D = []
@@ -272,13 +301,14 @@ function paintDashes(md, path, s0, s1, on, off, centre, width, keep = () => true
 // ── Public: road and structure meshes ───────────────────────────────────────
 
 // Returns { asphalt, markings, concrete }, each { positions: Float32Array, indices: Uint32Array }.
-export function buildInterchange(model) {
+// `reach`: how far from the centre to draw the roads that leave the interchange (0 = as given).
+export function buildInterchange(model, { reach = 0 } = {}) {
   const asphalt = new MeshData(), marks = new MeshData(), concrete = new MeshData()
   const fillBelow = Number.isFinite(model.fill_below_m) ? model.fill_below_m : 3
 
   const paths = []
   for (const seg of model.segments || []) {
-    const path = preparePath(seg)
+    const path = preparePath(seg, reach)
     if (!path) continue
     paths.push(path)
     const { n, l, r, el, er, hw, lanes } = path
@@ -361,8 +391,8 @@ export function buildInterchange(model) {
 // the lateral offset, left positive), out[3..5] unit forward vector (with pitch), out[6..7] unit
 // horizontal left vector. The lateral offset follows the pavement: on a merge taper a single
 // lane leads into the lane alongside, and where a road narrows the outer lanes move inwards.
-export function makeSampler(seg) {
-  const path = preparePath(seg)
+export function makeSampler(seg, reach = 0) {
+  const path = preparePath(seg, reach)
   if (!path) return null
   const single = path.lanes === 1
   return {
@@ -406,10 +436,10 @@ function hashString(s) {
 
 // Cars for a whole model. Each car: { sampler, s0, lat, v (m/s of simulated time), colour (index) }.
 // Spacing 45-70 m per lane, random phase, deterministic for a given model name.
-export function planTraffic(model, { speedFactor = 1.5, colours = 7 } = {}) {
+export function planTraffic(model, { speedFactor = 1.5, colours = 7, reach = 0 } = {}) {
   const cars = []
   for (const seg of model.segments || []) {
-    const sampler = makeSampler(seg)
+    const sampler = makeSampler(seg, reach)
     if (!sampler || sampler.length < 12) continue
     const rnd = seededRandom(hashString(`${model.name}:${seg.id}`))
     const w = Number(seg.width_m) > 0 ? Number(seg.width_m) : 7
