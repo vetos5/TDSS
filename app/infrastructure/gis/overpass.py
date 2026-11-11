@@ -16,6 +16,7 @@ point and radius would have returned, so the analysis sees the same features as 
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
@@ -39,7 +40,7 @@ from app.infrastructure.gis.errors import (
     GisUnavailableError,
 )
 from app.infrastructure.gis.outbound import OutboundBudget
-from app.infrastructure.gis.projection import LocalOrigin, to_local
+from app.infrastructure.gis.projection import LocalOrigin, to_latlon, to_local
 
 OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
 # The public Overpass servers are shared infrastructure and are often at capacity: overpass-api.de
@@ -54,6 +55,19 @@ OVERPASS_MIRROR_ENDPOINTS = (
     OVERPASS_ENDPOINT,
     "https://overpass.private.coffee/api/interpreter",
 )
+# Last resort only: the official OSM API (meant for editing, not for bulk reads) answers a bbox
+# with the same data when every Overpass mirror hangs. Acceptable because results are cached for
+# 30 days and budgeted, and because it is always last in the race order, so it is asked only once
+# the mirrors have failed or stayed silent. It cannot filter, so OverpassClient._attempt_osm
+# fetches complete ways in small tiles and keeps only what the Overpass query would return.
+OSM_API_ENDPOINT = "https://api.openstreetmap.org/api/0.6/map.json"
+# Every source of the race, in order of preference.
+_SOURCES = (*OVERPASS_MIRROR_ENDPOINTS, OSM_API_ENDPOINT)
+# Side of one OSM API request. The API refuses a bbox with more than 50,000 nodes (HTTP 400), and
+# a dense city centre has that many within a few hundred metres, so a large circle is split in a
+# grid of tiles, fetched a few at a time.
+OSM_API_TILE_M = 1000.0
+OSM_API_TILE_WORKERS = 3
 # A mirror that has not answered after this long gets company: the next mirror is started too,
 # and the first good answer wins. A mirror that fails is replaced at once, without waiting. A
 # healthy mirror answers a typical query well within this, so a hedge is rare and never doubles
@@ -74,6 +88,10 @@ SLOTS_PER_ENDPOINT = 2
 # such a block; meanwhile the other mirror, an expired cache entry or the browser's own fetch serve.
 COOLDOWN_AFTER_429_S = 30.0
 COOLDOWN_AFTER_REFUSED_S = 120.0
+# A mirror that accepted the connection and never began its answer is hung (seen for minutes at a
+# time on both mirrors). While it is, later lookups skip it and go to the next source at once
+# instead of waiting out the hedge and read timeouts again.
+COOLDOWN_AFTER_TIMEOUT_S = 120.0
 DEFAULT_TIMEOUT_S = 20.0  # read timeout per socket read; see outbound.py for the others
 # Overpass's own [timeout:] for the query, kept under the read timeout so a heavy query ends with
 # Overpass's error remark rather than our read timing out. A busy server is also more likely to
@@ -108,6 +126,11 @@ QUERY_MARGIN_M = 100.0
 # Attempts run here, not on the request's thread, so several mirrors can be in flight at once.
 # Sized for every site request slot (4) racing every mirror; threads start only when needed.
 _ATTEMPTS = ThreadPoolExecutor(max_workers=16, thread_name_prefix="overpass")
+# Tiles of one OSM API lookup. Separate from _ATTEMPTS: an attempt waiting on tiles must never
+# wait for a worker of its own pool.
+_OSM_TILES = ThreadPoolExecutor(
+    max_workers=OSM_API_TILE_WORKERS, thread_name_prefix="osm-tile"
+)
 # Public messages that every mirror would answer the same way: the race stops at once.
 _FINAL_MESSAGES = (TOO_MUCH_DATA_MESSAGE, QUOTA_MESSAGE, CLIENT_QUOTA_MESSAGE)
 
@@ -272,6 +295,65 @@ def _check_remark(raw: Any) -> None:
         )
 
 
+def _wanted(tags: dict[str, str]) -> bool:
+    """Whether an Overpass query from :func:`build_query` would return a way with these tags."""
+    if "highway" in tags:
+        return tags["highway"] in MAJOR_HIGHWAY_CLASSES
+    return any(_tag_matches(tags, want) for _, want in _CLASSIFIERS)
+
+
+def _osm_tile_boxes(lat: float, lon: float, radius_m: float) -> list[str]:
+    """``bbox`` values (``minlon,minlat,maxlon,maxlat``) of an n x n grid covering the circle."""
+    origin = LocalOrigin(lat=lat, lon=lon)
+    n = max(1, math.ceil(2 * radius_m / OSM_API_TILE_M))
+    step = 2 * radius_m / n
+    boxes = []
+    for row in range(n):
+        for col in range(n):
+            x0, y0 = -radius_m + col * step, -radius_m + row * step
+            south, west = to_latlon(x0, y0, origin)
+            north, east = to_latlon(x0 + step, y0 + step, origin)
+            boxes.append(f"{west:.7f},{south:.7f},{east:.7f},{north:.7f}")
+    return boxes
+
+
+def _merge_osm_tiles(tiles: list[Any]) -> dict[str, Any]:
+    """OSM API answers as one Overpass ``out geom`` body: wanted ways with inlined coordinates.
+
+    A way crossing a tile edge comes back whole from each tile, so ways are de-duplicated by id;
+    a way with a node missing from every tile is skipped.
+    """
+    nodes: dict[int, tuple[float, float]] = {}
+    ways: dict[int, dict[str, Any]] = {}
+    for raw in tiles:
+        if not isinstance(raw, dict):
+            raise GisUnavailableError(f"OSM API returned {type(raw).__name__}, not a JSON object")
+        for el in raw.get("elements", []):
+            if el.get("type") == "node" and "lat" in el and "lon" in el:
+                nodes[el["id"]] = (el["lat"], el["lon"])
+            elif el.get("type") == "way":
+                ways.setdefault(el["id"], el)
+    elements = []
+    for way_id, el in ways.items():
+        tags = el.get("tags", {})
+        refs = el.get("nodes", [])
+        if not _wanted(tags) or not refs or any(ref not in nodes for ref in refs):
+            continue
+        elements.append({
+            "type": "way", "id": way_id, "tags": tags,
+            "geometry": [{"lat": nodes[ref][0], "lon": nodes[ref][1]} for ref in refs],
+        })
+    return {"elements": elements}
+
+
+def _take(charge: list[str | None]) -> str | None:
+    """The visitor to charge for this lookup, once; later callers get ``None``."""
+    try:
+        return charge.pop()
+    except IndexError:
+        return None
+
+
 class OverpassClient:
     """Fetches and caches OSM features around a point. Pass a fake ``httpx.Client`` in tests.
 
@@ -297,7 +379,7 @@ class OverpassClient:
         self._budget = budget
         self._endpoint_slots = {
             endpoint: threading.BoundedSemaphore(SLOTS_PER_ENDPOINT)
-            for endpoint in OVERPASS_MIRROR_ENDPOINTS
+            for endpoint in _SOURCES
         }
         self._cooldown_until: dict[str, float] = {}  # endpoint -> time.monotonic() value
 
@@ -328,7 +410,9 @@ class OverpassClient:
         key = f"overpass-v2:{q_lat}:{q_lon}:{int(q_radius)}"
 
         def _fetch() -> dict[str, list]:
-            return self._race(build_query(q_lat, q_lon, q_radius), deadline, client)
+            return self._race(
+                build_query(q_lat, q_lon, q_radius), (q_lat, q_lon, q_radius), deadline, client
+            )
 
         compact = cached_get(
             key, self._cache_ttl_days, _fetch,
@@ -336,8 +420,17 @@ class OverpassClient:
         )
         return within_radius(_expand(compact), lat, lon, radius_m)
 
-    def _race(self, query: str, deadline: float | None, client: str | None) -> dict[str, list]:
-        """Ask the mirrors, overlapping them, and return the first good answer.
+    def _race(
+        self,
+        query: str,
+        circle: tuple[float, float, float],
+        deadline: float | None,
+        client: str | None,
+    ) -> dict[str, list]:
+        """Ask the sources, overlapping them, and return the first good answer.
+
+        The sources are the Overpass mirrors and, last, the OSM API (see OSM_API_ENDPOINT), which
+        takes the query circle ``(lat, lon, radius_m)`` instead of the Overpass QL.
 
         The first mirror starts at once. Each failure starts the next mirror immediately, and a
         mirror still silent after HEDGE_AFTER_S gets the next one started alongside it. When one
@@ -346,10 +439,10 @@ class OverpassClient:
         mirrors that failed transiently are tried once more, after a backoff. A mirror cooling
         down after a 429 or a refused connection is skipped.
 
-        Only the first attempt is charged to *client*: a visitor's daily share counts lookups,
-        not how many mirrors this server needed to answer one.
+        Only the first request made is charged to *client*: a visitor's daily share counts
+        lookups, not how many sources this server needed to answer one.
         """
-        endpoints = list(OVERPASS_MIRROR_ENDPOINTS)
+        endpoints = list(_SOURCES)
         charge = [client]
         stop = threading.Event()
         failures: list[GisUnavailableError] = []
@@ -357,8 +450,9 @@ class OverpassClient:
         def start(queue: list[str], pending: dict[Future, str]) -> None:
             if queue:
                 endpoint = queue.pop(0)
-                who = charge.pop() if charge else None
-                future = _ATTEMPTS.submit(self._attempt, endpoint, query, deadline, who, stop)
+                future = _ATTEMPTS.submit(
+                    self._attempt, endpoint, query, circle, deadline, charge, stop
+                )
                 pending[future] = endpoint
 
         try:
@@ -379,7 +473,13 @@ class OverpassClient:
                     for future in done:
                         endpoint = pending.pop(future)
                         try:
-                            return future.result()
+                            result = future.result()
+                            if endpoint == OSM_API_ENDPOINT:
+                                # The OSM API only starts once the mirrors have failed or stayed
+                                # silent, so those still in flight are hung: leave them alone.
+                                for hung in pending.values():
+                                    self._cool_down(hung, COOLDOWN_AFTER_TIMEOUT_S)
+                            return result
                         except _AttemptFailed as failed:
                             failures.append(failed.error)
                             if failed.final:
@@ -402,8 +502,8 @@ class OverpassClient:
         # to shrink; anything else is the service being unavailable.
         timed_out = failures and all(f.public_message == QUERY_FAILED_MESSAGE for f in failures)
         raise GisUnavailableError(
-            f"Overpass API is unavailable after retrying {len(OVERPASS_MIRROR_ENDPOINTS)} "
-            f"endpoints; it can be briefly busy -- try again shortly. Errors: "
+            f"Overpass API is unavailable after retrying {len(_SOURCES)} "
+            f"sources; it can be briefly busy -- try again shortly. Errors: "
             + "; ".join(str(f) for f in failures),
             public_message=QUERY_FAILED_MESSAGE if timed_out else UNAVAILABLE_MESSAGE,
             retry_after_s=10,
@@ -413,11 +513,12 @@ class OverpassClient:
         self,
         endpoint: str,
         query: str,
+        circle: tuple[float, float, float],
         deadline: float | None,
-        client: str | None,
+        charge: list[str | None],
         stop: threading.Event,
     ) -> dict[str, list]:
-        """One request to one mirror, as the compact cache form. Raises :class:`_AttemptFailed`."""
+        """One request to one source, as the compact cache form. Raises :class:`_AttemptFailed`."""
         if stop.is_set():
             raise _AttemptFailed(GisUnavailableError(f"{endpoint}: race already won"), retry=False)
         if time.monotonic() < self._cooldown_until.get(endpoint, 0.0):
@@ -429,8 +530,10 @@ class OverpassClient:
                 retry=True,
             )
         try:
+            if endpoint == OSM_API_ENDPOINT:
+                return self._attempt_osm(circle, deadline, charge, stop)
             timeout = outbound.attempt_timeout(DEFAULT_TIMEOUT_S, deadline, "Overpass")
-            raw = self._post(endpoint, query, timeout, deadline, client, stop)
+            raw = self._post(endpoint, query, timeout, deadline, charge, stop)
             _check_remark(raw)
             return _compact(parse_features(raw))
         except GisUnavailableError as exc:
@@ -454,7 +557,10 @@ class OverpassClient:
                     retry=False,
                 ) from exc
             # A read timeout is not retried on the same mirror: a query heavy enough to time out
-            # once times out again there. Another mirror may still be fast enough.
+            # once times out again there. Another mirror may still be fast enough. A mirror that
+            # never began its answer is hung, so it is left alone for a while.
+            if isinstance(exc, httpx.ReadTimeout):
+                self._cool_down(endpoint, COOLDOWN_AFTER_TIMEOUT_S)
             raise _AttemptFailed(
                 GisUnavailableError(f"Overpass API request to {endpoint} failed: {exc!r}"),
                 retry=isinstance(exc, httpx.HTTPError) and not isinstance(exc, httpx.ReadTimeout)
@@ -472,10 +578,10 @@ class OverpassClient:
         query: str,
         timeout: httpx.Timeout,
         deadline: float | None,
-        client: str | None,
+        charge: list[str | None],
         stop: threading.Event | None = None,
     ) -> Any:
-        with self._budget.call(deadline, client) if self._budget else nullcontext():
+        with self._budget.call(deadline, _take(charge)) if self._budget else nullcontext():
             with self._client.stream(
                 "POST", endpoint, data={"data": query}, timeout=timeout
             ) as response:
@@ -483,6 +589,55 @@ class OverpassClient:
                 return outbound.read_json(
                     response, MAX_RESPONSE_BYTES, deadline, "Overpass", stop
                 )
+
+    def _attempt_osm(
+        self,
+        circle: tuple[float, float, float],
+        deadline: float | None,
+        charge: list[str | None],
+        stop: threading.Event,
+    ) -> dict[str, list]:
+        """The circle's bounding box from the OSM API, in tiles, as the compact cache form."""
+        boxes = _osm_tile_boxes(*circle)
+        futures = [
+            _OSM_TILES.submit(
+                self._get_osm_tile, box, deadline, charge if i == 0 else [None], stop
+            )
+            for i, box in enumerate(boxes)
+        ]
+        try:
+            tiles = [future.result() for future in futures]
+        finally:
+            for future in futures:
+                future.cancel()  # tiles still queued after a failure never start
+        return _compact(parse_features(_merge_osm_tiles(tiles)))
+
+    def _get_osm_tile(
+        self,
+        bbox: str,
+        deadline: float | None,
+        charge: list[str | None],
+        stop: threading.Event,
+    ) -> Any:
+        if stop.is_set():
+            raise GisUnavailableError(f"{OSM_API_ENDPOINT}: race already won")
+        timeout = outbound.attempt_timeout(DEFAULT_TIMEOUT_S, deadline, "OSM API")
+        try:
+            with self._budget.call(deadline, _take(charge)) if self._budget else nullcontext():
+                with self._client.stream(
+                    "GET", OSM_API_ENDPOINT, params={"bbox": bbox}, timeout=timeout
+                ) as response:
+                    response.raise_for_status()
+                    return outbound.read_json(
+                        response, MAX_RESPONSE_BYTES, deadline, "OSM API", stop
+                    )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 400:  # more than 50,000 nodes in the tile
+                raise GisUnavailableError(
+                    f"OSM API refused {bbox}: too many nodes",
+                    public_message=TOO_MUCH_DATA_MESSAGE,
+                ) from exc
+            raise
 
 
 def _retry_after_s(response: httpx.Response) -> float:

@@ -79,8 +79,9 @@ SITE_REQUEST_SLOTS = 4
 SITE_REQUEST_DEADLINE_S = 40.0
 # Overpass calls in flight at once, over all mirrors. Each public Overpass server gives a client IP
 # 2 query slots and answers 429 beyond them, so the client also holds at most 2 per mirror (see
-# SLOTS_PER_ENDPOINT in overpass.py); this cap is that times the two mirrors.
-OVERPASS_MAX_CONCURRENT = 4
+# SLOTS_PER_ENDPOINT in overpass.py). The cap is that times the two mirrors plus room for the OSM
+# API fallback: its tile requests (3 at a time) need slots while hung mirrors still hold theirs.
+OVERPASS_MAX_CONCURRENT = 6
 # Every attempt counts, hedges and retries included, and a busy day can need two or three
 # attempts per lookup. overpass-api.de's usage policy asks for well under 10,000 queries a day,
 # and the load is spread over two mirrors; a cached 100 m cell costs nothing.

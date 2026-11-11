@@ -11,13 +11,13 @@ import pytest
 from app.data.site_analysis_defaults import MIN_MAJOR_ROAD_RANK, ROAD_CLASS_RANK
 from app.infrastructure.gis import overpass
 from app.infrastructure.gis.errors import (
-    QUERY_FAILED_MESSAGE,
     QUOTA_MESSAGE,
     TOO_MUCH_DATA_MESSAGE,
     GisUnavailableError,
 )
 from app.infrastructure.gis.outbound import OutboundBudget
 from app.infrastructure.gis.overpass import (
+    OSM_API_ENDPOINT,
     OVERPASS_ENDPOINT,
     OVERPASS_MIRROR_ENDPOINTS,
     ROUNDS,
@@ -51,6 +51,10 @@ SAMPLE_RAW = {
         {"type": "way", "id": 10, "tags": {"highway": "unclassified"}},     # no geometry -> ignored
     ]
 }
+
+
+MIRROR_HOSTS = {httpx.URL(e).host for e in OVERPASS_MIRROR_ENDPOINTS}
+OSM_HOST = httpx.URL(OSM_API_ENDPOINT).host
 
 
 def make_client(handler, **kwargs):
@@ -269,13 +273,14 @@ def test_raises_after_all_endpoints_and_retries_are_exhausted():
     calls = []
 
     def handler(request):
-        calls.append(1)
+        calls.append(request.url.host)
         return httpx.Response(503, text="busy")
 
     client = make_client(handler)
     with pytest.raises(GisUnavailableError, match="unavailable after retrying"):
         client.fetch_features(**KYIV)
-    assert len(calls) == len(OVERPASS_MIRROR_ENDPOINTS) * ROUNDS
+    assert len([h for h in calls if h in MIRROR_HOSTS]) == len(OVERPASS_MIRROR_ENDPOINTS) * ROUNDS
+    assert OSM_HOST in calls  # the OSM API was tried as well, last
 
 
 def test_timeout_is_retried_then_can_still_succeed():
@@ -352,7 +357,7 @@ def test_a_read_timeout_is_not_retried_on_the_same_mirror():
     with pytest.raises(GisUnavailableError):
         make_client(handler).fetch_features(**KYIV)
     # Each mirror once: a query heavy enough to time out would only time out there again.
-    assert sorted(calls) == sorted(httpx.URL(e).host for e in OVERPASS_MIRROR_ENDPOINTS)
+    assert sorted(h for h in calls if h in MIRROR_HOSTS) == sorted(MIRROR_HOSTS)
 
 
 def test_no_request_once_the_deadline_has_passed():
@@ -377,7 +382,7 @@ def test_retries_stop_at_the_deadline():
 
     with pytest.raises(GisUnavailableError, match="deadline"):
         make_client(handler).fetch_features(**KYIV, deadline=time.monotonic() + 0.05)
-    assert len(calls) == 1  # not len(OVERPASS_MIRROR_ENDPOINTS) * ROUNDS
+    assert len(calls) == 1  # no further source or round once the deadline has passed
 
 
 def test_oversized_response_is_refused_and_not_cached(tmp_path, monkeypatch):
@@ -402,6 +407,8 @@ def test_runtime_error_remark_is_a_failure_and_never_cached(tmp_path):
     calls = []
 
     def handler(request):
+        if request.url.host == OSM_HOST:
+            return httpx.Response(503, text="busy")
         calls.append(1)
         return httpx.Response(200, json={
             "elements": [],
@@ -412,9 +419,8 @@ def test_runtime_error_remark_is_a_failure_and_never_cached(tmp_path):
         httpx.Client(transport=httpx.MockTransport(handler)), cache_dir=tmp_path
     )
     for _ in range(2):
-        with pytest.raises(GisUnavailableError) as info:
+        with pytest.raises(GisUnavailableError, match="Query timed out"):
             client.fetch_features(**KYIV)
-        assert info.value.public_message == QUERY_FAILED_MESSAGE
     # Each mirror once per lookup (a timed-out query is not retried on the same mirror), and the
     # second lookup asked again: nothing was cached.
     assert len(calls) == 2 * len(OVERPASS_MIRROR_ENDPOINTS)
@@ -552,3 +558,138 @@ def test_a_cooled_down_mirror_is_asked_again_later(monkeypatch):
     now[0] = 2000.0 + overpass.COOLDOWN_AFTER_429_S
     client.fetch_features(lat=49.0, lon=25.0)
     assert seen_hosts[-1] == "overpass-api.de"
+
+
+# ── OSM API as the last resort ────────────────────────────────────────────────
+
+HIGHWAY_LAT = 50.4501
+
+
+def _osm_map(*ways, nodes=None):
+    """An OSM API ``map.json`` body: ways are (id, tags, [node ids]); nodes {id: (lat, lon)}."""
+    nodes = nodes or {i: (HIGHWAY_LAT + i * 0.0001, 30.5234 + i * 0.0001) for i in range(1, 9)}
+    elements = [{"type": "node", "id": i, "lat": la, "lon": lo} for i, (la, lo) in nodes.items()]
+    elements += [{"type": "way", "id": i, "nodes": refs, "tags": tags} for i, tags, refs in ways]
+    return {"version": "0.6", "elements": elements}
+
+
+def _only_osm_answers(osm_handler, mirror_status=503):
+    def handler(request):
+        if request.url.host == OSM_HOST:
+            return osm_handler(request)
+        return httpx.Response(mirror_status, text="at capacity")
+
+    return handler
+
+
+def test_the_osm_api_answers_when_both_mirrors_fail():
+    seen = []
+
+    def osm(request):
+        seen.append(request)
+        return httpx.Response(200, json=_osm_map(
+            (1, {"highway": "primary", "lanes": "2"}, [1, 2]),
+            (2, {"highway": "footway"}, [1, 2]),
+            (3, {}, [1, 2]),
+            (4, {"building": "yes"}, [1, 2, 3, 1]),
+            (5, {"highway": "motorway"}, [1, 99]),  # node 99 is missing: skipped
+        ))
+
+    features = make_client(_only_osm_answers(osm)).fetch_features(**KYIV, radius_m=100)
+    assert [w.id for w in features.roads] == [1]
+    assert [w.id for w in features.buildings] == [4]
+    assert features.roads[0].coords == [(HIGHWAY_LAT + 0.0001, 30.5234 + 0.0001),
+                                        (HIGHWAY_LAT + 0.0002, 30.5234 + 0.0002)]
+    assert seen[0].method == "GET"
+    assert re.fullmatch(r"[\d.]+,[\d.]+,[\d.]+,[\d.]+", seen[0].url.params["bbox"])
+
+
+def test_the_osm_api_is_not_asked_while_a_mirror_answers():
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        return httpx.Response(200, json=SAMPLE_RAW)
+
+    make_client(handler).fetch_features(**KYIV)
+    assert OSM_HOST not in hosts
+
+
+def test_a_large_radius_is_fetched_in_tiles_and_a_shared_way_appears_once():
+    bboxes = []
+
+    def osm(request):
+        bboxes.append([float(v) for v in request.url.params["bbox"].split(",")])
+        return httpx.Response(200, json=_osm_map((1, {"highway": "primary"}, [1, 2])))
+
+    features = make_client(_only_osm_answers(osm)).fetch_features(**KYIV, radius_m=1500)
+    assert len(bboxes) > 1
+    assert [w.id for w in features.roads] == [1]
+    # Each side of a tile stays near the tile size (1000 m is about 0.009 deg of latitude).
+    assert all(north - south < 0.0095 for _, south, _, north in bboxes)
+
+
+def test_too_many_nodes_in_the_osm_api_is_too_much_data():
+    def osm(request):
+        return httpx.Response(400, text="You requested too many nodes (limit is 50000)")
+
+    with pytest.raises(GisUnavailableError) as info:
+        make_client(_only_osm_answers(osm)).fetch_features(**KYIV)
+    assert info.value.public_message == TOO_MUCH_DATA_MESSAGE
+
+
+def test_a_hung_mirror_is_skipped_by_the_next_lookup():
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        if request.url.host == OSM_HOST:
+            return httpx.Response(200, json=_osm_map((1, {"highway": "primary"}, [1, 2])))
+        raise httpx.ReadTimeout("read timed out", request=request)
+
+    client = make_client(handler)
+    client.fetch_features(lat=50.45, lon=30.52, radius_m=100)
+    first = len(hosts)
+    client.fetch_features(lat=49.0, lon=25.0, radius_m=100)  # another cell: not a cache hit
+    assert sorted(h for h in hosts[:first] if h in MIRROR_HOSTS) == sorted(MIRROR_HOSTS)
+    assert all(h == OSM_HOST for h in hosts[first:])
+
+
+def test_a_hung_mirror_is_asked_again_after_its_cooldown(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(overpass.time, "monotonic", lambda: now[0])
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        if request.url.host == "overpass-api.de" and now[0] < 2000:
+            raise httpx.ReadTimeout("read timed out", request=request)
+        return httpx.Response(200, json=SAMPLE_RAW)
+
+    client = make_client(handler)
+    client.fetch_features(lat=50.45, lon=30.52, radius_m=100)
+    now[0] = 2000.0 + overpass.COOLDOWN_AFTER_TIMEOUT_S
+    client.fetch_features(lat=49.0, lon=25.0, radius_m=100)
+    assert hosts[-1] == "overpass-api.de"
+
+
+def test_mirrors_still_silent_when_the_osm_api_answers_are_skipped_next_time(monkeypatch):
+    monkeypatch.setattr(overpass, "HEDGE_AFTER_S", 0.05)
+    release = threading.Event()
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        if request.url.host == OSM_HOST:
+            return httpx.Response(200, json=_osm_map((1, {"highway": "primary"}, [1, 2])))
+        release.wait(5)  # both mirrors accept the connection and say nothing
+        return httpx.Response(504, text="gateway timeout")
+
+    client = make_client(handler)
+    try:
+        client.fetch_features(lat=50.45, lon=30.52, radius_m=100, deadline=time.monotonic() + 30)
+        first = len(hosts)
+        client.fetch_features(lat=49.0, lon=25.0, radius_m=100, deadline=time.monotonic() + 30)
+    finally:
+        release.set()
+    assert all(h == OSM_HOST for h in hosts[first:])
