@@ -496,6 +496,8 @@ def get_interchange_model3d(name: str, response: Response):
             Model3DSegmentSchema(
                 id=s.id, kind=s.kind, lanes=s.lanes, width_m=s.width_m, speed_kmh=s.speed_kmh,
                 points=[list(p) for p in s.points],
+                left_m=list(s.left_m), right_m=list(s.right_m),
+                edge_left=s.edge_left, edge_right=s.edge_right, marks=s.marks,
             )
             for s in model.segments
         ],

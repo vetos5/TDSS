@@ -34,6 +34,24 @@ three steps.
 
 3. **Piers** go under every deck higher than ``PIER_MIN_HEIGHT_M``, spaced along it and moved
    off any road that passes underneath.
+
+4. **Cross-section** ("lane maths"). The plan draws a ramp as a full-width lane that starts and
+   ends bluntly beside its carriageway. Here every sample gets the position of its two pavement
+   edges and says what each edge is:
+
+   * *free*: the edge of the road, with an edge line, and a parapet when the road is elevated;
+   * *median*: the other carriageway of the same road is less than ``MEDIAN_FILL_MAX_M`` away
+     (an arterial's kerbed median), so the two share one deck: the pavement runs to the middle
+     of the median, with an edge line and no parapet;
+   * *shared*: another lane at the same level runs alongside (a speed-change lane and its
+     carriageway), so there is a broken lane line and no barrier;
+   * *open*: the pavement continues into another road at the same level (a ramp terminal, a
+     fork, a SPUI's central intersection, a DDI's crossover), so there is neither.
+
+   A ramp that joins or leaves a carriageway alongside it tapers over ``MERGE_TAPER_M``: its
+   outer edge runs in to meet the carriageway's edge, which is how a parallel speed-change lane
+   ends. A road that ends where a narrower ramp carries on (a trumpet's or a directional T's
+   stem) drops to the ramp's width over ``LANE_DROP_TAPER_M``. Lane lines stop inside a junction.
 """
 
 from __future__ import annotations
@@ -55,6 +73,14 @@ _EPS_HEIGHT = 1e-7        # LP weight of a metre of height: the last tie-breaker
 _MIN_GAP_M = 2.0          # knots closer than this are merged into one level stretch
 _CONTACT_M = 1.5          # two ramps this close at an end are a fork or a merge, not a crossing
 _OUTPUT_STEP = 2          # keep every n-th 2 m sample in the output
+_SAME_LEVEL_M = 0.5       # two surfaces closer than this in height are one pavement
+_EDGE_TOL_M = 0.6         # an edge this close to another road's edge touches it
+_PARALLEL = 0.35          # sine of the largest angle between two lanes that run alongside
+_JUNCTION_MARGIN_M = 2.0  # lane lines stop this far before a road that crosses at grade
+_MIN_MERGE_RUN_M = 20.0   # a ramp alongside for less than this meets its road at a junction
+
+FREE, MEDIAN, SHARED, OPEN = "f", "m", "s", "o"
+_CODES = FREE + MEDIAN + SHARED + OPEN   # in rising order: the later one wins where two apply
 
 
 @dataclass(frozen=True)
@@ -65,6 +91,14 @@ class Segment3D:
     width_m: float
     speed_kmh: float
     points: tuple[tuple[float, float, float], ...]  # x east, y north, z up; in travel direction
+    # Per point, looking in the travel direction: distance from the centreline to each pavement
+    # edge, what each edge is (one of FREE, SHARED, OPEN per point), and whether lane lines are
+    # drawn there ("1") or the point is inside a junction ("0").
+    left_m: tuple[float, ...] = ()
+    right_m: tuple[float, ...] = ()
+    edge_left: str = ""
+    edge_right: str = ""
+    marks: str = ""
 
 
 @dataclass(frozen=True)
@@ -107,6 +141,19 @@ class _Line:
     pin_hi: float = 0.0
     parent: "_Line | None" = None      # the ramp this one forks from or merges into
     reverse: bool = False              # samples run against the traffic
+    pins: tuple = ()                   # (line, samples alongside it) for the start and the end
+    left: np.ndarray | None = None     # centreline to left pavement edge, per sample
+    right: np.ndarray | None = None
+    median_left: np.ndarray | None = None  # the edge faces a narrow median, per sample
+    median_right: np.ndarray | None = None
+    edge_left: np.ndarray | None = None   # index into _CODES, per sample
+    edge_right: np.ndarray | None = None
+    marks: np.ndarray | None = None       # lane lines drawn at this sample
+
+    def tangents(self) -> np.ndarray:
+        """Unit direction at each sample, (n, 2)."""
+        d = np.gradient(self.xy, axis=0)
+        return d / np.maximum(np.hypot(d[:, 0], d[:, 1]), 1e-9)[:, None]
 
     def __post_init__(self) -> None:
         step = np.hypot(*np.diff(self.xy, axis=0).T)
@@ -406,6 +453,7 @@ def _profile_ramps(lines: list[_Line], crossings: list[_Crossing]) -> None:
                 if target is not None:
                     r.z[idx] = np.interp(target.line.project(pts[idx]), target.s, target.z)
             r.pin_lo, r.pin_hi = float(r.s[n0 - 1]), float(r.s[n - n1])
+            r.pins = ((t0, n0), (t1, n1))
             # A ramp follows the traffic if it runs the same way as the carriageway it is on.
             best = 0.0
             for target, s in ((t0, 0.0), (t1, r.length)):
@@ -465,6 +513,153 @@ def _clear_spot(ln: _Line, s: float, lines: list[_Line], width: float) -> float 
     return None
 
 
+# ── Step 4: cross-section ────────────────────────────────────────────────────
+
+
+def _relate(a: _Line, ta: np.ndarray, b: _Line, tb: np.ndarray, pts, reach: float):
+    """
+    For the points of *a* within *reach* of *b*'s centreline: their mask, their distance to it,
+    whether the two surfaces are level there, and whether the two lines run alongside.
+    """
+    dist = shapely.distance(b.line, pts)
+    near = dist <= reach
+    if not near.any():
+        return near, None, None, None
+    where = shapely.line_locate_point(b.line, pts[near])
+    level = np.abs(a.z[near] - np.interp(where, b.s, b.z)) < _SAME_LEVEL_M
+    j = np.clip(np.searchsorted(b.s, where), 0, len(b.s) - 1)
+    sine = np.abs(ta[near, 0] * tb[j, 1] - ta[near, 1] * tb[j, 0])
+    return near, dist[near], level, sine < _PARALLEL
+
+
+def _widths(lines: list[_Line]) -> None:
+    """Pavement edges of every line: full width, less the merge and lane-drop tapers."""
+    roads = [ln for ln in lines if not ln.is_ramp]
+    ramps = [ln for ln in lines if ln.is_ramp]
+    for ln in lines:
+        ln.left = np.full(len(ln.s), ln.width / 2)
+        ln.right = ln.left.copy()
+        ln.median_left = np.zeros(len(ln.s), dtype=bool)
+        ln.median_right = ln.median_left.copy()
+
+    # Two carriageways with only a narrow median between them stand on one deck: each one's
+    # pavement runs to the middle of the median. The widening fades out where they move apart.
+    limit = dims.MEDIAN_FILL_MAX_M
+    for a in roads:
+        ta = a.tangents()
+        normal = np.stack([-ta[:, 1], ta[:, 0]], axis=1) * (a.width / 2)
+        for b in roads:
+            if b is a:
+                continue
+            tb = b.tangents()
+            for sign, edge, median in ((1, a.left, a.median_left), (-1, a.right, a.median_right)):
+                pts = shapely.points(a.xy + sign * normal)
+                near, dist, level, parallel = _relate(a, ta, b, tb, pts, b.width / 2 + limit + 1.0)
+                if dist is None:
+                    continue
+                gap = dist - b.width / 2
+                ok = level & parallel & (gap > _EDGE_TOL_M)
+                fade = np.clip(limit + 1.0 - gap, 0.0, 1.0)
+                edge[near] += np.where(ok, gap / 2 * fade, 0.0)
+                median[near] |= ok & (gap <= limit)
+
+    # A ramp alongside its carriageway is a speed-change lane: taper its outer edge to the tip.
+    for r in ramps:
+        half = r.width / 2
+        tangent = r.tangents()
+        for from_start, (road, count) in zip((True, False), r.pins, strict=True):
+            if road is None or road.is_ramp:
+                continue
+            i = 0 if from_start else len(r.s) - 1
+            tip = shapely.Point(r.xy[i])
+            where = road.line.project(tip)
+            run = r.s[count - 1] if from_start else r.length - r.s[len(r.s) - count]
+            here, there = tangent[i], road.heading_at(where)
+            alongside = (
+                run >= _MIN_MERGE_RUN_M
+                and road.line.distance(tip) >= road.width / 2 - _EDGE_TOL_M   # not inside it
+                and 1.0 < where < road.length - 1.0                           # nor at its end
+                and abs(here[0] * there[0] + here[1] * there[1]) > 0.9
+            )
+            if not alongside:
+                continue
+            near = road.line.interpolate(where)
+            road_on_left = here[0] * (near.y - tip.y) - here[1] * (near.x - tip.x) > 0
+            length = min(dims.MERGE_TAPER_M, 0.85 * run)
+            along = r.s if from_start else r.length - r.s
+            taper = -half + r.width * np.clip(along / length, 0.04, 1.0)
+            outer = r.right if road_on_left else r.left
+            np.minimum(outer, taper, out=outer)
+
+    # A road that ends where a narrower ramp carries on drops to the ramp's width.
+    for road in roads:
+        half = road.width / 2
+        for from_start in (True, False):
+            end = road.xy[0 if from_start else -1]
+            onward = [
+                r.width for r in ramps
+                if min(np.hypot(*(r.xy[0] - end)), np.hypot(*(r.xy[-1] - end))) < _CONTACT_M
+            ]
+            if not onward or max(onward) / 2 >= half:
+                continue
+            narrow = max(onward) / 2
+            length = min(dims.LANE_DROP_TAPER_M, 0.3 * road.length)
+            along = road.s if from_start else road.length - road.s
+            taper = narrow + (half - narrow) * np.clip(along / length, 0.0, 1.0)
+            np.minimum(road.left, taper, out=road.left)
+            np.minimum(road.right, taper, out=road.right)
+
+
+def _edges(lines: list[_Line]) -> None:
+    """What each pavement edge of every line is, and where its lane lines stop."""
+    free, median, shared, open_ = (_CODES.index(c) for c in (FREE, MEDIAN, SHARED, OPEN))
+    tangents = {id(ln): ln.tangents() for ln in lines}
+    for a in lines:
+        ta = tangents[id(a)]
+        normal = np.stack([-ta[:, 1], ta[:, 0]], axis=1) * (a.width / 2)
+        n = len(a.s)
+        a.edge_left = np.where(a.median_left, median, free)
+        a.edge_right = np.where(a.median_right, median, free)
+        a.marks = np.ones(n, dtype=bool)
+        sides = (
+            (shapely.points(a.xy + normal), a.edge_left),
+            (shapely.points(a.xy - normal), a.edge_right),
+        )
+        centre = shapely.points(a.xy)
+        for b in lines:
+            if b is a:
+                continue
+            tb = tangents[id(b)]
+            half = b.width / 2
+
+            for pts, codes in sides:
+                near, dist, level, parallel = _relate(a, ta, b, tb, pts, half + _EDGE_TOL_M)
+                if dist is None:
+                    continue
+                touching = dist >= half - _EDGE_TOL_M     # at b's edge, not inside b
+                code = np.where(touching & parallel, shared, open_)
+                codes[near] = np.maximum(codes[near], np.where(level, code, free))
+
+            near, dist, level, parallel = _relate(
+                a, ta, b, tb, centre, half + _JUNCTION_MARGIN_M
+            )
+            if dist is None:
+                continue
+            crossing = ~parallel
+            absorbed = parallel & (dist < half - _EDGE_TOL_M) & a.is_ramp & (not b.is_ramp)
+            a.marks[near] &= ~(level & (crossing | absorbed))
+
+        # A lane that is alongside only briefly is not a speed-change lane: it meets the road at
+        # a junction (a DDI's left turn arriving beside the bridge), so the edge is open.
+        for codes in (a.edge_left, a.edge_right):
+            is_shared = np.concatenate([[False], codes == shared, [False]])
+            starts = np.flatnonzero(is_shared[1:] & ~is_shared[:-1])
+            stops = np.flatnonzero(~is_shared[1:] & is_shared[:-1])
+            for i, j in zip(starts, stops, strict=True):
+                if a.s[j - 1] - a.s[i] < _MIN_MERGE_RUN_M:
+                    codes[i:j] = open_
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 
@@ -489,6 +684,8 @@ def build_model(alternative_name: str) -> Model3D | None:
         if not ln.is_ramp:
             ln.z = _road_profile(ln, crossings)
     _profile_ramps(lines, crossings)
+    _widths(lines)
+    _edges(lines)
 
     segments = []
     max_grade = 0.0
@@ -497,8 +694,11 @@ def build_model(alternative_name: str) -> Model3D | None:
         keep = np.arange(0, len(ln.s), _OUTPUT_STEP)
         if keep[-1] != len(ln.s) - 1:
             keep = np.append(keep, len(ln.s) - 1)
+        # Left and right are as seen in the travel direction, so they swap with the samples.
+        left, right, e_left, e_right = ln.left, ln.right, ln.edge_left, ln.edge_right
         if ln.reverse:
             keep = keep[::-1]
+            left, right, e_left, e_right = right, left, e_right, e_left
         segments.append(Segment3D(
             id=ln.id, kind=ln.kind, lanes=ln.lanes, width_m=ln.width, speed_kmh=ln.speed,
             points=tuple(
@@ -506,6 +706,11 @@ def build_model(alternative_name: str) -> Model3D | None:
                  round(float(ln.z[i]), 2))
                 for i in keep
             ),
+            left_m=tuple(round(float(left[i]), 2) for i in keep),
+            right_m=tuple(round(float(right[i]), 2) for i in keep),
+            edge_left="".join(_CODES[e_left[i]] for i in keep),
+            edge_right="".join(_CODES[e_right[i]] for i in keep),
+            marks="".join("1" if ln.marks[i] else "0" for i in keep),
         ))
     max_height = max(float(ln.z.max()) for ln in lines)
     return Model3D(

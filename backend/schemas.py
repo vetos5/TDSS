@@ -327,6 +327,14 @@ class Model3DSegmentSchema(BaseModel):
     width_m: float
     speed_kmh: float
     points: List[List[float]]  # [[x east, y north, z up], ...] in metres, in travel direction
+    # Per point, looking in the travel direction: centreline to each pavement edge (metres), what
+    # each edge is (f free, m narrow median, s shared with a lane alongside, o open into a
+    # junction) and whether lane lines are drawn there (1) or the point is in a junction (0).
+    left_m: List[float] = []
+    right_m: List[float] = []
+    edge_left: str = ""
+    edge_right: str = ""
+    marks: str = ""
 
 
 class Model3DResponse(BaseModel):

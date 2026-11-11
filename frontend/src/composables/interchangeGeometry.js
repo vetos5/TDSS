@@ -16,6 +16,9 @@ const EDGE_INSET = 0.3
 const LINE_WIDTH = 0.15
 const DASH_ON = 6
 const DASH_OFF = 9
+const MERGE_DASH = 3                // a speed-change lane's line: short dashes, short gaps
+const MERGE_LINE_WIDTH = 0.25
+const CAR_MARGIN = 1.1              // a car's centre stays this far inside the pavement edge
 
 // ── Mesh accumulator ────────────────────────────────────────────────────────
 
@@ -101,16 +104,29 @@ function prism(md, cx, cz, y0, y1, radius, sides) {
 
 // ── Paths ───────────────────────────────────────────────────────────────────
 
-// Convert API points to three space, drop repeated points, and attach per-point frames:
-// P (position), L (unit horizontal left vector), S (mitre scale for lateral offsets), cum (arc length).
-function preparePath(points) {
-  const P = []
-  for (const q of points || []) {
+const num = (v, fallback) => (Number.isFinite(v) ? v : fallback)
+
+// Convert a segment's API points to three space, drop repeated points, and attach per point:
+// P (position), L (unit horizontal left vector), S (mitre scale for lateral offsets), cum (arc
+// length), l / r (centreline to the left / right pavement edge), el / er (what that edge is:
+// 'f' free, 'm' narrow median, 's' shared with a lane alongside, 'o' open into a junction) and mk (lane lines drawn).
+// The backend decides all of l, r, el, er and mk; a response without them means plain full width.
+function preparePath(seg) {
+  const hw = (Number(seg.width_m) > 0 ? Number(seg.width_m) : 7) / 2
+  const P = [], l = [], r = [], el = [], er = [], mk = []
+  const points = seg.points || []
+  for (let k = 0; k < points.length; k++) {
+    const q = points[k]
     if (!q || q.length < 3 || !q.every(Number.isFinite)) continue
     const p = [q[0], q[2], -q[1]]
     const last = P[P.length - 1]
     if (last && Math.hypot(p[0] - last[0], p[2] - last[2]) < 1e-6 && Math.abs(p[1] - last[1]) < 1e-6) continue
     P.push(p)
+    l.push(num(seg.left_m?.[k], hw))
+    r.push(num(seg.right_m?.[k], hw))
+    el.push(seg.edge_left?.[k] || 'f')
+    er.push(seg.edge_right?.[k] || 'f')
+    mk.push(seg.marks ? seg.marks[k] !== '0' : true)
   }
   const n = P.length
   if (n < 2) return null
@@ -137,7 +153,7 @@ function preparePath(points) {
   for (let i = 1; i < n; i++) {
     cum.push(cum[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1], P[i][2] - P[i - 1][2]))
   }
-  return { n, P, L, S, cum, length: cum[n - 1] }
+  return { n, P, L, S, cum, length: cum[n - 1], l, r, el, er, mk, hw, lanes: Math.max(1, Math.round(seg.lanes || 1)) }
 }
 
 // Point at lateral offset o (left positive) and absolute height y of path point i.
@@ -146,10 +162,8 @@ function lat(path, i, o, y) {
   return [p[0] + l[0] * k, y, p[2] + l[1] * k]
 }
 
-// Strip along the path indices a..b between lateral offsets o0 (right) and o1 (left) at height
-// y(i). Normal faces up. `from` / `to` give the interpolated sub-range of points to use.
+// Strip from [leftPoint, rightPoint] pairs, normal up.
 function topStrip(md, pts) {
-  // pts: array of [leftPoint, rightPoint]
   if (pts.length < 2) return
   const ids = pts.map(([l, r]) => [md.vert(...l), md.vert(...r)])
   for (let i = 0; i < ids.length - 1; i++) {
@@ -159,8 +173,7 @@ function topStrip(md, pts) {
   }
 }
 
-// Vertical face strip: pairs of [a, b] points, quads between consecutive pairs, normal given by
-// (b - a) x (a_next - a).
+// Vertical face strip: pairs of [a, b] points, quads between consecutive pairs.
 function faceStrip(md, pairs) {
   if (pairs.length < 2) return
   const ids = pairs.map(([a, b]) => [md.vert(...a), md.vert(...b)])
@@ -171,44 +184,38 @@ function faceStrip(md, pairs) {
   }
 }
 
-// Contiguous index runs [a, b] (a < b) where pred(i) holds for every point of the run.
-function runs(n, pred) {
+// Contiguous index runs [a, b] (a < b) within [from, to] where pred(i) holds for every point.
+function runs(from, to, pred) {
   const out = []
   let a = -1
-  for (let i = 0; i <= n; i++) {
-    const ok = i < n && pred(i)
+  for (let i = from; i <= to + 1; i++) {
+    const ok = i <= to && pred(i)
     if (ok && a < 0) a = i
     if (!ok && a >= 0) { if (i - 1 > a) out.push([a, i - 1]); a = -1 }
   }
   return out
 }
 
-// Prism along path indices a..b, lateral o0 < o1, bottom/top heights per point.
-// Faces: top, left (o1), right (o0), optional bottom, and two end caps.
-function prismRun(md, path, a, b, o0, o1, bot, top, { bottom = true, caps = true } = {}) {
+// Prism along path indices a..b between the lateral offsets o0(i) < o1(i), with bottom and top
+// heights per point. Faces: top, both sides, optional bottom, and two end caps.
+function prismRun(md, path, a, b, o0, o1, bot, top, { bottom = true } = {}) {
   const idx = []
   for (let i = a; i <= b; i++) idx.push(i)
-  topStrip(md, idx.map(i => [lat(path, i, o1, top[i]), lat(path, i, o0, top[i])]))
-  faceStrip(md, idx.map(i => [lat(path, i, o1, bot[i]), lat(path, i, o1, top[i])]))   // left, outward
-  faceStrip(md, idx.map(i => [lat(path, i, o0, top[i]), lat(path, i, o0, bot[i])]))   // right, outward
-  if (bottom) topStrip(md, idx.map(i => [lat(path, i, o0, bot[i]), lat(path, i, o1, bot[i])]))   // normal down
-  if (caps) {
-    // End cap facing forward (+d): left to right, bottom row A, top row B.
-    const e = b
-    faceStrip(md, [
-      [lat(path, e, o1, bot[e]), lat(path, e, o1, top[e])],
-      [lat(path, e, o0, bot[e]), lat(path, e, o0, top[e])],
-    ])
-    // Start cap facing backward (-d): right to left.
-    const s = a
-    faceStrip(md, [
-      [lat(path, s, o0, bot[s]), lat(path, s, o0, top[s])],
-      [lat(path, s, o1, bot[s]), lat(path, s, o1, top[s])],
-    ])
-  }
+  topStrip(md, idx.map(i => [lat(path, i, o1(i), top[i]), lat(path, i, o0(i), top[i])]))
+  faceStrip(md, idx.map(i => [lat(path, i, o1(i), bot[i]), lat(path, i, o1(i), top[i])]))   // left
+  faceStrip(md, idx.map(i => [lat(path, i, o0(i), top[i]), lat(path, i, o0(i), bot[i])]))   // right
+  if (bottom) topStrip(md, idx.map(i => [lat(path, i, o0(i), bot[i]), lat(path, i, o1(i), bot[i])]))
+  faceStrip(md, [   // end cap, facing forward
+    [lat(path, b, o1(b), bot[b]), lat(path, b, o1(b), top[b])],
+    [lat(path, b, o0(b), bot[b]), lat(path, b, o0(b), top[b])],
+  ])
+  faceStrip(md, [   // start cap, facing backward
+    [lat(path, a, o0(a), bot[a]), lat(path, a, o0(a), top[a])],
+    [lat(path, a, o1(a), bot[a]), lat(path, a, o1(a), top[a])],
+  ])
 }
 
-// Interpolated frame at arc length s: { p: [x,y,z], l: [lx,lz] }.
+// Where arc length s falls: the two indices around it and the fraction between them.
 function frameAt(path, s) {
   const cum = path.cum
   let lo = 0, hi = path.n - 1
@@ -221,28 +228,31 @@ function frameAt(path, s) {
   return { lo, hi, f }
 }
 
+// Interpolated frame at arc length s: position, left vector, mitre scale and both edge offsets.
 function lerpFrame(path, s) {
   const { lo, hi, f } = frameAt(path, s)
   const a = path.P[lo], b = path.P[hi], la = path.L[lo], lb = path.L[hi]
   let lx = la[0] + (lb[0] - la[0]) * f, lz = la[1] + (lb[1] - la[1]) * f
   const h = Math.hypot(lx, lz) || 1
   lx /= h; lz /= h
-  const sc = path.S[lo] + (path.S[hi] - path.S[lo]) * f
   return {
+    lo, hi, f,
     p: [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f],
     l: [lx, lz],
-    sc,
+    sc: path.S[lo] + (path.S[hi] - path.S[lo]) * f,
+    left: path.l[lo] + (path.l[hi] - path.l[lo]) * f,
+    right: path.r[lo] + (path.r[hi] - path.r[lo]) * f,
   }
 }
 
-// Strip between lateral offsets o0..o1 following the path from arc length s0 to s1 at height
-// z(point) + lift. Used for lane markings (dashes and continuous lines).
-function markingStrip(md, path, s0, s1, o0, o1, lift) {
+// Painted line from arc length s0 to s1. `centre(frame)` gives the lateral offset of its middle.
+function paintLine(md, path, s0, s1, centre, width) {
   const pts = []
   const push = (s) => {
     const fr = lerpFrame(path, s)
-    const mk = (o) => [fr.p[0] + fr.l[0] * o * fr.sc, fr.p[1] + lift, fr.p[2] + fr.l[1] * o * fr.sc]
-    pts.push([mk(o1), mk(o0)])
+    const c = centre(fr)
+    const mk = (o) => [fr.p[0] + fr.l[0] * o * fr.sc, fr.p[1] + MARK_LIFT, fr.p[2] + fr.l[1] * o * fr.sc]
+    pts.push([mk(c + width / 2), mk(c - width / 2)])
   }
   push(s0)
   for (let i = 0; i < path.n; i++) {
@@ -250,6 +260,13 @@ function markingStrip(md, path, s0, s1, o0, o1, lift) {
   }
   push(s1)
   topStrip(md, pts)
+}
+
+function paintDashes(md, path, s0, s1, on, off, centre, width, keep = () => true) {
+  for (let s = s0 + off / 2; s < s1; s += on + off) {
+    const e = Math.min(s1, s + on)
+    if (e - s > 0.5 && keep(lerpFrame(path, (s + e) / 2))) paintLine(md, path, s, e, centre, width)
+  }
 }
 
 // ── Public: road and structure meshes ───────────────────────────────────────
@@ -261,41 +278,58 @@ export function buildInterchange(model) {
 
   const paths = []
   for (const seg of model.segments || []) {
-    const path = preparePath(seg.points)
+    const path = preparePath(seg)
     if (!path) continue
     paths.push(path)
-    const w = Number(seg.width_m) > 0 ? Number(seg.width_m) : 7
-    const hw = w / 2
-    const lanes = Math.max(1, Math.round(seg.lanes || 1))
+    const { n, l, r, el, er, hw, lanes } = path
+    const last = n - 1
+    const width = i => l[i] + r[i]
 
-    // Road surface.
+    // Road surface, between the two pavement edges.
     const all = []
-    for (let i = 0; i < path.n; i++) all.push(i)
-    topStrip(asphalt, all.map(i => [lat(path, i, hw, path.P[i][1]), lat(path, i, -hw, path.P[i][1])]))
+    for (let i = 0; i < n; i++) all.push(i)
+    topStrip(asphalt, all.map(i => [lat(path, i, l[i], path.P[i][1]), lat(path, i, -r[i], path.P[i][1])]))
 
-    // Lane markings: solid edge lines inside each edge, dashed separators between lanes.
-    const lift = MARK_LIFT
-    const eo = hw - EDGE_INSET
-    markingStrip(marks, path, 0, path.length, eo - LINE_WIDTH / 2, eo + LINE_WIDTH / 2, lift)
-    markingStrip(marks, path, 0, path.length, -eo - LINE_WIDTH / 2, -eo + LINE_WIDTH / 2, lift)
-    for (let k = 1; k < lanes; k++) {
-      const o = -hw + (w / lanes) * k
-      for (let s = DASH_ON * 0.5; s < path.length; s += DASH_ON + DASH_OFF) {
-        const e = Math.min(path.length, s + DASH_ON)
-        if (e - s > 0.5) markingStrip(marks, path, s, e, o - LINE_WIDTH / 2, o + LINE_WIDTH / 2, lift)
+    // Edge lines. A free or median edge has a solid line just inside it (two carriageways on one
+    // deck so make a double centre line); an edge shared with a lane alongside has a broken lane
+    // line on it (drawn once, by the ramp); an open edge has none.
+    const inset = fr => Math.min(EDGE_INSET, (fr.left + fr.right) / 4)
+    const sides = [
+      { code: el, centre: fr => fr.left - inset(fr), shared: fr => fr.left },
+      { code: er, centre: fr => -fr.right + inset(fr), shared: fr => -fr.right },
+    ]
+    for (const side of sides) {
+      for (const [a, b] of runs(0, last, i => (side.code[i] === 'f' || side.code[i] === 'm') && width(i) > 0.5)) {
+        paintLine(marks, path, path.cum[a], path.cum[b], side.centre, LINE_WIDTH)
+      }
+      if (seg.kind !== 'ramp') continue
+      for (const [a, b] of runs(0, last, i => side.code[i] === 's')) {
+        paintDashes(marks, path, path.cum[a], path.cum[b], MERGE_DASH, MERGE_DASH, side.shared, MERGE_LINE_WIDTH)
       }
     }
 
-    // Decks, parapets, fill walls.
+    // Lane lines stay where the lanes are: on a taper the outer ones run out at the edge, and
+    // inside a junction there are none.
+    for (let k = 1; k < lanes; k++) {
+      const o = -hw + (2 * hw / lanes) * k
+      const keep = fr => path.mk[fr.lo] && path.mk[fr.hi] && o < fr.left - 0.4 && o > -fr.right + 0.4
+      paintDashes(marks, path, 0, path.length, DASH_ON, DASH_OFF, () => o, LINE_WIDTH, keep)
+    }
+
+    // Decks and fill under every elevated stretch; parapets only along free edges.
     const z = path.P.map(p => p[1])
     const slabTop = z.map(v => v - 0.05)
     const slabBot = z.map(v => (v < fillBelow ? BASE_Y : Math.max(BASE_Y, v - SLAB_THICKNESS)))
     const parTop = z.map(v => v + PARAPET_HEIGHT)
-    const hwd = hw + SLAB_OVERHANG
-    for (const [a, b] of runs(path.n, i => z[i] > DECK_MIN_Z)) {
-      prismRun(concrete, path, a, b, -hwd, hwd, slabBot, slabTop)
-      prismRun(concrete, path, a, b, hwd - PARAPET_WIDTH, hwd, slabTop, parTop, { bottom: false })
-      prismRun(concrete, path, a, b, -hwd, -hwd + PARAPET_WIDTH, slabTop, parTop, { bottom: false })
+    const leftOut = i => l[i] + SLAB_OVERHANG, rightOut = i => -r[i] - SLAB_OVERHANG
+    for (const [a, b] of runs(0, last, i => z[i] > DECK_MIN_Z)) {
+      prismRun(concrete, path, a, b, rightOut, leftOut, slabBot, slabTop)
+      for (const [c, d] of runs(a, b, i => el[i] === 'f')) {
+        prismRun(concrete, path, c, d, i => leftOut(i) - PARAPET_WIDTH, leftOut, slabTop, parTop, { bottom: false })
+      }
+      for (const [c, d] of runs(a, b, i => er[i] === 'f')) {
+        prismRun(concrete, path, c, d, rightOut, i => rightOut(i) + PARAPET_WIDTH, slabTop, parTop, { bottom: false })
+      }
     }
   }
 
@@ -323,22 +357,28 @@ export function buildInterchange(model) {
 
 // ── Public: traffic ─────────────────────────────────────────────────────────
 
-// Sampler along a polyline: at(s, lateral, out) fills out[0..2] position (three space, including
+// Sampler along a segment: at(s, lateral, out) fills out[0..2] position (three space, including
 // the lateral offset, left positive), out[3..5] unit forward vector (with pitch), out[6..7] unit
-// horizontal left vector.
-export function makeSampler(points) {
-  const path = preparePath(points)
+// horizontal left vector. The lateral offset follows the pavement: on a merge taper a single
+// lane leads into the lane alongside, and where a road narrows the outer lanes move inwards.
+export function makeSampler(seg) {
+  const path = preparePath(seg)
   if (!path) return null
+  const single = path.lanes === 1
   return {
     length: path.length,
     at(s, lateral, out) {
       const ss = Math.min(path.length, Math.max(0, s))
-      const { lo, hi } = frameAt(path, ss)
       const fr = lerpFrame(path, ss)
-      out[0] = fr.p[0] + fr.l[0] * lateral
+      const { lo, hi } = fr
+      let o = lateral
+      if (single) o += fr.left - fr.right
+      else if (fr.left + fr.right < 2 * CAR_MARGIN) o = (fr.left - fr.right) / 2
+      else o = Math.min(fr.left - CAR_MARGIN, Math.max(-fr.right + CAR_MARGIN, o))
+      out[0] = fr.p[0] + fr.l[0] * o
       out[1] = fr.p[1]
-      out[2] = fr.p[2] + fr.l[1] * lateral
-      let fx = path.P[hi][0] - path.P[lo][0], fy = path.P[hi][1] - path.P[lo][1], fz = path.P[hi][2] - path.P[lo][2]
+      out[2] = fr.p[2] + fr.l[1] * o
+      const fx = path.P[hi][0] - path.P[lo][0], fy = path.P[hi][1] - path.P[lo][1], fz = path.P[hi][2] - path.P[lo][2]
       const h = Math.hypot(fx, fy, fz) || 1
       out[3] = fx / h; out[4] = fy / h; out[5] = fz / h
       out[6] = fr.l[0]; out[7] = fr.l[1]
@@ -369,7 +409,7 @@ function hashString(s) {
 export function planTraffic(model, { speedFactor = 1.5, colours = 7 } = {}) {
   const cars = []
   for (const seg of model.segments || []) {
-    const sampler = makeSampler(seg.points)
+    const sampler = makeSampler(seg)
     if (!sampler || sampler.length < 12) continue
     const rnd = seededRandom(hashString(`${model.name}:${seg.id}`))
     const w = Number(seg.width_m) > 0 ? Number(seg.width_m) : 7

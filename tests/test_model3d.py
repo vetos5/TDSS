@@ -131,3 +131,90 @@ def test_api_returns_the_model():
     assert client.get("/api/interchange/Nope/model3d").status_code == 404
     # The detail route next to it still answers.
     assert client.get("/api/interchange/Cloverleaf").status_code == 200
+
+
+# ── Cross-section: pavement edges, tapers and junctions ──────────────────────
+
+
+def _segment(name, seg_id):
+    return next(s for s in build_model(name).segments if s.id == seg_id)
+
+
+def _width(seg, i):
+    return seg.left_m[i] + seg.right_m[i]
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_every_point_has_a_cross_section(name):
+    for seg in build_model(name).segments:
+        n = len(seg.points)
+        assert len(seg.left_m) == len(seg.right_m) == n
+        assert len(seg.edge_left) == len(seg.edge_right) == len(seg.marks) == n
+        assert set(seg.edge_left + seg.edge_right) <= set("fmso")
+        assert all(_width(seg, i) > 0 for i in range(n)), seg.id
+        assert max(_width(seg, i) for i in range(n)) == pytest.approx(seg.width_m, abs=1.5)
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_no_ramp_ends_bluntly(name):
+    # A ramp end is either the tip of a merge taper or opens into the pavement it meets.
+    for seg in build_model(name).segments:
+        if seg.kind != "ramp":
+            continue
+        for i in (0, len(seg.points) - 1):
+            tapered = _width(seg, i) < 0.5
+            opens = "o" in (seg.edge_left[i], seg.edge_right[i])
+            assert tapered or opens, (seg.id, i)
+
+
+def test_speed_change_lane_tapers_and_shares_its_edge():
+    loop = _segment("Cloverleaf", "loop-SE")
+    last = len(loop.points) - 1
+    middle = last // 2
+    assert _width(loop, middle) == pytest.approx(dims.LANE_WIDTH_M, abs=0.02)
+    assert loop.edge_left[middle] == loop.edge_right[middle] == "f"
+    for tip, inward in ((0, 1), (last, -1)):
+        # The carriageway is on the left of a ramp in right-hand traffic: that edge stays put
+        # and is a lane line, the outer edge runs in to meet it.
+        assert loop.edge_left[tip] == "s" and loop.edge_right[tip] == "f"
+        assert loop.left_m[tip] == pytest.approx(dims.LANE_WIDTH_M / 2, abs=0.01)
+        widths = [_width(loop, tip + inward * k) for k in range(8)]
+        assert widths == sorted(widths) and widths[0] < 0.5
+    # The carriageway has no edge line or parapet along the speed-change lanes.
+    road = _segment("Cloverleaf", "mainline-NB")
+    assert road.edge_right.count("s") > 40 and set(road.edge_left) == {"f"}
+
+
+def test_at_grade_junctions_are_open():
+    spui = build_model("SPUI")
+    arterial = next(s for s in spui.segments if s.id == "crossroad-EB")
+    assert "o" in arterial.edge_left and "o" in arterial.edge_right and "0" in arterial.marks
+    for seg in spui.segments:
+        if seg.id in ("ramp-NB-off", "ramp-SB-off"):
+            # The left turn ends inside the far carriageway: no edges, no markings of its own.
+            assert seg.edge_left[-1] == seg.edge_right[-1] == "o" and seg.marks[-1] == "0"
+    # A grade-separated crossing is not a junction: the stack's freeways keep their lane lines.
+    for seg in build_model("Stack (4-Level)").segments:
+        assert "0" not in seg.marks and "o" not in seg.edge_left + seg.edge_right, seg.id
+
+
+def test_narrow_median_is_one_deck():
+    arterial = _segment("Diamond", "crossroad-EB")
+    assert arterial.edge_left.count("m") > len(arterial.points) * 0.9
+    assert max(arterial.left_m) == pytest.approx(
+        arterial.width_m / 2 + dims.ARTERIAL_MEDIAN_M / 2, abs=0.01
+    )
+    # A freeway's wider median stays open between its two carriageways.
+    freeway = _segment("Diamond", "mainline-NB")
+    assert "m" not in freeway.edge_left + freeway.edge_right
+    assert max(freeway.left_m) == pytest.approx(freeway.width_m / 2, abs=0.01)
+
+
+@pytest.mark.parametrize("name, stem, ramp", [
+    ("Directional T", "stem-WB", "flyover-stem-out"),
+    ("Trumpet", "stem-WB", "ramp-semi-direct"),
+])
+def test_stem_drops_to_the_width_of_the_ramp_that_carries_on(name, stem, ramp):
+    road, onward = _segment(name, stem), _segment(name, ramp)
+    assert _width(road, 0) == pytest.approx(road.width_m, abs=0.02)
+    assert _width(road, len(road.points) - 1) == pytest.approx(onward.width_m, abs=0.02)

@@ -93,10 +93,20 @@ TERMINAL_RIGHT_TURN_RADIUS_M = 25.0
 SPUI_LEFT_TURN_RADIUS_M = 60.0
 
 # DDI: the arterial carriageways swap sides at two crossovers. FHWA's DDI guide recommends a
-# crossing angle of 40-50 degrees; the crossovers sit 150-250 m apart.
+# crossing angle of 40-50 degrees. The spacing is the least distance between the crossover
+# points; the generator widens it until each off-ramp's left-turn merge lane fits between its
+# terminal and the bridge, which gives about 260 m.
 DDI_CROSSOVER_ANGLE_DEG = 40.0
 DDI_CROSSOVER_SPACING_M = 220.0
 DDI_LEFT_TURN_RADIUS_M = 25.0
+# The curves either side of a crossover are designed for 40 km/h (FHWA: 25-35 mph), with a
+# straight tangent through the crossing itself. Before them the carriageways flare apart round an
+# island on a flatter reverse curve, which is what separates them enough to cross at that angle.
+DDI_CROSSOVER_RADIUS_M = 60.0
+DDI_FLARE_RADIUS_M = 100.0
+DDI_FLARE_ANGLE_DEG = 15.0
+# Merge lane of a left turn from an off-ramp, between the end of its curve and the bridge.
+DDI_MERGE_RUN_M = 45.0
 
 # ---------------------------------------------------------------------------
 # Three-leg interchanges (trumpet, directional T)
@@ -161,6 +171,20 @@ VERTICAL_ORDER: dict[str, dict[str, int]] = {
         "stem-WB": 2, "flyover-stem-out": 2,
     },
 }
+
+# A ramp joins and leaves its carriageway on a parallel speed-change lane (SPEED_CHANGE_RUN_M of
+# it is drawn). The lane ends on a taper: the Green Book's parallel-type terminals use about 90 m,
+# and the drawing keeps the proportion to its shortened run.
+MERGE_TAPER_M = 45.0
+
+# Where a road ends and a narrower ramp carries on (the stem of a trumpet or a directional T
+# splitting into its ramps), the lanes that do not continue end on a taper of this length.
+LANE_DROP_TAPER_M = 70.0
+
+# Two carriageways of one road that are closer than this stand on a single deck, paved across
+# the median. It covers the arterial's 2 m kerbed median (ARTERIAL_MEDIAN_M), which has to be open
+# where ramp traffic turns across it, and not a freeway's 4 m median with its barrier.
+MEDIAN_FILL_MAX_M = 2.5
 
 # Piers stand under a deck that is at least this high (lower approaches are drawn as fill behind
 # retaining walls), at about this spacing, and never on a road passing underneath.

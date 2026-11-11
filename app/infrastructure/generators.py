@@ -572,9 +572,18 @@ class DDIGenerator(_Generator):
     the freeway, so between the crossovers traffic drives on the left. Left turns to and from the
     ramps then need no signal phase of their own: they turn off the arterial's outer side.
 
-    Each crossover is a reverse curve. Both carriageways deviate by half the crossing angle and
-    meet at the full angle (40° by default, FHWA's recommended 40-50°). Right turns from an
-    off-ramp skip the crossover zone on a lane along the arterial's outside and join beyond it.
+    Approaching a crossover the two carriageways flare apart round an island, then each curves
+    back through half the crossing angle and they cross on a straight tangent (40° by default,
+    FHWA's recommended 40-50°). Between the crossovers they stay apart, on a bridge each, and
+    beyond the second crossover they close up again round another island:
+
+        offset beside an island   D = d + (R_f + R_x)(1 - cos β)
+        tangent through the crossover, half of it   t = (D - R_x (1 - cos α)) / sin α
+
+    with d the normal carriageway offset, β the flare angle, α half the crossing angle and R_f,
+    R_x the flare and crossover radii. An off-ramp's left turn joins the far carriageway on a
+    merge lane that ends before the bridge. Its right turn passes outside the crossover and joins
+    along the straight outer side of the island beyond it.
     """
 
     def __init__(
@@ -589,7 +598,7 @@ class DDIGenerator(_Generator):
     ):
         super().__init__(lane_width, center_lon, center_lat)
         self.crossover_angle = math.radians(crossover_angle_deg)
-        self.length = length  # distance between the two crossover points
+        self.length = length  # least distance between the two crossover points
         self.mainline_lanes = mainline_lanes
         self.arterial_lanes = arterial_lanes
 
@@ -597,24 +606,36 @@ class DDIGenerator(_Generator):
         fwy = self._section(self.mainline_lanes, dims.FREEWAY_MEDIAN_M)
         art = self._section(self.arterial_lanes, dims.ARTERIAL_MEDIAN_M)
         r_left, r_right = dims.DDI_LEFT_TURN_RADIUS_M, dims.TERMINAL_RIGHT_TURN_RADIUS_M
-        # The left turn must finish its curve before the bridge over the freeway.
-        x_t = max(dims.DDI_TERMINAL_OFFSET_M, fwy.edge + r_left + dims.RAMP_GAP_M)
+        run = dims.SPEED_CHANGE_RUN_M
 
-        # Crossover reverse curve: lateral shift 2d over two arcs of ρ, each through φ.
-        phi = self.crossover_angle / 2
-        d = art.carriageway
-        rho = 2 * d / (2 * (1 - math.cos(phi)))
-        s_half = rho * math.sin(phi)
-        # The crossovers must sit beyond the right-turn roadways.
-        x_c = max(self.length / 2, x_t + r_right + s_half + dims.RAMP_GAP_M)
-        half_art = x_c + s_half + dims.SPEED_CHANGE_RUN_M + 2 * dims.ROAD_MARGIN_M
+        alpha = self.crossover_angle / 2
+        beta = math.radians(dims.DDI_FLARE_ANGLE_DEG)
+        r_x, r_f = dims.DDI_CROSSOVER_RADIUS_M, dims.DDI_FLARE_RADIUS_M
+        wide = art.carriageway + (r_f + r_x) * (1 - math.cos(beta))
+        half_tangent = (wide - r_x * (1 - math.cos(alpha))) / math.sin(alpha)
+        # From a crossover point to where its curves end, and the length of a flare.
+        reach = half_tangent * math.cos(alpha) + r_x * math.sin(alpha)
+        flare = (r_f + r_x) * math.sin(beta)
+
+        # The left turn's merge lane must end before the bridge, and the crossover curves start
+        # at the ramp terminal, so that the right turn passes clear of them.
+        x_t = max(
+            dims.DDI_TERMINAL_OFFSET_M,
+            fwy.edge + dims.RAMP_GAP_M + dims.DDI_MERGE_RUN_M + r_left,
+        )
+        x_c = max(self.length / 2, x_t + reach)
+        island = run + dims.RAMP_GAP_M  # straight outer side of the island beyond a crossover
+        lead = 2 * dims.ROAD_MARGIN_M
+        half_art = x_c + reach + island + flare + lead
         eb = (
-            _Path(-half_art, -d, 0.0)
-            .straight(half_art - x_c - s_half)
-            .arc(rho, phi).arc(rho, -phi)
-            .straight(2 * (x_c - s_half))
-            .arc(rho, -phi).arc(rho, phi)
-            .straight(half_art - x_c - s_half)
+            _Path(-half_art, -art.carriageway, 0.0)
+            .straight(lead)
+            .arc(r_f, -beta).arc(r_x, beta).straight(island)
+            .arc(r_x, alpha).straight(2 * half_tangent).arc(r_x, -alpha)
+            .straight(2 * (x_c - reach))
+            .arc(r_x, -alpha).straight(2 * half_tangent).arc(r_x, alpha)
+            .straight(island).arc(r_x, beta).arc(r_f, -beta)
+            .straight(lead)
             .points
         )
         arterial = [
@@ -622,18 +643,19 @@ class DDIGenerator(_Generator):
             _Seg("crossroad-WB", _rotate_quarter(eb, 2), self.arterial_lanes, "crossroad", 50),
         ]
 
-        a_art = art.ramp_line
+        # Ramp line along the outer edge of a carriageway beside an island.
+        a_art = wide + art.width / 2 + art.ramp_width / 2
         y_fork = -a_art - max(r_left, r_right) - 5.0
-        stem = _terminal_ramp(fwy.ramp_line, x_t, y_fork, dims.SPEED_CHANGE_RUN_M)
+        stem = _terminal_ramp(fwy.ramp_line, x_t, y_fork, run)
         # Left turn onto the westbound carriageway, which runs on the south side between the
-        # crossovers; it joins from the outside, alongside, just short of the bridge.
+        # crossovers: it joins from the outside on a merge lane that ends short of the bridge.
         left = stem.straight(-a_art - r_left - y_fork).arc(r_left, _HALF_PI)
         left = left.straight(x_t - r_left - fwy.edge - dims.RAMP_GAP_M).points
         right = (
             _Path(x_t, y_fork, _HALF_PI)
             .straight(-a_art - r_right - y_fork)
             .arc(r_right, -_HALF_PI)
-            .straight(x_c + s_half + dims.SPEED_CHANGE_RUN_M - x_t - r_right)
+            .straight(x_c + reach + run - x_t - r_right)
             .points
         )
         ramps: List[_Seg] = []
