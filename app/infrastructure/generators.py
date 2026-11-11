@@ -226,8 +226,9 @@ def _directional_left(
     In right-hand traffic a left turn still leaves to the right. The ramp swings out on a right
     curve through α, then turns left through 45° + α to cross the diagonal y = x heading north-west.
     The second half is the mirror image in y = x. α is solved so that the ramp passes the centre
-    at *pass_distance*: about 70 m makes a turbine's spiral, about 15 m makes a stack's flyovers
-    crossing over the centre.
+    at *pass_distance*: about 70 m makes a turbine's spiral, which goes round the far side of the
+    centre. A negative distance passes on the near side: about -15 m makes a stack's flyovers,
+    which cross over the centre while opposite left turns stay clear of each other.
 
         x_mid = a + R_s (1 - cos α) - R_t (cos α - 1/√2),   x_mid = pass_distance / √2
     """

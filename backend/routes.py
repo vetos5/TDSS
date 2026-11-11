@@ -21,6 +21,7 @@ from app.application.evaluation import (
 )
 from app.application.mcda import METHODS, DecisionMatrix
 from app.application.mcda.smaa import ValueUncertainty, WeightUncertainty
+from app.application.model3d import build_model
 from app.application.prediction import ResidualModel
 from app.data.interchange_data import (
     ALTERNATIVE_COLORS,
@@ -33,6 +34,7 @@ from app.data.interchange_data import (
     resolve_criterion_labels,
     resolve_interchange_detail,
 )
+from app.data.interchange_geometry import PIER_MIN_HEIGHT_M
 from app.data.mcda_methods import resolve_method_info
 from app.data.uncertainty_defaults import DEFAULT_VALUE_UNCERTAINTY
 from backend.limits import slot
@@ -49,6 +51,8 @@ from backend.schemas import (
     MethodInfoSchema,
     MethodResultSchema,
     MethodScore,
+    Model3DResponse,
+    Model3DSegmentSchema,
     RankAgreementSchema,
     RobustnessRequest,
     RobustnessResponse,
@@ -470,6 +474,33 @@ def _multi_method_fields(multi: MultiMethodEvaluation, locale: str) -> dict[str,
             details=_weighting_details(multi.weights.details, multi.matrix),
         ),
     }
+
+
+@router.get("/interchange/{name}/model3d", response_model=Model3DResponse)
+def get_interchange_model3d(name: str, response: Response):
+    """The 3-D model of a catalogue alternative: centrelines with heights, and piers."""
+    model = build_model(name) if len(name) <= 64 else None
+    if model is None:
+        raise HTTPException(status_code=404, detail="No 3-D model for this alternative")
+    # The model depends only on the catalogue geometry, so browsers may keep it for a while.
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return Model3DResponse(
+        name=model.name,
+        extent_m=model.extent_m,
+        level_step_m=model.level_step_m,
+        levels=model.levels,
+        max_height_m=model.max_height_m,
+        max_grade=model.max_grade,
+        fill_below_m=PIER_MIN_HEIGHT_M,
+        segments=[
+            Model3DSegmentSchema(
+                id=s.id, kind=s.kind, lanes=s.lanes, width_m=s.width_m, speed_kmh=s.speed_kmh,
+                points=[list(p) for p in s.points],
+            )
+            for s in model.segments
+        ],
+        piers=[[p.x, p.y, p.top_m, p.width_m] for p in model.piers],
+    )
 
 
 @router.get("/interchange/{name}", response_model=InterchangeDetailSchema)

@@ -1,13 +1,15 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { blueprintUrl } from '../api.js'
 import { useLocale } from '../composables/useLocale.js'
 import Icon from './Icon.vue'
+import Interchange3D from './Interchange3D.vue'
 
 const props = defineProps({
   data: Object,
   params: Object,
   dark: Boolean,
+  active: { type: Boolean, default: true },
 })
 
 const { t } = useLocale()
@@ -21,6 +23,29 @@ const maxScore = computed(() => winner.value?.total_score || 1)
 function altColor(name) {
   const r = props.data?.results?.find(r => r.alternative_name === name)
   return props.dark ? (r?.color_dark || '#2dd4bf') : (r?.color || '#0f766e')
+}
+
+// 3D viewer: the alternative shown follows the winner until the user picks another one, and falls
+// back to the winner when the pick is no longer among the results (e.g. after a context change).
+const picked = ref('')
+const viewerName = computed(() => {
+  const results = props.data?.results ?? []
+  return results.some(r => r.alternative_name === picked.value) ? picked.value : (winner.value?.alternative_name ?? '')
+})
+const model3d = ref(null)
+const viewerCard = ref(null)
+
+const rampCount = computed(() => model3d.value?.segments?.filter(s => s.kind === 'ramp').length ?? 0)
+const modelFacts = computed(() => model3d.value && model3d.value.name === viewerName.value ? [
+  { label: t.value.model3dLevels, value: model3d.value.levels },
+  { label: t.value.model3dHighest, value: `${Number(model3d.value.max_height_m).toFixed(1)} m` },
+  { label: t.value.model3dRamps, value: rampCount.value },
+] : [])
+
+function showIn3D(name) {
+  picked.value = name
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  viewerCard.value?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' })
 }
 
 function isFeasible(rv) {
@@ -43,6 +68,35 @@ function isFeasible(rv) {
         <div><dt class="text-xs text-muted">{{ t.landShort }}</dt><dd class="num text-[13px] font-medium">{{ params.land_limit }} ha</dd></div>
         <div><dt class="text-xs text-muted">{{ t.terrainShort }}</dt><dd class="text-[13px] font-medium">{{ displayTerrain(params.terrain) }}</dd></div>
         <div><dt class="text-xs text-muted">{{ t.envShort }}</dt><dd class="text-[13px] font-medium">{{ displayEnv(params.env_sensitivity) }}</dd></div>
+      </dl>
+    </section>
+
+    <!-- 3D model -->
+    <section ref="viewerCard" class="card p-4">
+      <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div class="min-w-0 max-w-3xl">
+          <h2 class="card-title flex items-center gap-1.5"><Icon name="box" />{{ t.model3dTitle }}</h2>
+          <p class="card-desc">{{ t.model3dDesc }}</p>
+        </div>
+        <div class="max-w-full overflow-x-auto" role="group" :aria-label="t.model3dSelect">
+          <div class="seg">
+            <button v-for="res in data.results" :key="res.alternative_name" type="button"
+                    class="seg-item whitespace-nowrap" :aria-pressed="viewerName === res.alternative_name"
+                    @click="picked = res.alternative_name">
+              {{ res.alternative_name }}
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="mt-3 h-80 overflow-hidden rounded-lg border border-line md:h-[28rem]">
+        <Interchange3D :name="viewerName" :dark="dark" :active="active" :color="altColor(viewerName)"
+                       @loaded="model3d = $event" />
+      </div>
+      <dl v-if="modelFacts.length" class="mt-3 flex flex-wrap gap-x-6 gap-y-1.5">
+        <div v-for="f in modelFacts" :key="f.label">
+          <dt class="text-xs text-muted">{{ f.label }}</dt>
+          <dd class="num text-[13px] font-medium">{{ f.value }}</dd>
+        </div>
       </dl>
     </section>
 
@@ -124,9 +178,15 @@ function isFeasible(rv) {
                  :style="{ width: Math.round((res.total_score / maxScore) * 100) + '%', background: altColor(res.alternative_name) }"></div>
           </div>
 
-          <p class="mt-2 text-[0.7rem] font-medium" :class="isFeasible(res.raw_values) ? 'text-ok' : 'text-bad'">
-            {{ isFeasible(res.raw_values) ? t.feasibleCheck : t.exceedsLimits }}
-          </p>
+          <div class="mt-2 flex items-center justify-between gap-2">
+            <p class="text-[0.7rem] font-medium" :class="isFeasible(res.raw_values) ? 'text-ok' : 'text-bad'">
+              {{ isFeasible(res.raw_values) ? t.feasibleCheck : t.exceedsLimits }}
+            </p>
+            <button type="button" class="btn-ghost !min-h-0 !py-0.5 text-xs" :title="t.model3dShowTitle"
+                    :aria-label="`${t.model3dShowTitle}: ${res.alternative_name}`" @click="showIn3D(res.alternative_name)">
+              <Icon name="box" />{{ t.model3dShow }}
+            </button>
+          </div>
           <p class="mt-0.5 line-clamp-2 text-[0.7rem] text-subtle">
             {{ res.description?.slice(0, 90) }}…
           </p>

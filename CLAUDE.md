@@ -152,6 +152,10 @@ Where things are and what they hold, so a session can go straight to the file it
   (geometric-mean weight aggregation, Kendall τ) → `/api/group`. Request schemas: `StudyParams`,
   `EngineeringRequest`, `GroupRequest` in `schemas.py`. Tests: `test_engineering.py`,
   `test_economics.py`, `test_group.py`.
+- `app/application/model3d.py` — `build_model(name)` (cached): heights for the generators' plan
+  centrelines (road levels from `VERTICAL_ORDER`, ramp profiles from a small LP), piers and travel
+  direction → `GET /api/interchange/{name}/model3d` (DOCUMENTATION §3.19). Constants in
+  `app/data/interchange_geometry.py`; tests in `test_model3d.py`.
 - `app/application/mcda/` — `DecisionMatrix.from_alternatives(alts, CRITERIA)`, `METHODS` dict
   (method fn on matrix + weights), `evaluate()`, `weighting`, `smaa.py`, `sensitivity.py`.
 - `backend/routes.py` — `_prepare(req, lang)` is the shared pipeline (context check → optional model
@@ -192,4 +196,6 @@ Where things are and what they hold, so a session can go straight to the file it
   badge-accent num spinner tab-pane ios-slider glass glass-backdrop liquid-ease`; `bg-surface-solid` for
   opaque cells over translucent cards. Icons: `Icon.vue` `ICONS` map (Lucide paths).
 - `locales/en.json` and `uk.json` are flat-ish objects read as `t.value.key`; keep them in sync.
+- `Interchange3D.vue` (in `BlueprintGallery.vue`) draws the 3-D model with three.js, loaded by
+  dynamic import only. Mesh building is in `composables/interchangeGeometry.js` (pure, no three).
 - `DecisionReport.vue` is the printable report (`.report-*` classes).

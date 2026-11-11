@@ -131,7 +131,7 @@ def test_left_turn_ramps_pass_the_centre_at_their_distance(name, distance):
     for seg, pts in _layout(name):
         if seg.id.startswith("left-from-"):
             nearest = LineString(pts).distance(Point(0, 0))
-            assert nearest == pytest.approx(distance, abs=1.0), seg.id
+            assert nearest == pytest.approx(abs(distance), abs=1.0), seg.id
 
 
 def test_spui_opposing_left_turns_do_not_cross():

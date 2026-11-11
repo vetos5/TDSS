@@ -84,6 +84,12 @@ export async function fetchInterchangeDetail(name, lang = 'en') {
   return data
 }
 
+// Procedural 3D model of an interchange (heights and piers are computed by the backend).
+export async function getModel3d(name) {
+  const { data } = await api.get(`/interchange/${encodeURIComponent(name)}/model3d`)
+  return data
+}
+
 export async function analyseSite(body, lang = 'en') {
   const { data } = await api.post('/site/analyse', body, { params: { lang } })
   return data

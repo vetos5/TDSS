@@ -222,6 +222,7 @@ watch(() => model.status.value?.revision, (now, before) => {
             :data="dss.evalData.value"
             :params="dss.params"
             :dark="dark"
+            :active="activeTab === 'gallery'"
           />
           <Methodology
             v-show="activeTab === 'methodology'"

@@ -320,6 +320,27 @@ class InterchangeDetailSchema(BaseModel):
     engineering_desc: str = ""
 
 
+class Model3DSegmentSchema(BaseModel):
+    id: str
+    kind: str                  # mainline | crossroad | ramp
+    lanes: int
+    width_m: float
+    speed_kmh: float
+    points: List[List[float]]  # [[x east, y north, z up], ...] in metres, in travel direction
+
+
+class Model3DResponse(BaseModel):
+    name: str
+    extent_m: float            # half the side of the square the plan fits in
+    level_step_m: float
+    levels: int                # the ground level included
+    max_height_m: float
+    max_grade: float           # steepest gradient, as a fraction
+    fill_below_m: float        # decks lower than this stand on fill, higher ones on piers
+    segments: List[Model3DSegmentSchema]
+    piers: List[List[float]]   # [[x, y, top z, width], ...]
+
+
 class ContextListResponse(BaseModel):
     contexts: List[str]
 

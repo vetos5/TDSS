@@ -27,6 +27,7 @@
    - 3.16 [Break-Even Values](#316-break-even-values-v6-professional-phase-2)
    - 3.17 [Group Decision](#317-group-decision-v6-professional-phase-3)
    - 3.18 [Exports](#318-exports-v6-professional-phase-3)
+   - 3.19 [3-D Interchange Model](#319-3-d-interchange-model)
 4. [Decision Alternatives](#4-decision-alternatives)
 5. [Evaluation Criteria](#5-evaluation-criteria)
 6. [Backend (FastAPI)](#6-backend-fastapi)
@@ -329,7 +330,7 @@ The planner clicks a point on the map instead of typing project parameters in by
 
 All thresholds live in `app/data/site_analysis_defaults.py`, documented and overridable, in the same spirit as `uncertainty_defaults.py`.
 
-**Footprint geometry** (`app/infrastructure/generators.py`, dimensions in `app/data/interchange_geometry.py`). Each of the 8 catalogue alternatives has a procedural generator that lays the interchange out at real scale in local metres. The primary road (the one whose direction the planner sets with the second click) runs along +y, and for the three-leg types (Trumpet, Directional T) that is the through road. Traffic keeps to the right: a northbound carriageway is on the east side of its road, and ramps leave and join on a carriageway's right. Every centreline is built from straights and circular arcs, each piece starting on the heading the previous one ended on, so ramps are G1-continuous by construction. A ramp starts or ends on a parallel speed-change lane whose inner edge touches the carriageway's outer edge, so it meets the mainline tangentially. Symmetric layouts are built for one quadrant and copied by exact 90° rotations or reflections. Radii follow from each movement's design speed through \(R_{min} = V^2 / 127(e + f)\) (AASHTO Green Book): 60 m loops (40 km/h), 100 m outer connectors, 180-200 m directional ramps, and 3.75 m lanes (DBN V.2.3-4). With these the cloverleaf's loops sit in the right quadrants, and its ramps span about 680 m along each road. Each outer connector is moved out by bisection until it clears the loops (or the turbine's spirals) by a ramp width plus an 8 m verge. A turbine and a stack share one directional-left-turn construction: a right swing-out curve, then a left curve solved in closed form so the ramp passes the centre at a chosen distance (70 m makes the turbine's ring, 14 m makes the stack's flyovers cross over the centre). The diamond, SPUI and DDI ramps reach their terminal line on a flat reverse curve. A SPUI's left turns sweep through one central intersection on 60 m radii and pass opposing left turns without crossing them. A DDI's arterial carriageways swap sides at two 40° reverse-curve crossovers. A trumpet's semi-direct ramp wraps round its loop concentrically. The four original generators placed loops overlapping the centre, joined ramps to nothing, put the freeway across the planner's bearing instead of along it, and had no generator at all for Stack, Diamond, Trumpet and Directional T. `tests/test_footprint.py` now checks that every ramp end meets a road, that ramps meet the mainline tangentially, that no centreline crosses itself, the overall extent, and that the right-of-way polygon is valid.
+**Footprint geometry** (`app/infrastructure/generators.py`, dimensions in `app/data/interchange_geometry.py`). Each of the 8 catalogue alternatives has a procedural generator that lays the interchange out at real scale in local metres. The primary road (the one whose direction the planner sets with the second click) runs along +y, and for the three-leg types (Trumpet, Directional T) that is the through road. Traffic keeps to the right: a northbound carriageway is on the east side of its road, and ramps leave and join on a carriageway's right. Every centreline is built from straights and circular arcs, each piece starting on the heading the previous one ended on, so ramps are G1-continuous by construction. A ramp starts or ends on a parallel speed-change lane whose inner edge touches the carriageway's outer edge, so it meets the mainline tangentially. Symmetric layouts are built for one quadrant and copied by exact 90° rotations or reflections. Radii follow from each movement's design speed through \(R_{min} = V^2 / 127(e + f)\) (AASHTO Green Book): 60 m loops (40 km/h), 100 m outer connectors, 180-200 m directional ramps, and 3.75 m lanes (DBN V.2.3-4). With these the cloverleaf's loops sit in the right quadrants, and its ramps span about 680 m along each road. Each outer connector is moved out by bisection until it clears the loops (or the turbine's spirals) by a ramp width plus an 8 m verge. A turbine and a stack share one directional-left-turn construction: a right swing-out curve, then a left curve solved in closed form so the ramp passes the centre at a chosen distance (70 m on the far side makes the turbine's ring, 14 m on the near side makes the stack's flyovers cross over the centre without opposite left turns crossing each other). The diamond, SPUI and DDI ramps reach their terminal line on a flat reverse curve. A SPUI's left turns sweep through one central intersection on 60 m radii and pass opposing left turns without crossing them. A DDI's arterial carriageways swap sides at two 40° reverse-curve crossovers. A trumpet's semi-direct ramp wraps round its loop concentrically. The four original generators placed loops overlapping the centre, joined ramps to nothing, put the freeway across the planner's bearing instead of along it, and had no generator at all for Stack, Diamond, Trumpet and Directional T. `tests/test_footprint.py` now checks that every ramp end meets a road, that ramps meet the mainline tangentially, that no centreline crosses itself, the overall extent, and that the right-of-way polygon is valid.
 
 **Footprint placement** (`app/application/footprint.py`) instantiates a generator at the origin (`center_lon=0, center_lat=0`), multiplies its raw output by `METRES_PER_COORD` (`app/domain/geometry.py`) to recover true local metres, rotates by a bearing (the direction from the clicked point to a second, optional click), and projects to the real site with a **latitude-corrected** equirectangular projection (`app/infrastructure/gis/projection.py`) — verified against the haversine formula to well under 1 % error at interchange scale. The generators' own `center_lon`/`center_lat` scale both axes by one flat `0.0005` degrees/metre constant, which at Kyiv's latitude (~50.45°N) compresses east–west distances by roughly 36 % (a degree of longitude spans only \(\cos(50.45°) \approx 0.638\) of a degree of latitude), so they are only used by the legacy Streamlit "engineering view", which never geo-references them.
 
@@ -546,6 +547,37 @@ The browser builds every export from data already on screen (`frontend/src/expor
 
 ---
 
+### 3.19 3-D Interchange Model
+
+`app/application/model3d.py` turns the plan centrelines of §3.11 into a 3-D model for the gallery: a height for every point, the piers under the decks and the direction of travel. The frontend only draws it. The profile is **schematic**: it shows which road passes over which and at what level, and it is not a vertical design. Constants are in `app/data/interchange_geometry.py`.
+
+**Levels.** Two road surfaces that cross are \(h = 6.5\) m apart (`LEVEL_STEP_M`: 5.0 m of clearance under DBN V.2.3-4 plus about 1.5 m of deck). `VERTICAL_ORDER` gives each segment a rank per interchange type: the higher rank passes over, equal ranks meet at grade (a ramp terminal on its crossroad, a SPUI's central intersection, a DDI's crossovers). Two flyovers of equal rank that cross, as a turbine's opposite left turns do, are grade-separated, and the one further along its own path is on top.
+
+| Type | Levels | Order (bottom to top) |
+|---|---|---|
+| Cloverleaf, Diamond, SPUI, DDI | 2 | mainline, crossroad (with its ramp terminals for the service types) |
+| Trumpet | 2 | through road and loop, stem |
+| Directional T | 3 | flyover into the stem, through road, flyover out of the stem |
+| Turbine, Stack | 4 | mainline, crossroad, left turns SE/NW, left turns NE/SW |
+
+**Roads.** A road of rank \(k\) is level at \(k h\) over everything it bridges plus a 10 m margin, then comes down to the ground at 4 % (`APPROACH_GRADE`), or steeper if the drawn road is too short. Its height depends only on the distance from the centre, so the two carriageways stay side by side.
+
+**Ramps.** A ramp is pinned to the road it leaves and the road it joins for as long as it runs alongside them. In between it has a level stretch (a knot) at each crossing, and the knot heights \(z_k\) solve a linear programme:
+
+$$\min\; G + \varepsilon_1 \sum u_k + \varepsilon_2 \sum z_k$$
+
+subject to \(z_{upper} - z_{lower} \ge h\) at each grade-separated crossing, \(z_a = z_b\) at each at-grade crossing, \(|z_{k+1} - z_k| \le u_k\) and \(p\,u_k \le G\,d_k\) between consecutive knots \(d_k\) apart, and \(z_k \ge 0\). \(G\) is the steepest gradient in the interchange, so the solution is the profile whose steepest ramp is as gentle as possible; the small terms then choose the one that rises and falls least and, last, the lowest. Between knots a ramp follows a parabolic vertical curve, a tangent grade and a second curve, whose steepest slope is \(p = 4/3\) of its average. The programme has at most a few dozen variables and is solved with `scipy.optimize.linprog`; the result is cached per alternative.
+
+The plan geometry is compact (ramps of 700 to 900 m where a real stack's are over a kilometre), so the steepest gradients come out at 4 to 5 % for the two-level types, about 7 % for the directional T, 9 % for the turbine and 11 % for the stack. The API reports the value as `max_grade`.
+
+**Piers** stand under every deck at least 3 m high, about 30 m apart, and are moved along the deck off any road passing underneath. Lower decks are drawn as fill behind retaining walls.
+
+For the stack to have four levels, opposite left turns must not cross, so `STACK_CENTRE_PASS_M` is negative: each flyover passes the centre on its near side.
+
+`tests/test_model3d.py` checks that every crossing is at grade or has its clearance, the number of levels, the smoothness of every profile, that ramp ends sit on their roads, and that no pier stands on a road.
+
+---
+
 ## 4. Decision Alternatives
 
 The system evaluates 8 interchange types organised into 3 functional context categories.
@@ -713,6 +745,18 @@ Returns detailed information about a named interchange for the detail panel and 
 ```
 
 ---
+
+#### `GET /api/interchange/{name}/model3d`
+
+Returns the 3-D model of a catalogue alternative (§3.19). No parameters; `404` for a name without a geometry generator. The response is cacheable for an hour.
+
+| Field | Meaning |
+|---|---|
+| `extent_m` | Half the side of the square the plan fits in |
+| `level_step_m`, `levels`, `max_height_m`, `max_grade` | Level spacing, number of levels (ground included), highest deck, steepest gradient (fraction) |
+| `fill_below_m` | Decks lower than this stand on fill, higher ones on piers |
+| `segments[]` | `id`, `kind` (`mainline`, `crossroad`, `ramp`), `lanes`, `width_m`, `speed_kmh`, `points` as `[x east, y north, z up]` in metres, in the direction of travel |
+| `piers[]` | `[x, y, top z, width]` |
 
 #### `GET /blueprints/{filename}`
 
@@ -1382,6 +1426,10 @@ flowchart LR
 ```
 
 ---
+
+#### `Interchange3D.vue` — 3-D model viewer
+
+Shown in the gallery tab. It fetches `/api/interchange/{name}/model3d` and draws it with three.js, which is loaded by dynamic import and so stays out of the main bundle. `composables/interchangeGeometry.js` holds the pure mesh builders (road ribbons, lane markings, decks, parapets, retaining walls, piers, car paths) with no three.js or DOM dependency. Cars drive along every segment in its direction of travel. The render loop runs only while the gallery tab is active, the canvas is on screen and the page is visible; with `prefers-reduced-motion` nothing moves by itself. Props: `name`, `dark`, `active`, `color`; emits `loaded` with the model.
 
 #### `BlueprintGallery.vue` — Blueprint Gallery
 

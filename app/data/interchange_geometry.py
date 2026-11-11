@@ -60,12 +60,14 @@ ROAD_MARGIN_M = 60.0
 # ---------------------------------------------------------------------------
 # Turbine and stack
 # ---------------------------------------------------------------------------
-# Both route every left turn on a directional ramp; what tells them apart in plan is how close
-# those ramps pass the centre. A turbine's ramps spiral round it on a ring; a stack's cross over
-# the centre itself, stacked on levels 3 and 4. The value is the distance from the centre at which
-# each left-turn ramp passes it.
+# Both route every left turn on a directional ramp; what tells them apart in plan is where those
+# ramps pass the centre. A turbine's ramps spiral round its far side on a ring, so each one
+# crosses the other three. A stack's cross over the centre itself, stacked on levels 3 and 4. The
+# value is the distance from the centre at which each left-turn ramp passes it; a negative one is
+# on the near side, which keeps a stack's opposite left turns from crossing each other so that
+# they can share a level.
 TURBINE_RING_RADIUS_M = 70.0
-STACK_CENTRE_PASS_M = 14.0
+STACK_CENTRE_PASS_M = -14.0
 
 # ---------------------------------------------------------------------------
 # Service interchanges (diamond, SPUI, DDI)
@@ -105,6 +107,66 @@ STEM_LENGTH_M = 320.0
 # through road's centreline. The flyovers start curving there and cross the through road on the
 # diagonal.
 DIRECTIONAL_T_SPLIT_M = 40.0
+
+# ---------------------------------------------------------------------------
+# Vertical profile of the 3-D model (``app/application/model3d.py``)
+# ---------------------------------------------------------------------------
+# The generators are plan geometry only. The 3-D view adds a schematic vertical profile: which
+# road passes over which, and the gentlest ramp gradients that give every crossing its clearance.
+# It illustrates the interchange's levels; it is not a vertical design.
+#
+# Height between two road surfaces that cross: 5.0 m of vertical clearance (DBN V.2.3-4 for
+# category I-II roads; AASHTO's 4.9 m is the same in practice) plus about 1.5 m of bridge deck.
+LEVEL_STEP_M = 6.5
+
+# Gradient of the approach to an elevated road (4 % is the usual maximum for a category I road).
+# Where the drawn road is too short to come down at it, the approach is drawn steeper so that the
+# road still meets the ground at its end.
+APPROACH_GRADE = 0.04
+
+# An elevated road stays level this far beyond the edge of the last road it bridges.
+PLATEAU_MARGIN_M = 10.0
+
+# A ramp holds its height from this far before the edge of a road it crosses to this far after.
+CROSSING_MARGIN_M = 4.0
+
+# Stacking order where two centrelines cross: the higher number passes over, equal numbers meet
+# at grade (a ramp terminal on its crossroad, a SPUI's central intersection, a DDI's crossovers).
+# Keys are segment-id prefixes, the longest match wins, and anything unlisted is 0 (ground level).
+# Two flyovers of equal rank that cross (a turbine's left turns) are not at grade: the ramp that
+# is further along its own path passes over, so a ramp climbs early and comes down late.
+VERTICAL_ORDER: dict[str, dict[str, int]] = {
+    # Freeway over freeway on one bridge; loops and connectors only join the two levels.
+    "Cloverleaf": {"crossroad": 1},
+    "Turbine": {
+        "crossroad": 1,
+        "left-from-SE": 2, "left-from-NW": 2,
+        "left-from-NE": 3, "left-from-SW": 3,
+    },
+    # The classic four levels: opposite left turns share a level.
+    "Stack (4-Level)": {
+        "crossroad": 1,
+        "left-from-SE": 2, "left-from-NW": 2,
+        "left-from-NE": 3, "left-from-SW": 3,
+    },
+    # Service interchanges: the arterial and its ramp terminals sit on the bridge level.
+    "Diamond": {"crossroad": 1, "ramp": 1},
+    "SPUI": {"crossroad": 1, "ramp": 1},
+    "DDI": {"crossroad": 1, "ramp": 1},
+    # The stem bridges the through road; the loop passes under the stem.
+    "Trumpet": {"stem": 1},
+    # Three levels: the stem's carriageways split vertically before the flyovers leave them.
+    "Directional T": {
+        "mainline": 1,
+        "stem-WB": 2, "flyover-stem-out": 2,
+    },
+}
+
+# Piers stand under a deck that is at least this high (lower approaches are drawn as fill behind
+# retaining walls), at about this spacing, and never on a road passing underneath.
+PIER_MIN_HEIGHT_M = 3.0
+PIER_SPACING_M = 30.0
+PIER_ROAD_CLEARANCE_M = 2.0
 
 # ---------------------------------------------------------------------------
 # Roundabout (legacy view only)
