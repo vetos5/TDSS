@@ -142,9 +142,9 @@ function isFeasible(rv) {
   position: sticky;
   left: 0;
   z-index: 1;
-  background-color: var(--surface) !important;
+  background-color: var(--surface-solid) !important;
 }
 tbody tr:nth-child(even) > .sticky-col {
-  background-color: color-mix(in oklab, var(--surface-2) 40%, var(--surface)) !important;
+  background-color: color-mix(in oklab, var(--surface-2) 40%, var(--surface-solid)) !important;
 }
 </style>

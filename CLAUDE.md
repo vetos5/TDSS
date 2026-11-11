@@ -111,9 +111,11 @@ The layers are strict. Keep maths out of the routes and the frontend.
   level and quickly retrainable from new documents. Don't replace it with a third-party ML or AI
   library, and keep any external AI optional.
 - The UI is for engineers using professional tools. Keep every main input visible in the left
-  panel and the views as tabs along the top. On phones, use the iOS-style bottom tab bar. The look
-  is macOS-like (system font, system blue, grouped cards). Tab and panel changes use short eased
-  transitions, without blank loading states.
+  panel and the views as tabs along the top. The desktop look is macOS-like (system font, system
+  blue, grouped cards). Phones (below `md`) use floating liquid glass instead: a glass title pill,
+  a glass pill tab bar with a round *More* button, a monochrome accent and pill controls (`.glass`,
+  `.glass-backdrop`, `.liquid-ease` and the phone `@media` blocks in `style.css`). Tab and panel
+  changes use short eased transitions, without blank loading states.
 
 ## Code map (read this instead of re-exploring)
 
@@ -187,6 +189,7 @@ Where things are and what they hold, so a session can go straight to the file it
   (`color`, `color_dark`).
 - CSS classes (`style.css`): `card card-title card-desc eyebrow field field-label btn btn-primary
   btn-ghost icon-btn seg seg-item table table-scroll notice notice-ok notice-warn notice-bad badge
-  badge-accent num spinner tab-pane ios-slider`. Icons: `Icon.vue` `ICONS` map (Lucide paths).
+  badge-accent num spinner tab-pane ios-slider glass glass-backdrop liquid-ease`; `bg-surface-solid` for
+  opaque cells over translucent cards. Icons: `Icon.vue` `ICONS` map (Lucide paths).
 - `locales/en.json` and `uk.json` are flat-ish objects read as `t.value.key`; keep them in sync.
 - `DecisionReport.vue` is the printable report (`.report-*` classes).

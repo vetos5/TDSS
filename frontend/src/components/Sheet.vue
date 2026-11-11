@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, nextTick, onBeforeUnmount } from 'vue'
 
-// iOS-style bottom sheet: slides up over a dimmed backdrop, closes on backdrop tap, Escape,
+// Floating glass sheet: rises over a dimmed backdrop, closes on backdrop tap, Escape,
 // the Done button, or a downward drag on the grabber/header.
 const props = defineProps({ open: Boolean, title: String, doneLabel: String })
 const emit = defineEmits(['close'])
@@ -44,19 +44,20 @@ function dragEnd() {
 <template>
   <Teleport to="body">
     <Transition name="fade">
-      <div v-if="open" class="fixed inset-0 z-50 bg-black/30" @click="emit('close')"></div>
+      <div v-if="open" class="fixed inset-0 z-50 bg-black/25" @click="emit('close')"></div>
     </Transition>
     <Transition name="sheet">
       <div v-if="open" ref="panel" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1"
-           class="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[85dvh] max-w-lg flex-col rounded-t-2xl bg-app pb-safe outline-none"
-           :style="{ boxShadow: 'var(--sheet-shadow)', transform: dragY ? `translateY(${dragY}px)` : undefined,
+           class="glass fixed inset-x-2 bottom-[calc(env(safe-area-inset-bottom)+8px)] z-50 mx-auto flex max-h-[85dvh] max-w-lg flex-col rounded-[32px] outline-none"
+           :style="{ transform: dragY ? `translateY(${dragY}px)` : undefined,
                      transition: dragY && startY !== null ? 'none' : undefined }">
         <div class="shrink-0 touch-none select-none" @pointerdown="dragStart" @pointermove="dragMove"
              @pointerup="dragEnd" @pointercancel="dragEnd">
-          <div class="mx-auto mt-2 h-1.5 w-9 rounded-full bg-line-strong"></div>
-          <div class="relative flex h-11 items-center px-4">
+          <div class="mx-auto mt-2.5 h-1.5 w-10 rounded-full bg-line-strong"></div>
+          <div class="relative flex h-12 items-center px-4">
             <h2 class="flex-1 text-center text-[17px] font-semibold">{{ title }}</h2>
-            <button class="absolute right-2 min-h-11 px-3 text-[17px] font-semibold text-accent-ink" @click="emit('close')">
+            <button class="absolute right-3 inline-flex h-9 items-center rounded-full bg-[var(--glass-track)] px-4 text-[15px] font-semibold active:scale-95"
+                    @click="emit('close')">
               {{ doneLabel }}
             </button>
           </div>

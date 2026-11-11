@@ -10,6 +10,7 @@
   "tabInputs": "Inputs",
   "tabMore": "More",
   "tabShort": {
+    "inputs": "Inputs",
     "evaluation": "Results",
     "site": "Site",
     "robustness": "Robustness",

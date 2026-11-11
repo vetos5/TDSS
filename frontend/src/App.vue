@@ -106,7 +106,10 @@ watch(() => model.status.value?.revision, (now, before) => {
     <Sidebar v-if="!narrow" :dark="dark" :dss="dss" @toggle-theme="toggle" @show-compare="selectTab('compare')"
              @open-report="reportOpen = true" />
 
-    <main ref="scroller" class="relative min-w-0 flex-1 overflow-y-auto pb-[calc(52px+env(safe-area-inset-bottom))] md:pb-0">
+    <div class="glass-backdrop md:hidden" aria-hidden="true"></div>
+
+    <!-- Phones: content runs under the floating glass bar; the padding lets its last rows clear it. -->
+    <main ref="scroller" class="relative min-w-0 flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+92px)] md:pb-0">
       <!-- Desktop toolbar: title on the left, view switcher centred, activity on the right.
            Equal 1fr side columns keep the switcher centred whatever the language. The title
            only shows while the switcher is icons only: once its labels appear (TabNav, 1760px)
@@ -126,10 +129,10 @@ watch(() => model.status.value?.revision, (now, before) => {
         </div>
       </header>
 
-      <!-- Phone navigation bar -->
-      <header class="material-bar sticky top-0 z-20 border-b border-line pt-safe md:hidden">
-        <div class="relative flex h-11 flex-col items-center justify-center px-12">
-          <h1 class="max-w-full truncate text-[17px] leading-tight font-semibold">{{ title }}</h1>
+      <!-- Phone title: a floating glass pill; content scrolls on under it. -->
+      <header class="pointer-events-none sticky top-0 z-20 px-3 pt-[calc(env(safe-area-inset-top)+8px)] md:hidden">
+        <div class="glass pointer-events-auto relative mx-auto flex h-12 max-w-md flex-col items-center justify-center rounded-full px-12">
+          <h1 class="max-w-full truncate text-[16px] leading-tight font-semibold">{{ title }}</h1>
           <p v-if="activeTab !== 'inputs'" class="max-w-full truncate text-[11px] leading-tight text-muted">
             {{ dss.selectedContext.value }}
           </p>
@@ -138,7 +141,7 @@ watch(() => model.status.value?.revision, (now, before) => {
         </div>
       </header>
 
-      <div class="mx-auto max-w-[1400px] px-4 py-4 sm:p-6">
+      <div class="mx-auto max-w-[1400px] px-3 pt-3 pb-4 sm:p-6">
         <!-- Phone only: the inputs as a page of their own -->
         <Sidebar v-if="narrow" v-show="activeTab === 'inputs'" page class="tab-pane"
                  :dark="dark" :dss="dss" @show-results="selectTab('evaluation')"

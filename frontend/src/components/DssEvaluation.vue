@@ -232,7 +232,7 @@ const descHtml = computed(() => (detailInfo.value?.engineering_desc ?? '')
         { label: t.aadtLabel,        val: params.aadt.toLocaleString(), n: true },
         { label: t.budgetLimit,      val: '$' + params.budget + 'M', n: true },
         { label: t.landLimitLabel,   val: params.land_limit + ' ha', n: true },
-      ]" :key="m.label" class="bg-surface px-3 py-2.5">
+      ]" :key="m.label" class="bg-surface-solid px-3 py-2.5">
         <p class="eyebrow">{{ m.label }}</p>
         <p class="mt-0.5 text-sm font-semibold" :class="{ num: m.n }">{{ m.val }}</p>
       </div>
@@ -241,7 +241,7 @@ const descHtml = computed(() => (detailInfo.value?.engineering_desc ?? '')
         { label: t.lanesPerDir,    val: String(params.num_lanes), n: true },
         { label: t.terrain,        val: displayTerrain(params.terrain) },
         { label: t.envSens,        val: displayEnv(params.env_sensitivity) },
-      ]" :key="m.label" class="bg-surface px-3 py-2.5">
+      ]" :key="m.label" class="bg-surface-solid px-3 py-2.5">
         <p class="eyebrow">{{ m.label }}</p>
         <p class="mt-0.5 text-sm font-semibold" :class="{ num: m.n }">{{ m.val }}</p>
       </div>
@@ -378,7 +378,7 @@ const descHtml = computed(() => (detailInfo.value?.engineering_desc ?? '')
           { l: t.landArea,    v: selResult.raw_values.land_area_hectares.toFixed(1) + ' ha', n: true },
           { l: t.feasibility, v: isFeasible(selResult.raw_values) ? t.feasible : t.overLimit,
             tone: isFeasible(selResult.raw_values) ? 'text-ok' : 'text-bad' },
-        ]" :key="m.l" class="bg-surface px-3 py-2.5">
+        ]" :key="m.l" class="bg-surface-solid px-3 py-2.5">
           <p class="text-xs text-muted">{{ m.l }}</p>
           <p class="mt-0.5 text-sm font-semibold" :class="[m.n ? 'num' : '', m.tone]">{{ m.v }}</p>
         </div>
@@ -525,7 +525,7 @@ const descHtml = computed(() => (detailInfo.value?.engineering_desc ?? '')
   position: sticky;
   left: 0;
   z-index: 1;
-  background-color: var(--surface);
+  background-color: var(--surface-solid);
   box-shadow: inset -1px 0 var(--line);
 }
 tbody tr:nth-child(even) .sticky-col {

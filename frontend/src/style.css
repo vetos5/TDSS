@@ -13,6 +13,7 @@
   --panel: #ebebee;
   --bar: rgb(245 245 247 / 0.78);
   --surface: #ffffff;
+  --surface-solid: #ffffff;
   --surface-2: #f2f2f4;
   --surface-3: #e3e3e8;
   --control: #ffffff;
@@ -35,6 +36,12 @@
   --shadow: 0 0 0 0.5px rgb(0 0 0 / 0.04), 0 1px 2px rgb(0 0 0 / 0.04);
   --control-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.14), 0 1px 1.5px rgb(0 0 0 / 0.1);
   --sheet-shadow: 0 -10px 40px rgb(0 0 0 / 0.18);
+  --glass-tint: rgb(250 251 253 / 0.6);
+  --glass-edge: rgb(255 255 255 / 0.75);
+  --glass-sheen: rgb(255 255 255 / 0.5);
+  --glass-shadow: 0 8px 28px rgb(0 0 0 / 0.16);
+  --glass-track: rgb(0 0 0 / 0.07);
+  --card-edge: var(--line);
   color-scheme: light;
 }
 
@@ -43,6 +50,7 @@
   --panel: #232325;
   --bar: rgb(29 29 31 / 0.78);
   --surface: #2c2c2e;
+  --surface-solid: #2c2c2e;
   --surface-2: #3a3a3c;
   --surface-3: #48484a;
   --control: #4a4a4d;
@@ -65,7 +73,63 @@
   --shadow: 0 0 0 0.5px rgb(0 0 0 / 0.3);
   --control-shadow: 0 0 0 0.5px rgb(0 0 0 / 0.4), inset 0 0.5px 0 rgb(255 255 255 / 0.08);
   --sheet-shadow: 0 -10px 40px rgb(0 0 0 / 0.5);
+  --glass-tint: rgb(36 37 44 / 0.55);
+  --glass-edge: rgb(255 255 255 / 0.14);
+  --glass-sheen: rgb(255 255 255 / 0.12);
+  --glass-shadow: 0 10px 32px rgb(0 0 0 / 0.5);
+  --glass-track: rgb(255 255 255 / 0.12);
+  --card-edge: var(--line);
   color-scheme: dark;
+}
+
+/* ── Phones: floating liquid glass ──────────────────────────────────────────
+   Below md the app drops the macOS/iOS look (system blue, square push buttons) for floating
+   glass chrome over a soft lit backdrop: monochrome accents, pill controls, translucent
+   cards. Only tokens change here; the shapes are in the phone block under @layer components.
+   `:root:not(.dark)` keeps the light block from beating the base `.dark` rule by order. */
+@media (max-width: 767px) {
+  :root:not(.dark) {
+    --app: #eef0f4;
+    --surface: rgb(255 255 255 / 0.62);
+    --surface-solid: #f9fafc;
+    --surface-2: rgb(255 255 255 / 0.5);
+    --surface-3: rgb(15 18 30 / 0.07);
+    --control: rgb(255 255 255 / 0.7);
+    --accent: #15161a;
+    --accent-fg: #ffffff;
+    --accent-soft: rgb(21 22 26 / 0.08);
+    --accent-ink: #15161a;
+    --ring: rgb(21 22 26 / 0.28);
+    --glass-tint: rgb(250 251 253 / 0.52);
+    --glass-edge: rgb(255 255 255 / 0.75);
+    --glass-sheen: rgb(255 255 255 / 0.55);
+    --glass-shadow: 0 8px 28px rgb(15 18 30 / 0.16);
+    --glass-track: rgb(15 18 30 / 0.07);
+    --card-edge: rgb(255 255 255 / 0.85);
+    --glow-a: rgb(120 150 255 / 0.22);
+    --glow-b: rgb(255 170 120 / 0.16);
+  }
+  .dark {
+    --app: #0b0c10;
+    --surface: rgb(255 255 255 / 0.06);
+    --surface-solid: #18191e;
+    --surface-2: rgb(255 255 255 / 0.09);
+    --surface-3: rgb(255 255 255 / 0.12);
+    --control: rgb(255 255 255 / 0.1);
+    --accent: #f2f3f5;
+    --accent-fg: #0b0c10;
+    --accent-soft: rgb(255 255 255 / 0.1);
+    --accent-ink: #f2f3f5;
+    --ring: rgb(255 255 255 / 0.3);
+    --glass-tint: rgb(36 37 44 / 0.45);
+    --glass-edge: rgb(255 255 255 / 0.14);
+    --glass-sheen: rgb(255 255 255 / 0.13);
+    --glass-shadow: 0 10px 32px rgb(0 0 0 / 0.5);
+    --glass-track: rgb(255 255 255 / 0.12);
+    --card-edge: rgb(255 255 255 / 0.1);
+    --glow-a: rgb(90 110 255 / 0.2);
+    --glow-b: rgb(0 200 170 / 0.1);
+  }
 }
 
 @theme inline {
@@ -76,6 +140,7 @@
   --color-panel: var(--panel);
   --color-bar: var(--bar);
   --color-surface: var(--surface);
+  --color-surface-solid: var(--surface-solid);
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
   --color-control: var(--control);
@@ -271,6 +336,101 @@ body {
     -webkit-backdrop-filter: saturate(180%) blur(20px);
     backdrop-filter: saturate(180%) blur(20px);
   }
+
+  /* Floating glass (phone chrome): blurs what scrolls behind it, with light on the top edge.
+     Strong enough blur that text behind never reads as text. */
+  .glass {
+    position: relative;
+    isolation: isolate;
+    background: var(--glass-tint);
+    -webkit-backdrop-filter: blur(26px) saturate(170%);
+    backdrop-filter: blur(26px) saturate(170%);
+    box-shadow: var(--glass-shadow), inset 0 0 0 1px var(--glass-edge);
+  }
+  .glass::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 45% 0;
+    z-index: -1;
+    border-radius: inherit;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    background: linear-gradient(var(--glass-sheen), transparent);
+    pointer-events: none;
+  }
+}
+
+/* Soft lit backdrop behind the phone UI, so the glass has something to bend. */
+.glass-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 40% at 10% 0%, var(--glow-a), transparent 70%),
+    radial-gradient(55% 40% at 100% 60%, var(--glow-b), transparent 70%);
+}
+
+/* Phone shapes: pills and glass instead of macOS push buttons. In the components layer,
+   after the base rules, so per-element utilities still override them. */
+@layer components {
+@media (max-width: 767px) {
+  .card {
+    border-radius: 22px;
+    border-color: var(--card-edge);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 6px 22px rgb(15 18 30 / 0.06);
+  }
+  .btn,
+  .btn-primary,
+  .btn-ghost {
+    border-radius: 999px;
+    padding-inline: 1.1rem;
+  }
+  .btn {
+    background: var(--control);
+    box-shadow: inset 0 0 0 1px var(--card-edge), 0 4px 14px rgb(15 18 30 / 0.08);
+  }
+  .btn-primary {
+    background-image: none;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.18);
+  }
+  .btn-ghost {
+    color: var(--fg);
+  }
+  .icon-btn {
+    border-radius: 999px;
+  }
+  .field {
+    border-radius: 14px;
+    padding-inline: 0.85rem;
+    box-shadow: inset 0 0 0 1px var(--card-edge), 0 1px 2px rgb(15 18 30 / 0.05);
+  }
+  .field:focus {
+    box-shadow: 0 0 0 3px var(--ring), inset 0 0 0 1px var(--accent);
+  }
+  .seg {
+    border-radius: 999px;
+    padding: 3px;
+    background: var(--glass-track);
+  }
+  .seg-item {
+    border-radius: 999px;
+  }
+  .seg-item[aria-checked='true'],
+  .seg-item[aria-pressed='true'],
+  .seg-item[aria-selected='true'] {
+    background: var(--control);
+    box-shadow: inset 0 0 0 1px var(--card-edge), 0 2px 8px rgb(15 18 30 / 0.12);
+  }
+  .badge,
+  .badge-accent {
+    border-radius: 999px;
+    padding-inline: 0.5rem;
+  }
+  .notice {
+    border-radius: 16px;
+  }
+}
 }
 
 /* ── Motion ─────────────────────────────────────────────────────────────── */
@@ -282,6 +442,13 @@ body {
 @keyframes tab-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
+}
+
+/* Liquid motion for the floating phone chrome: a long, soft settle. */
+.liquid-ease {
+  transition-property: flex-grow, transform, width, max-width, margin, opacity, color, background-color, scale;
+  transition-duration: 420ms;
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .fade-enter-active,
@@ -297,7 +464,7 @@ body {
 .sheet-enter-active { transition: transform 380ms cubic-bezier(0.32, 0.72, 0, 1); }
 .sheet-leave-active { transition: transform 240ms cubic-bezier(0.4, 0, 1, 1); }
 .sheet-enter-from,
-.sheet-leave-to { transform: translateY(100%); }
+.sheet-leave-to { transform: translateY(calc(100% + 48px)); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -309,6 +476,9 @@ body {
 .leaflet-container {
   border-radius: 0.5rem;
   font-family: var(--font-sans);
+}
+@media (max-width: 767px) {
+  .leaflet-container { border-radius: 18px; }
 }
 
 /* ── Sliders (macOS style: white knob, accent fill up to the value) ─────── */

@@ -10,6 +10,7 @@
   "tabInputs": "Вхідні дані",
   "tabMore": "Ще",
   "tabShort": {
+    "inputs": "Дані",
     "evaluation": "Результати",
     "site": "Ділянка",
     "robustness": "Стійкість",

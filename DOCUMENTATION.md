@@ -1304,6 +1304,8 @@ Responsible for:
 - Rendering the ambient glassmorphism background blobs (light mode)
 - Showing a loading spinner overlay while `dss.loading` is true
 
+**Phone layout (below 768 px).** Phones use a floating "liquid glass" look instead of the macOS one. The view title sits in a glass pill at the top, and navigation is a glass pill at the bottom (`MobileTabBar.vue`) with a round *More* button beside it. Content scrolls under both. A glass surface (`.glass` in `style.css`) blurs what is behind it (`backdrop-filter: blur(26px) saturate(170%)`) and adds a tint, a light edge and a top sheen. In the pill the active tab widens to show its label, and a highlight slides under it. The *More* sheet (`Sheet.vue`) floats as a glass card. Below `md` the tokens drop system blue for a monochrome accent, cards turn translucent over a soft lit backdrop (`.glass-backdrop`), and buttons, fields and segmented controls become pills. `--surface-solid` stays opaque for sticky table columns and `gap-px` grids. The desktop look is unchanged.
+
 ---
 
 #### `Sidebar.vue` — Left Control Panel
