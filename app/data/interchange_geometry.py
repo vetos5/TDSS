@@ -24,18 +24,36 @@ from __future__ import annotations
 # Cross-section
 # ---------------------------------------------------------------------------
 LANE_WIDTH_M = 3.75              # DBN V.2.3-4, categories I-II
-FREEWAY_LANES = 3                # per direction, both roads of a system interchange
-ARTERIAL_LANES = 2               # per direction, the crossroad of a service interchange
-RAMP_LANES = 1                   # single-lane ramps; directional ramps may use 2
 FREEWAY_MEDIAN_M = 4.0           # narrow median with a barrier, as near an interchange
 ARTERIAL_MEDIAN_M = 2.0          # raised kerb median on the crossroad
 
 # ---------------------------------------------------------------------------
+# Lanes ("lane mathematics")
+# ---------------------------------------------------------------------------
+# Lanes are conserved through every interchange: a ramp is the outer lane of the carriageway it
+# leaves, and becomes the outer lane of the one it joins. No lane ends in a taper and no two lanes
+# merge into one, so at every diverge   lanes before = lanes carrying on + lanes of the ramp
+# and at every merge                    lanes after  = lanes arriving   + lanes of the ramp.
+# (AASHTO's lane-balance rule would also allow one lane more on the leaving side; conserving them
+# exactly is the stricter reading, and it is the one that keeps the traffic in the 3-D model in
+# its lanes.) The counts below follow from it, with two lanes left to run straight through:
+FREEWAY_LANES = 3                # per direction where one lane leaves before the next one joins:
+#                                  cloverleaf, diamond and the through road of the three-leg types
+WIDE_FREEWAY_LANES = 4           # where two lanes leave before any joins: a turbine's and a stack's
+#                                  right and left turns, and the two-lane ramps of a SPUI and a DDI
+ARTERIAL_LANES = 2               # per direction, the crossroad of a diamond (plain junctions)
+TURNING_ARTERIAL_LANES = 3       # SPUI and DDI: a lane each for the left turn, straight on and
+#                                  the right turn, since their turns run free of the through lane
+STEM_LANES = 2                   # the terminating road of a three-leg type: one lane per turn
+RAMP_LANES = 1                   # single-lane ramps
+TERMINAL_RAMP_LANES = 2          # SPUI and DDI ramps: a lane each for the left and the right turn
+
+# ---------------------------------------------------------------------------
 # Ramp alignment
 # ---------------------------------------------------------------------------
-# A ramp leaves or joins its carriageway along a parallel auxiliary lane (the parallel-type
-# speed-change lane of the Green Book, §10.9.6) before it curves away. The drawing keeps a
-# shortened parallel run: long enough to read as a merge on the map, short enough not to dominate.
+# A ramp leaves or joins its carriageway along the outer lane, which it runs on for this far
+# before it curves away (after it has straightened up): long enough to read as an exit lane on the
+# map, short enough not to dominate. Traffic changes lanes across the line beside it.
 SPEED_CHANGE_RUN_M = 60.0
 
 # Loop ramps of a cloverleaf and a trumpet: 40 km/h loop, the common 45-75 m range.
@@ -105,7 +123,9 @@ DDI_LEFT_TURN_RADIUS_M = 25.0
 DDI_CROSSOVER_RADIUS_M = 60.0
 DDI_FLARE_RADIUS_M = 100.0
 DDI_FLARE_ANGLE_DEG = 15.0
-# Merge lane of a left turn from an off-ramp, between the end of its curve and the bridge.
+# Straight run of a left turn from an off-ramp, between the end of its curve and the bridge. From
+# there on it is an extra lane on the outside of the carriageway, which crosses the bridge and
+# leaves again as the left turn onto the opposite on-ramp.
 DDI_MERGE_RUN_M = 45.0
 
 # ---------------------------------------------------------------------------
@@ -172,14 +192,16 @@ VERTICAL_ORDER: dict[str, dict[str, int]] = {
     },
 }
 
-# A ramp joins and leaves its carriageway on a parallel speed-change lane (SPEED_CHANGE_RUN_M of
-# it is drawn). The lane ends on a taper: the Green Book's parallel-type terminals use about 90 m,
-# and the drawing keeps the proportion to its shortened run.
-MERGE_TAPER_M = 45.0
+# Traffic on an auxiliary lane (one that a ramp brings and the next ramp takes away: the weaving
+# lane between a cloverleaf's loops, the extra lane over a DDI's bridge) swaps with the lane beside
+# it. The swap starts and ends at most this far outside the auxiliary lane itself, on the ramps'
+# runs alongside.
+WEAVE_LEAD_M = 30.0
 
-# Where a road ends and a narrower ramp carries on (the stem of a trumpet or a directional T
-# splitting into its ramps), the lanes that do not continue end on a taper of this length.
-LANE_DROP_TAPER_M = 70.0
+# Traffic in the 3-D model: time between two cars in a lane, and how fast speed changes along a
+# lane where its limit does (per metre travelled; 0.15 takes a car from 40 to 100 km/h in ~110 m).
+TRAFFIC_HEADWAY_S = 2.4
+TRAFFIC_SPEED_CHANGE_PER_M = 0.15
 
 # Two carriageways of one road that are closer than this stand on a single deck, paved across
 # the median. It covers the arterial's 2 m kerbed median (ARTERIAL_MEDIAN_M), which has to be open

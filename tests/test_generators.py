@@ -136,8 +136,8 @@ def test_left_turn_ramps_pass_the_centre_at_their_distance(name, distance):
 
 def test_spui_opposing_left_turns_do_not_cross():
     segs = {seg.id: LineString(pts) for seg, pts in _layout("SPUI")}
-    assert not segs["ramp-NB-off"].intersects(segs["ramp-SB-off"])
-    assert not segs["ramp-NB-on"].intersects(segs["ramp-SB-on"])
+    assert not segs["ramp-NB-off-left"].intersects(segs["ramp-SB-off-left"])
+    assert not segs["ramp-NB-on-left"].intersects(segs["ramp-SB-on-left"])
 
 
 def test_ddi_carriageways_cross_twice_at_the_design_angle():

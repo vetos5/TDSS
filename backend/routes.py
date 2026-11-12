@@ -52,6 +52,7 @@ from backend.schemas import (
     MethodResultSchema,
     MethodScore,
     Model3DResponse,
+    Model3DRouteSchema,
     Model3DSegmentSchema,
     RankAgreementSchema,
     RobustnessRequest,
@@ -503,6 +504,14 @@ def get_interchange_model3d(name: str, response: Response):
             for s in model.segments
         ],
         piers=[[p.x, p.y, p.top_m, p.width_m] for p in model.piers],
+        routes=[
+            Model3DRouteSchema(
+                id=r.id, points=[list(p) for p in r.points], phase_s=r.phase_s,
+                open_start=r.open_start, open_end=r.open_end,
+            )
+            for r in model.routes
+        ],
+        headway_s=model.headway_s,
     )
 
 

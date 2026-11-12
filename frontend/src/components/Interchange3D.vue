@@ -24,7 +24,7 @@ const modelCache = {
 // builders in composables/interchangeGeometry.js.
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useLocale } from '../composables/useLocale.js'
-import { buildInterchange, buildCarGeometry, planTraffic } from '../composables/interchangeGeometry.js'
+import { buildInterchange, buildCarGeometry, planTraffic, placeCar } from '../composables/interchangeGeometry.js'
 import Icon from './Icon.vue'
 
 const props = defineProps({
@@ -98,6 +98,7 @@ const CAR_COLOURS = ['#e8eaee', '#1f2937', '#b91c1c', '#1d4ed8', '#f59e0b', '#0f
 // background between FADE_FROM and FADE_TO x extent from the centre, so no road end and no edge
 // of the ground is ever visible, whatever the camera does.
 const REACH = 2.0
+const TRAFFIC_SPEED = 1.5          // the traffic runs this much faster than real time
 const FADE_FROM = 1.15
 const FADE_TO = 1.8
 
@@ -260,7 +261,7 @@ function buildModel(model) {
   add(built.concrete, mats.concrete, { cast: true })
 
   // Traffic: one instanced body mesh and one instanced lamp mesh sharing the same matrices.
-  const cars = planTraffic(model, { speedFactor: 1.5, colours: CAR_COLOURS.length, reach: extent * REACH })
+  const cars = planTraffic(model, { colours: CAR_COLOURS.length, reach: extent * REACH })
   let bodyMesh = null, lampMesh = null
   if (cars.length) {
     const car = buildCarGeometry()
@@ -342,14 +343,9 @@ function updateCars(time) {
   const cars = m.cars
   const out = carOut
   for (let k = 0; k < cars.length; k++) {
-    const c = cars[k]
-    const len = c.sampler.length
-    const s = (c.s0 + c.v * time) % len
-    c.sampler.at(s, c.lat, out)
-    // Cars shrink in over the first and last 6 m so the loop from end to start does not pop.
-    const e = Math.min(s, len - s)
-    let sc = e >= 6 ? 1 : Math.max(0.001, e / 6)
-    sc = sc * sc * (3 - 2 * sc)
+    // A car shrinks to nothing where its lane ends inside the model (a ramp terminal), and stays
+    // that way until its next turn on the lane.
+    const sc = Math.max(0.001, placeCar(cars[k], time * TRAFFIC_SPEED, out))
     // Basis: x = forward (with pitch), y = up, z = right, so that x cross y = z.
     const fx = out[3], fy = out[4], fz = out[5]
     const rx = -out[6], rz = -out[7]

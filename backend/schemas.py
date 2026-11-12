@@ -340,6 +340,16 @@ class Model3DSegmentSchema(BaseModel):
     open_end: bool = False
 
 
+class Model3DRouteSchema(BaseModel):
+    """One lane followed through the interchange: the path a car of the 3-D view drives."""
+
+    id: str
+    points: List[List[float]]  # [[x, y, z, seconds from the start], ...]
+    phase_s: float             # a car passes the first point at phase_s + k * headway_s
+    open_start: bool = False   # the lane arrives from beyond the model / carries on beyond it
+    open_end: bool = False
+
+
 class Model3DResponse(BaseModel):
     name: str
     extent_m: float            # half the side of the square the plan fits in
@@ -350,6 +360,8 @@ class Model3DResponse(BaseModel):
     fill_below_m: float        # decks lower than this stand on fill, higher ones on piers
     segments: List[Model3DSegmentSchema]
     piers: List[List[float]]   # [[x, y, top z, width], ...]
+    routes: List[Model3DRouteSchema] = []
+    headway_s: float = 0.0     # time between two cars of a route
 
 
 class ContextListResponse(BaseModel):

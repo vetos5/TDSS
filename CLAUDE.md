@@ -153,9 +153,14 @@ Where things are and what they hold, so a session can go straight to the file it
   `EngineeringRequest`, `GroupRequest` in `schemas.py`. Tests: `test_engineering.py`,
   `test_economics.py`, `test_group.py`.
 - `app/application/model3d.py` — `build_model(name)` (cached): heights for the generators' plan
-  centrelines (road levels from `VERTICAL_ORDER`, ramp profiles from a small LP), piers and travel
-  direction → `GET /api/interchange/{name}/model3d` (DOCUMENTATION §3.19). Constants in
-  `app/data/interchange_geometry.py`; tests in `test_model3d.py`.
+  centrelines (road levels from `VERTICAL_ORDER`, ramp profiles from a small LP), piers, pavement
+  edges and lane `routes` for the traffic → `GET /api/interchange/{name}/model3d` (DOCUMENTATION
+  §3.19). Constants in `app/data/interchange_geometry.py`; tests in `test_model3d.py`.
+- **Lane mathematics.** Lanes are conserved: a ramp's centreline starts and ends on the centreline
+  of the carriageway's outer lane (`_Section.ramp_line` / `.lane(k)` in `generators.py`), and the
+  lane counts (`FREEWAY_LANES`, `WIDE_FREEWAY_LANES`, `STEM_LANES`, ...) make every lane go
+  somewhere. `build_model` raises `ValueError` on an unbalanced plan, so run `pytest
+  tests/test_model3d.py` after touching a generator.
 - `app/application/mcda/` — `DecisionMatrix.from_alternatives(alts, CRITERIA)`, `METHODS` dict
   (method fn on matrix + weights), `evaluate()`, `weighting`, `smaa.py`, `sensitivity.py`.
 - `backend/routes.py` — `_prepare(req, lang)` is the shared pipeline (context check → optional model
@@ -197,5 +202,6 @@ Where things are and what they hold, so a session can go straight to the file it
   opaque cells over translucent cards. Icons: `Icon.vue` `ICONS` map (Lucide paths).
 - `locales/en.json` and `uk.json` are flat-ish objects read as `t.value.key`; keep them in sync.
 - `Interchange3D.vue` (in `BlueprintGallery.vue`) draws the 3-D model with three.js, loaded by
-  dynamic import only. Mesh building is in `composables/interchangeGeometry.js` (pure, no three).
+  dynamic import only. Mesh building is in `composables/interchangeGeometry.js` (pure, no three);
+  its cars follow the API's `routes` (`planTraffic`, `placeCar`), never their own lane logic.
 - `DecisionReport.vue` is the printable report (`.report-*` classes).

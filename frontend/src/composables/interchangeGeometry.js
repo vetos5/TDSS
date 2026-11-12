@@ -16,10 +16,11 @@ const EDGE_INSET = 0.3
 const LINE_WIDTH = 0.15
 const DASH_ON = 6
 const DASH_OFF = 9
-const MERGE_DASH = 3                // a speed-change lane's line: short dashes, short gaps
+const MERGE_DASH = 3                // beside a lane that leaves or has just joined: short dashes
 const MERGE_LINE_WIDTH = 0.25
 const LEAD_STEP = 25                 // spacing of the points of a road drawn on beyond the model
-const CAR_MARGIN = 1.1              // a car's centre stays this far inside the pavement edge
+const CAR_GAP = 0.15                // share of the release slots of a lane left empty
+const CAR_FADE_S = 0.35             // a car grows in and shrinks out over this long at a lane end
 
 // ── Mesh accumulator ────────────────────────────────────────────────────────
 
@@ -338,11 +339,15 @@ export function buildInterchange(model, { reach = 0 } = {}) {
       }
     }
 
-    // Lane lines stay where the lanes are: on a taper the outer ones run out at the edge, and
-    // inside a junction there are none.
-    for (let k = 1; k < lanes; k++) {
-      const o = -hw + (2 * hw / lanes) * k
-      const keep = fr => path.mk[fr.lo] && path.mk[fr.hi] && o < fr.left - 0.4 && o > -fr.right + 0.4
+    // Lane lines stay where the lanes are. A carriageway loses a lane where a ramp takes it and
+    // gains one where a ramp brings it, sometimes outside its nominal width, so a line is drawn
+    // wherever there is at least half a lane of pavement on both sides of it. Inside a junction
+    // there are none.
+    const lane = (2 * hw) / lanes
+    for (let k = -1; k <= lanes + 1; k++) {
+      const o = -hw + lane * k
+      const keep = fr => path.mk[fr.lo] && path.mk[fr.hi]
+        && o < fr.left - lane / 2 && o > -fr.right + lane / 2
       paintDashes(marks, path, 0, path.length, DASH_ON, DASH_OFF, () => o, LINE_WIDTH, keep)
     }
 
@@ -387,35 +392,10 @@ export function buildInterchange(model, { reach = 0 } = {}) {
 
 // ── Public: traffic ─────────────────────────────────────────────────────────
 
-// Sampler along a segment: at(s, lateral, out) fills out[0..2] position (three space, including
-// the lateral offset, left positive), out[3..5] unit forward vector (with pitch), out[6..7] unit
-// horizontal left vector. The lateral offset follows the pavement: on a merge taper a single
-// lane leads into the lane alongside, and where a road narrows the outer lanes move inwards.
-export function makeSampler(seg, reach = 0) {
-  const path = preparePath(seg, reach)
-  if (!path) return null
-  const single = path.lanes === 1
-  return {
-    length: path.length,
-    at(s, lateral, out) {
-      const ss = Math.min(path.length, Math.max(0, s))
-      const fr = lerpFrame(path, ss)
-      const { lo, hi } = fr
-      let o = lateral
-      if (single) o += fr.left - fr.right
-      else if (fr.left + fr.right < 2 * CAR_MARGIN) o = (fr.left - fr.right) / 2
-      else o = Math.min(fr.left - CAR_MARGIN, Math.max(-fr.right + CAR_MARGIN, o))
-      out[0] = fr.p[0] + fr.l[0] * o
-      out[1] = fr.p[1]
-      out[2] = fr.p[2] + fr.l[1] * o
-      const fx = path.P[hi][0] - path.P[lo][0], fy = path.P[hi][1] - path.P[lo][1], fz = path.P[hi][2] - path.P[lo][2]
-      const h = Math.hypot(fx, fy, fz) || 1
-      out[3] = fx / h; out[4] = fy / h; out[5] = fz / h
-      out[6] = fr.l[0]; out[7] = fr.l[1]
-      return out
-    },
-  }
-}
+// Cars drive the routes the backend lays out: each route is one lane followed through the
+// interchange, as points with the time a car reaches them, so a car never changes lane by itself
+// and no lane ends under it. Every route releases a car each `headway_s`, offset by the route's
+// `phase_s`, which the backend chooses so that cars of routes that cross pass between one another.
 
 export function seededRandom(seed) {
   let a = seed >>> 0
@@ -434,34 +414,105 @@ function hashString(s) {
   return h >>> 0
 }
 
-// Cars for a whole model. Each car: { sampler, s0, lat, v (m/s of simulated time), colour (index) }.
-// Spacing 45-70 m per lane, random phase, deterministic for a given model name.
-export function planTraffic(model, { speedFactor = 1.5, colours = 7, reach = 0 } = {}) {
+// A route in three space: P (positions), T (seconds at each), D (unit tangent at each point).
+// With `reach` > 0, an end that carries on beyond the model is run on, straight and level and at
+// the speed it has there, until it is `reach` metres from the centre.
+function prepareRoute(route, reach = 0) {
+  const P = [], T = []
+  for (const q of route.points || []) {
+    if (!q || q.length < 4 || !q.every(Number.isFinite)) continue
+    if (T.length && q[3] <= T[T.length - 1]) continue
+    P.push([q[0], q[2], -q[1]])
+    T.push(q[3])
+  }
+  if (P.length < 2) return null
+  const extend = (atStart) => {
+    // Direction from a point well back along the lane, so that the rounding of two close points
+    // does not send a long run-on off its line.
+    const i = atStart ? 0 : P.length - 1, step = atStart ? 1 : -1
+    const tip = P[i]
+    let j = i + step
+    while (P[j + step] && Math.hypot(tip[0] - P[j][0], tip[2] - P[j][2]) < 30) j += step
+    const prev = P[j]
+    const h = Math.hypot(tip[0] - prev[0], tip[2] - prev[2])
+    const dt = Math.abs(T[i] - T[j])
+    if (h < 1e-6 || dt < 1e-6) return
+    const ux = (tip[0] - prev[0]) / h, uz = (tip[2] - prev[2]) / h
+    const along = tip[0] * ux + tip[2] * uz
+    const inside = reach * reach - (tip[0] * tip[0] + tip[2] * tip[2]) + along * along
+    const far = inside > 0 ? -along + Math.sqrt(inside) : 0
+    if (far < 1) return
+    const p = [tip[0] + ux * far, tip[1], tip[2] + uz * far]
+    const t = far / (h / dt)
+    if (atStart) { P.unshift(p); T.unshift(T[0] - t) } else { P.push(p); T.push(T[T.length - 1] + t) }
+  }
+  if (reach > 0 && route.open_start) extend(true)
+  if (reach > 0 && route.open_end) extend(false)
+  const n = P.length
+  const D = []
+  for (let i = 0; i < n; i++) {
+    const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)]
+    const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2]
+    const h = Math.hypot(dx, dy, dz) || 1
+    D.push([dx / h, dy / h, dz / h])
+  }
+  return { n, P, T, D, t0: T[0], t1: T[n - 1] }
+}
+
+// Cars for a whole model: { route, slot, cycle, back, phase, side, colour }. A car is in slot
+// `slot` of its route's release cycle; about one slot in seven is left empty so the stream does
+// not look like a conveyor. Deterministic for a given model.
+export function planTraffic(model, { colours = 7, reach = 0 } = {}) {
   const cars = []
-  for (const seg of model.segments || []) {
-    const sampler = makeSampler(seg, reach)
-    if (!sampler || sampler.length < 12) continue
-    const rnd = seededRandom(hashString(`${model.name}:${seg.id}`))
-    const w = Number(seg.width_m) > 0 ? Number(seg.width_m) : 7
-    const lanes = Math.max(1, Math.round(seg.lanes || 1))
-    const v = ((Number(seg.speed_kmh) || 50) / 3.6) * speedFactor
-    for (let k = 0; k < lanes; k++) {
-      const spacing = 45 + rnd() * 25
-      const count = Math.max(1, Math.floor(sampler.length / spacing))
-      const gap = sampler.length / count
-      const phase = rnd() * gap
-      for (let j = 0; j < count; j++) {
-        cars.push({
-          sampler,
-          s0: (phase + j * gap + (rnd() - 0.5) * Math.min(8, gap * 0.15)) % sampler.length,
-          lat: -w / 2 + (w / lanes) * (k + 0.5) + (rnd() - 0.5) * 0.4,
-          v,
-          colour: Math.floor(rnd() * colours),
-        })
-      }
+  const headway = Number(model.headway_s)
+  if (!(headway > 0)) return cars
+  for (const raw of model.routes || []) {
+    const route = prepareRoute(raw, reach)
+    if (!route) continue
+    const rnd = seededRandom(hashString(`${model.name}:${raw.id}`))
+    // Slots before the route's own start (on the road drawn on towards it) and after it.
+    const back = Math.ceil(Math.max(0, -route.t0) / headway)
+    const slots = back + Math.ceil(route.t1 / headway) + 1
+    const phase = Number.isFinite(raw.phase_s) ? raw.phase_s : 0
+    for (let k = 0; k < slots; k++) {
+      const empty = rnd() < CAR_GAP
+      const side = (rnd() - 0.5) * 0.4
+      const colour = Math.floor(rnd() * colours)
+      if (empty) continue
+      cars.push({ route, headway, phase, slot: k, cycle: slots * headway, back: back * headway, side, colour })
     }
   }
   return cars
+}
+
+// Place a car at traffic time `time` (seconds). Fills out[0..2] position (three space),
+// out[3..5] unit forward vector (with pitch), out[6..7] unit horizontal left vector, and returns
+// the car's scale: 1 on the road, down to 0 as it leaves at a lane end, 0 while it waits its turn.
+export function placeCar(car, time, out) {
+  const { route } = car
+  const x = time - car.phase - car.slot * car.headway
+  const tau = (((x % car.cycle) + car.cycle) % car.cycle) - car.back
+  if (tau <= route.t0 || tau >= route.t1) return 0
+  const T = route.T
+  let lo = 0, hi = route.n - 1
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1
+    if (T[mid] <= tau) lo = mid; else hi = mid
+  }
+  const f = (tau - T[lo]) / (T[hi] - T[lo])
+  const a = route.P[lo], b = route.P[hi], da = route.D[lo], db = route.D[hi]
+  let fx = da[0] + (db[0] - da[0]) * f, fy = da[1] + (db[1] - da[1]) * f, fz = da[2] + (db[2] - da[2]) * f
+  const h = Math.hypot(fx, fy, fz) || 1
+  fx /= h; fy /= h; fz /= h
+  const flat = Math.hypot(fx, fz) || 1
+  const lx = fz / flat, lz = -fx / flat
+  out[0] = a[0] + (b[0] - a[0]) * f + lx * car.side
+  out[1] = a[1] + (b[1] - a[1]) * f
+  out[2] = a[2] + (b[2] - a[2]) * f + lz * car.side
+  out[3] = fx; out[4] = fy; out[5] = fz
+  out[6] = lx; out[7] = lz
+  const e = Math.min(tau - route.t0, route.t1 - tau) / CAR_FADE_S
+  return e >= 1 ? 1 : e * e * (3 - 2 * e)
 }
 
 // One car: low body plus a cabin, with per-vertex colour (white body, dark cabin glass) that the

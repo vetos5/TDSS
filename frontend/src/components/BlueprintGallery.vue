@@ -35,7 +35,9 @@ const viewerName = computed(() => {
 const model3d = ref(null)
 const viewerCard = ref(null)
 
-const rampCount = computed(() => model3d.value?.segments?.filter(s => s.kind === 'ramp').length ?? 0)
+// A SPUI's or a DDI's ramp forks into a left-turn and a right-turn roadway: still one ramp.
+const rampCount = computed(() =>
+  model3d.value?.segments?.filter(s => s.kind === 'ramp' && !/-(left|right)$/.test(s.id)).length ?? 0)
 const modelFacts = computed(() => model3d.value && model3d.value.name === viewerName.value ? [
   { label: t.value.model3dLevels, value: model3d.value.levels },
   { label: t.value.model3dHighest, value: `${Number(model3d.value.max_height_m).toFixed(1)} m` },
