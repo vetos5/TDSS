@@ -86,7 +86,8 @@ export async function fetchInterchangeDetail(name, lang = 'en') {
 
 // Procedural 3D model of an interchange (heights and piers are computed by the backend).
 export async function getModel3d(name) {
-  const { data } = await api.get(`/interchange/${encodeURIComponent(name)}/model3d`)
+  // `v` only makes the URL new: browsers hold the copy that was once served as cacheable for an hour.
+  const { data } = await api.get(`/interchange/${encodeURIComponent(name)}/model3d`, { params: { v: 2 } })
   return data
 }
 

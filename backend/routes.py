@@ -483,8 +483,9 @@ def get_interchange_model3d(name: str, response: Response):
     model = build_model(name) if len(name) <= 64 else None
     if model is None:
         raise HTTPException(status_code=404, detail="No 3-D model for this alternative")
-    # The model depends only on the catalogue geometry, so browsers may keep it for a while.
-    response.headers["Cache-Control"] = "public, max-age=3600"
+    # The model changes with a deploy, and a viewer running on an older model draws it wrong (no
+    # lane routes, so no traffic), so browsers must not keep it. Building it is cached here.
+    response.headers["Cache-Control"] = "no-store"
     return Model3DResponse(
         name=model.name,
         extent_m=model.extent_m,

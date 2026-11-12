@@ -787,7 +787,7 @@ Returns detailed information about a named interchange for the detail panel and 
 
 #### `GET /api/interchange/{name}/model3d`
 
-Returns the 3-D model of a catalogue alternative (§3.19). No parameters; `404` for a name without a geometry generator. The response is cacheable for an hour.
+Returns the 3-D model of a catalogue alternative (§3.19). No parameters; `404` for a name without a geometry generator. The response is `no-store`: the viewer must never run on the model of an earlier deploy (the server caches the build).
 
 | Field | Meaning |
 |---|---|

@@ -124,6 +124,7 @@ def test_unknown_alternative_has_no_model():
 def test_api_returns_the_model():
     client = TestClient(app)
     res = client.get("/api/interchange/Stack (4-Level)/model3d")
+    assert res.headers["cache-control"] == "no-store"   # a stale model breaks the viewer
     assert res.status_code == 200
     body = res.json()
     assert body["levels"] == 4 and len(body["segments"]) == 12 and body["piers"]
